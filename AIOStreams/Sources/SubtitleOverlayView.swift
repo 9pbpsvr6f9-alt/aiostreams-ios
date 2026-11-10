@@ -123,11 +123,12 @@ final class SubtitleOverlayView: UIView {
         let shownVideo = video.intersection(bounds)
         var bottomStack: [NSAttributedString] = []
         var placed: [(NSAttributedString, Int, CGPoint?)] = []
+        let line = bottomLine(video: shownVideo)
 
         for cue in cues {
             switch cue.body {
             case .image(let image):
-                drawImage(image, in: video, context: context)
+                drawImage(image, in: video, below: line, context: context)
             case .text(let text):
                 let string = attributed(runs: nil, text: text, height: shownVideo.height)
                 route(string, placement: cue.placement, bottom: &bottomStack, placed: &placed)
@@ -140,8 +141,7 @@ final class SubtitleOverlayView: UIView {
         }
 
         // Bottom lines stack upwards from the page's chosen height.
-        var bottom = shownVideo.minY + shownVideo.height * min(max(look.position, 0), 100) / 100
-        bottom = min(bottom, shownVideo.maxY - shownVideo.height * 0.02)
+        var bottom = line
         for string in bottomStack.reversed() {
             let size = measure(string, width: shownVideo.width * 0.92)
             let origin = CGPoint(x: shownVideo.midX - size.width / 2, y: bottom - size.height)
@@ -166,6 +166,17 @@ final class SubtitleOverlayView: UIView {
             let y = [point.y - size.height, point.y - size.height / 2, point.y][row]
             drawText(string, at: CGRect(x: x, y: y, width: size.width, height: size.height), context: context)
         }
+    }
+
+    /// Where the lowest unplaced line's bottom sits. The page's height is a share of the screen
+    /// while its controls lift the subtitles over them (`useLiftSubtitles` measures the window),
+    /// and of the picture otherwise; the higher of the two clears the controls and stays on the
+    /// picture where it can, as on a letterboxed or portrait video.
+    private func bottomLine(video: CGRect) -> CGFloat {
+        let share = min(max(look.position, 0), 100) / 100
+        let onPicture = min(video.minY + video.height * share, video.maxY - video.height * 0.02)
+        let onScreen = min(bounds.height * share, bounds.maxY - bounds.height * 0.02)
+        return min(onPicture, onScreen)
     }
 
     private func route(
@@ -270,14 +281,18 @@ final class SubtitleOverlayView: UIView {
         return font.pointSize
     }
 
-    private func drawImage(_ image: SubtitleImage, in video: CGRect, context: CGContext) {
+    private func drawImage(_ image: SubtitleImage, in video: CGRect, below line: CGFloat, context: CGContext) {
         // `position` is normalised against the subtitle canvas, laid onto the picture.
-        let frame = CGRect(
+        var frame = CGRect(
             x: video.minX + image.position.minX * video.width,
             y: video.minY + image.position.minY * video.height,
             width: image.position.width * video.width,
             height: image.position.height * video.height
         )
+        // A picture in the lower half rises with the line, as the Android app lifts it, no higher than the top.
+        if frame.midY > video.midY, frame.maxY > line {
+            frame.origin.y = max(min(frame.minY, video.minY), frame.minY - (frame.maxY - line))
+        }
         UIImage(cgImage: image.cgImage).draw(in: frame)
     }
 }

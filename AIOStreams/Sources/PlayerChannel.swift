@@ -427,8 +427,11 @@ final class PlayerChannel {
         case "stretch": gravity = .resize
         default: gravity = .resizeAspect
         }
-        engine.videoGravity = gravity
-        overlay.gravity = gravity
+        // The page sends its style every frame while the controls lift the subtitles.
+        if overlay.gravity != gravity {
+            engine.videoGravity = gravity
+            overlay.gravity = gravity
+        }
         if let look = message["subtitles"] as? [String: Any] {
             overlay.look = SubtitleLook(json: look)
         }
