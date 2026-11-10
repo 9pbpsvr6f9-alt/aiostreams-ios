@@ -50,8 +50,11 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Build the IPA
-        run: scripts/make-ipa.sh
+      - name: Build the iOS IPA
+        run: scripts/make-ipa.sh ios
+
+      - name: Build the tvOS IPA
+        run: scripts/make-ipa.sh tvos
 
       - uses: actions/upload-artifact@v4
         with:
@@ -59,10 +62,16 @@ jobs:
           path: build/AIOStreams.ipa
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIOStreams-tvOS-ipa
+          path: build/AIOStreams-tvOS.ipa
+          if-no-files-found: error
+
       - name: Attach to the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Unsigned IPA. Sign it when you install it (AltStore, SideStore, Sideloadly or your own certificate)."
-          gh release upload "$GITHUB_REF_NAME" build/AIOStreams.ipa --clobber
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Unsigned IPAs. Sign them when you install them."
+          gh release upload "$GITHUB_REF_NAME" build/AIOStreams.ipa build/AIOStreams-tvOS.ipa --clobber

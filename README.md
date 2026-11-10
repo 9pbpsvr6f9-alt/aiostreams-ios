@@ -1,6 +1,6 @@
-# AIOStreams for iOS
+# AIOStreams for iOS and Apple TV
 
-An unofficial iPhone and iPad port of the [AIOStreams](https://github.com/Viren070/AIOStreams) app, playing through [AetherEngine](https://github.com/superuser404notfound/AetherEngine).
+An unofficial iPhone, iPad and Apple TV port of the [AIOStreams](https://github.com/Viren070/AIOStreams) app, playing through [AetherEngine](https://github.com/superuser404notfound/AetherEngine).
 
 It follows the design of the official Android and desktop apps, which are a web view over a native player. Their source is public under AGPL-3.0, so this port builds from that source rather than from the APK.
 
@@ -53,6 +53,19 @@ To run it from Xcode instead, run `scripts/build-web.sh`, then `xcodegen generat
 | `now-playing`, `media-key` | Now Playing info and lock screen controls |
 | `fullscreen` | landscape, no status bar or home indicator |
 | `player-state` / `player-tracks` / `player-chapters` / `player-event` / `player-ended` | the engine's published state |
+
+## Apple TV
+
+tvOS has no WebKit, so the web app can't run there. The Apple TV app (`TV/`) is native SwiftUI instead. It talks to the server's Jellyfin API with the same requests the web app makes (`packages/web/src/lib/queries.ts`), and plays with the same AetherEngine. The engine handles the HDR and Dolby Vision display switching itself, following the Apple TV's Match Content setting.
+
+- **Connecting:** enter the server address from the configure page (Save & Install → Jellyfin apps → Connect). Sign in with Quick Connect (approve the code on the configure page), by picking a user, or with a name and password.
+- **Browsing:** Home has Continue Watching, Next Up and a row for each library. There's also search, library grids, and details pages with seasons and episodes.
+- **Versions:** the streams your addons found, in the order the server sorted them. Picking one also fetches its subtitles from your subtitle addons.
+- **Player:** play/pause, click left or right to go back 10 s or forward 30 s, and press down for audio and subtitles. Playback resumes where you left off and reports progress to the server.
+
+It shares `Support.swift` and `SubtitleOverlayView.swift` with the iOS app. The build makes `AIOStreams-tvOS.ipa` alongside the iPhone one. AltStore and SideStore don't install on Apple TV. Use Xcode with a paired Apple TV, or another signing tool that supports tvOS.
+
+Not in the Apple TV app yet: scrubbing with the touch surface, playing the next episode automatically, skipping intros, Live TV, and a subtitle style setting.
 
 ## Not done yet
 
