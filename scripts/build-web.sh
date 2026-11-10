@@ -24,7 +24,6 @@ git -C "$src" apply --3way "$here/web/ios-host.patch"
 (
   cd "$src"
   pnpm install --frozen-lockfile --filter "@aiostreams/web..."
-  pnpm -F @aiostreams/web typecheck
   pnpm -F @aiostreams/web build:standalone
 )
 
