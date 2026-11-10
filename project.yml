@@ -1,0 +1,79 @@
+name: AIOStreams
+options:
+  bundleIdPrefix: io.github.aiostreams-ios
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  AetherEngine:
+    url: https://github.com/superuser404notfound/AetherEngine
+    exactVersion: "7.62.1"
+targets:
+  AIOStreams:
+    type: application
+    platform: iOS
+    sources:
+      - path: AIOStreams/Sources
+      - path: AIOStreams/Assets.xcassets
+      # The web app's standalone build, copied in by scripts/build-web.sh, kept as a folder.
+      - path: AIOStreams/Resources/web
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: AetherEngine
+        product: AetherEngine
+    info:
+      path: AIOStreams/Info.plist
+      properties:
+        CFBundleDisplayName: AIOStreams
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: ""
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations:
+            UIWindowSceneSessionRoleApplication:
+              - UISceneConfigurationName: Default
+                UISceneDelegateClassName: $(PRODUCT_MODULE_NAME).SceneDelegate
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIRequiresFullScreen: true
+        UIViewControllerBasedStatusBarAppearance: true
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIUserInterfaceStyle: Dark
+        # Playback keeps going with the screen off or the app in the background.
+        UIBackgroundModes:
+          - audio
+        # Self-hosted servers are often plain http on the local network.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: AIOStreams connects to your server and streams on your local network.
+        NSMicrophoneUsageDescription: Voice search in the page's search field uses the microphone.
+        CFBundleURLTypes:
+          - CFBundleURLName: io.github.aiostreams-ios.link
+            CFBundleURLSchemes:
+              - aiostreams
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.aiostreams-ios.app
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_USER_SCRIPT_SANDBOXING: NO

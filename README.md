@@ -1,0 +1,74 @@
+# AIOStreams for iOS
+
+An unofficial iPhone and iPad port of the [AIOStreams](https://github.com/Viren070/AIOStreams) app, playing through [AetherEngine](https://github.com/superuser404notfound/AetherEngine).
+
+It follows the design of the official Android and desktop apps, which are a web view over a native player. Their source is public under AGPL-3.0, so this port builds from that source rather than from the APK.
+
+- The page is AIOStreams' own web app (`packages/web`, standalone build). It draws every screen and the player's controls.
+- The page talks to the app through `window.aiostreamsApp`, the same bridge (protocol 2) the Android and desktop apps use. The page itself is almost unchanged: `web/ios-host.patch` adds one small host (`platform: 'ios'`) so the page knows it's on iOS.
+- The video is drawn by AetherEngine beneath a transparent `WKWebView`. AetherEngine replaces mpv and ExoPlayer and brings FFmpeg demuxing, VideoToolbox and dav1d decoding, HDR10, HDR10+, Dolby Vision and HLG, and Atmos.
+- The engine leaves subtitle drawing to the app. A native layer between the video and the page draws them, in the style chosen in the page's subtitle settings.
+
+```
+┌──────────────────────────────┐
+│ WKWebView (transparent)      │  aiostreams://localhost/  ← bundled web app
+│   window.aiostreamsApp  ⇅    │  JSON messages: player-load, player-state, …
+├──────────────────────────────┤
+│ SubtitleOverlayView          │  engine.subtitleCues @ clock.sourceTime
+├──────────────────────────────┤
+│ AetherPlayerView             │  AetherEngine
+└──────────────────────────────┘
+```
+
+## Getting an IPA
+
+You need macOS to build it; this repository has no prebuilt binary. Either:
+
+**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on a `macos-26` runner and uploads `AIOStreams.ipa` as a workflow artifact. Pushing a `v*` tag also attaches it to a release.
+
+**Locally on a Mac** with Xcode 27 (26.3 is AetherEngine's best-effort floor), Node 24, pnpm 11 and XcodeGen:
+
+```bash
+brew install xcodegen
+```
+
+```bash
+scripts/make-ipa.sh
+```
+
+The IPA is unsigned. Sign it when you install it with AltStore, SideStore, Sideloadly, or your own developer certificate. With a free Apple ID, apps expire after 7 days and must be refreshed.
+
+To run it from Xcode instead, run `scripts/build-web.sh`, then `xcodegen generate`, open `AIOStreams.xcodeproj`, choose your team under Signing, and run it on a device.
+
+## What maps to what
+
+| Page message | iOS app |
+| --- | --- |
+| `player-load` (url, headers, start, languages) | `engine.load(url:startPosition:options:)` with `httpHeaders`, `isLive`, preferred languages |
+| `player-set` (paused, volume, speed, audio, subtitle, delay) | `play`/`pause`, `volume`, `setRate`, `selectAudioTrack`, `selectSubtitleTrack`/`clearSubtitle`, overlay delay |
+| `player-seek` | `engine.seek(to:exact:)` |
+| `player-subtitle-add`, `subtitle-file` | `addExternalSubtitleTrack` |
+| `player-style` (fit, subtitle look) | `videoGravity`, the overlay's style |
+| `player-thumbnail` | `scrubThumbnail(atSeconds:)`, served at `/thumbnail/…` |
+| `now-playing`, `media-key` | Now Playing info and lock screen controls |
+| `fullscreen` | landscape, no status bar or home indicator |
+| `player-state` / `player-tracks` / `player-chapters` / `player-event` / `player-ended` | the engine's published state |
+
+## Not done yet
+
+- **Downloads and offline playback.** The iOS host has no `downloads`, so the page hides them.
+- **Mini player and picture-in-picture.** The bridge reports `miniPlayer: false`.
+- **Stats overlay.** mpv's stats pages have no AetherEngine equivalent here.
+- **Subtitle line index.** It feeds the page's subtitle sync tools; the app answers that it has none.
+- **YouTube trailers.** `youtube-resolve` answers with no stream.
+- **Desktop-only settings.** Cards such as mpv config, video output and audio devices may still show; the app answers each with an empty list.
+
+## Updating
+
+`web/AIOSTREAMS_REF` pins the AIOStreams commit the web app is built from, so the patch applies cleanly. To move to a newer one, change it and check that `git apply` of `web/ios-host.patch` still succeeds. If it doesn't, regenerate the patch. `project.yml` pins AetherEngine to an exact version.
+
+## Licence
+
+AGPL-3.0, like AIOStreams (`LICENSE`). AetherEngine is LGPL-3.0 with an App Store exception, and is linked statically from its tagged release. FFmpeg is LGPL-2.1+ and is embedded as dynamic frameworks. The app's licences screen lists both.
+
+This is an unofficial port, not affiliated with AIOStreams or AetherEngine.

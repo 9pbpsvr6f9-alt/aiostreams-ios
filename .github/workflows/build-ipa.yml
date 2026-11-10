@@ -1,0 +1,68 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      aiostreams_ref:
+        description: AIOStreams commit, tag or branch for the web app (blank for web/AIOSTREAMS_REF)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      AIOSTREAMS_REF: ${{ inputs.aiostreams_ref }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # AetherEngine supports Xcode 27; 26.3 is its best-effort floor. Take the newest on the runner.
+      - name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_2[6-9]*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Build the web app
+        run: |
+          [ -n "$AIOSTREAMS_REF" ] || unset AIOSTREAMS_REF
+          scripts/build-web.sh
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build the IPA
+        run: scripts/make-ipa.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIOStreams-ipa
+          path: build/AIOStreams.ipa
+          if-no-files-found: error
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Unsigned IPA. Sign it when you install it (AltStore, SideStore, Sideloadly or your own certificate)."
+          gh release upload "$GITHUB_REF_NAME" build/AIOStreams.ipa --clobber

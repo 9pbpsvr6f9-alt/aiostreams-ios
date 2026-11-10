@@ -1,0 +1,110 @@
+diff --git a/packages/web/src/lib/client.ts b/packages/web/src/lib/client.ts
+index ee89b85..6eefa60 100644
+--- a/packages/web/src/lib/client.ts
++++ b/packages/web/src/lib/client.ts
+@@ -28,6 +28,7 @@ function clientName(): string {
+     if (host === 'tizen') return 'AIOStreams Tizen';
+     return 'AIOStreams Web';
+   }
++  if (shell.platform === 'ios') return 'AIOStreams iOS';
+   if (shell.platform !== 'android') return 'AIOStreams Desktop';
+   return shell.tv ? 'AIOStreams Android TV' : 'AIOStreams Android';
+ }
+diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
+index 7902c52..d11e424 100644
+--- a/packages/web/src/lib/hosts/shell/bridge.ts
++++ b/packages/web/src/lib/hosts/shell/bridge.ts
+@@ -182,7 +182,7 @@ export type MediaKey =
+ interface ShellBridge {
+   protocol: number;
+   version: string;
+-  /** `windows`, `macos`, `linux` or `android`. */
++  /** `windows`, `macos`, `linux`, `android` or `ios`. */
+   platform: string;
+   /** The Android app on a TV. */
+   tv?: boolean;
+diff --git a/packages/web/src/lib/hosts/shell/index.ts b/packages/web/src/lib/hosts/shell/index.ts
+index 7b11291..16e92c8 100644
+--- a/packages/web/src/lib/hosts/shell/index.ts
++++ b/packages/web/src/lib/hosts/shell/index.ts
+@@ -10,6 +10,7 @@ import type { Host } from '..';
+ import { androidHost, setupAndroid } from './android';
+ import { appBridge, ask, bridgeStore, type ShellAnswer } from './bridge';
+ import { desktopHost, setupDesktop } from './desktop';
++import { iosHost, setupIos } from './ios';
+ import { playerSettings } from './player';
+ 
+ export type UpdateState = ShellAnswer<'update-state'>;
+@@ -83,7 +84,11 @@ export function ShellSetup() {
+     checkForUpdates(channel);
+     const unsubscribeSettings = onSettingsChange(apply);
+     const teardown =
+-      shell.platform === 'android' ? setupAndroid() : setupDesktop();
++      shell.platform === 'android'
++        ? setupAndroid()
++        : shell.platform === 'ios'
++          ? setupIos()
++          : setupDesktop();
+     shell.send({ type: 'player-sync' });
+     return () => {
+       unsubscribeSettings();
+@@ -179,5 +184,6 @@ export function crashReportSeen(at: number): void {
+ export function shellHost(): Host | null {
+   const bridge = appBridge();
+   if (bridge?.protocol !== 2) return null;
+-  return bridge.platform === 'android' ? androidHost : desktopHost;
++  if (bridge.platform === 'android') return androidHost;
++  return bridge.platform === 'ios' ? iosHost : desktopHost;
+ }
+diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
+new file mode 100644
+index 0000000..5013939
+--- /dev/null
++++ b/packages/web/src/lib/hosts/shell/ios.ts
+@@ -0,0 +1,29 @@
++import type { Host } from '..';
++import { appBridge } from './bridge';
++import { appEngine } from './player';
++import { resolveYouTube } from './youtube';
++
++let fullscreen = false;
++
++/** Follows the iOS app's full screen, which hides the status bar and turns to landscape. */
++export function setupIos(): () => void {
++  const unsubscribe = appBridge()?.subscribe((m) => {
++    if (m.type === 'fullscreen') fullscreen = m.value;
++  });
++  return () => unsubscribe?.();
++}
++
++/** The iOS app: the page over AetherEngine, which draws the video beneath it. */
++export const iosHost: Host = {
++  name: 'ios-app',
++  device: () => ({ id: appBridge()?.deviceId, name: appBridge()?.device }),
++  player: appEngine,
++  playerFeatures: ['audio', 'chapters', 'headers'],
++  resolveYouTube,
++  fullscreen: {
++    active: () => fullscreen,
++    set: (on) => appBridge()?.send({ type: 'fullscreen', value: on }),
++  },
++  saveFile: (name, type, text) =>
++    appBridge()?.send({ type: 'save-file', name, mime: type, text }),
++};
+diff --git a/packages/web/src/pages/settings/about.tsx b/packages/web/src/pages/settings/about.tsx
+index a8883d5..94131c7 100644
+--- a/packages/web/src/pages/settings/about.tsx
++++ b/packages/web/src/pages/settings/about.tsx
+@@ -55,7 +55,11 @@ export function AboutSection() {
+     ...(shell
+       ? ([
+           [
+-            shell.platform === 'android' ? t`Android app` : t`Desktop app`,
++            shell.platform === 'android'
++              ? t`Android app`
++              : shell.platform === 'ios'
++                ? t`iOS app`
++                : t`Desktop app`,
+             shell.app,
+           ],
+           ...(shell.player && !shell.mpv

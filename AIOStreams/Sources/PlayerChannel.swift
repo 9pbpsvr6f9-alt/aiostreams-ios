@@ -1,0 +1,480 @@
+import AetherEngine
+import AVFoundation
+import Combine
+import UIKit
+
+/// Carries the page's `player-*` and `now-playing` messages to AetherEngine and the engine's
+/// reports back, in the shapes the desktop app's `core/src/playback.rs` reads and writes.
+@MainActor
+final class PlayerChannel {
+    let engine: AetherEngine
+    private let send: ([String: Any]) -> Void
+    private let overlay: SubtitleOverlayView
+    private let thumbnails: ThumbnailStore
+    private let nowPlaying: NowPlaying
+    /// Shows the video beneath the page, or hides it once nothing plays.
+    var showVideo: (Bool) -> Void = { _ in }
+
+    private var bag = Set<AnyCancellable>()
+    private var loadTask: Task<Void, Never>?
+    private var generation = 0
+    /// The url the page asked for, exactly as it sent it, which its thumbnails name.
+    private var loadedURL: String?
+    private var wantsPaused = false
+    private var volume: Double = 1
+    private var muted = false
+    private var speed: Double = 1
+    private var ended = false
+    private var restarted = false
+    private var lastStatus: Int?
+    /// Where each added subtitle came from, by its track id.
+    private var subtitleURLs: [Int: String] = [:]
+    private var subtitleFiles = 0
+    private var thumbnailBusy = false
+    private var wantedThumbnail: (url: String, positionMs: Double)?
+    private var thumbnailCount = 0
+
+    init(engine: AetherEngine, overlay: SubtitleOverlayView, thumbnails: ThumbnailStore, send: @escaping ([String: Any]) -> Void) {
+        self.engine = engine
+        self.overlay = overlay
+        self.thumbnails = thumbnails
+        self.send = send
+        nowPlaying = NowPlaying(engine: engine)
+        nowPlaying.onKey = { [weak self] key in self?.send(["type": "media-key", "key": key]) }
+        observe()
+    }
+
+    // MARK: - From the engine
+
+    private func observe() {
+        engine.$state
+            .sink { [weak self] state in self?.stateChanged(state) }
+            .store(in: &bag)
+        engine.$isBuffering.removeDuplicates()
+            .sink { [weak self] in self?.state(["buffering": $0]) }
+            .store(in: &bag)
+        engine.$isSeeking.removeDuplicates()
+            .sink { [weak self] seeking in
+                guard let self else { return }
+                self.state(["seeking": seeking])
+                // mpv's playback-restart: the picture shows from the new place.
+                if !seeking, self.restarted { self.event("restart") }
+            }
+            .store(in: &bag)
+        engine.$duration.removeDuplicates()
+            .sink { [weak self] duration in
+                guard duration > 0 else { return }
+                self?.state(["durationMs": JSON.finite(duration * 1000)])
+            }
+            .store(in: &bag)
+        engine.clock.$currentTime
+            .throttle(for: .milliseconds(250), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] seconds in
+                guard let self, self.loadedURL != nil else { return }
+                self.state(["positionMs": JSON.finite(seconds * 1000)])
+            }
+            .store(in: &bag)
+        engine.$residentRanges
+            .throttle(for: .seconds(1), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] ranges in
+                self?.state(["buffered": ranges.map { ["startMs": JSON.finite($0.lowerBound * 1000), "endMs": JSON.finite($0.upperBound * 1000)] }])
+            }
+            .store(in: &bag)
+        Publishers.CombineLatest(engine.$audioTracks, engine.$subtitleTracks)
+            .debounce(for: .milliseconds(50), scheduler: RunLoop.main)
+            .sink { [weak self] _, _ in self?.sendTracks() }
+            .store(in: &bag)
+        engine.$activeAudioTrackIndex.removeDuplicates()
+            .sink { [weak self] index in self?.state(["audio": JSON.id(index)]) }
+            .store(in: &bag)
+        engine.$activeSubtitleTrackIndex.removeDuplicates()
+            .sink { [weak self] index in self?.state(["subtitle": JSON.id(index)]) }
+            .store(in: &bag)
+        engine.$mediaChapters
+            .sink { [weak self] _ in self?.sendChapters() }
+            .store(in: &bag)
+        engine.$subtitleCues
+            .sink { [weak self] cues in self?.overlay.setCues(cues) }
+            .store(in: &bag)
+        engine.clock.$sourceTime
+            .sink { [weak self] seconds in self?.overlay.setTime(seconds) }
+            .store(in: &bag)
+        Publishers.CombineLatest(engine.$sourceVideoWidth, engine.$sourceVideoHeight)
+            .sink { [weak self] width, height in
+                guard let self else { return }
+                let aspect = self.engine.sourceVideoPixelAspectRatio
+                self.overlay.videoSize = CGSize(width: Double(width) * (aspect > 0 ? aspect : 1), height: Double(height))
+            }
+            .store(in: &bag)
+        engine.$hasFirstFrameReadyForDisplay.removeDuplicates()
+            .sink { [weak self] ready in
+                guard let self, ready, !self.restarted else { return }
+                self.restarted = true
+                self.event("restart")
+            }
+            .store(in: &bag)
+        engine.sourceAuthorizationRefused
+            .sink { [weak self] status in self?.lastStatus = status }
+            .store(in: &bag)
+    }
+
+    private func stateChanged(_ state: PlaybackState) {
+        switch state {
+        case .idle:
+            self.state(["idle": true, "paused": wantsPaused])
+        case .loading:
+            self.state(["idle": false])
+        case .playing:
+            self.state(["idle": false, "paused": false])
+        case .paused:
+            self.state(["idle": false, "paused": true])
+        case .seeking:
+            break
+        case .ended:
+            end("eof", error: nil)
+        case .error(let message):
+            end("error", error: message)
+        @unknown default:
+            break
+        }
+        nowPlaying.update(playing: state == .playing)
+    }
+
+    private func state(_ fields: [String: Any]) {
+        var message = fields
+        message["type"] = "player-state"
+        send(message)
+    }
+
+    private func event(_ name: String) {
+        send(["type": "player-event", "name": name])
+    }
+
+    private func end(_ reason: String, error: String?) {
+        guard !ended, loadedURL != nil else { return }
+        ended = true
+        var message: [String: Any] = ["type": "player-ended", "reason": reason, "error": JSON.orNull(error)]
+        if reason == "error" {
+            if let lastStatus { message["status"] = lastStatus }
+            if let info = engine.errorInfo { message["cause"] = info.message }
+            AppLog.warn("player", "ended with an error: \(error ?? "?") status=\(lastStatus.map(String.init) ?? "-")")
+        } else {
+            AppLog.info("player", "ended reason=\(reason)")
+        }
+        send(message)
+    }
+
+    private func trackJSON(_ track: TrackInfo, type: String) -> [String: Any]? {
+        guard track.id >= 0 else { return nil }
+        var json: [String: Any] = [
+            "id": String(track.id),
+            "type": type,
+            "default": track.isDefault,
+            "forced": track.isForced,
+            "hearingImpaired": track.isHearingImpaired,
+            "visualImpaired": track.isVisualImpaired,
+            "external": track.isExternal,
+        ]
+        if !track.name.isEmpty { json["title"] = track.name }
+        if let language = track.language, !language.isEmpty { json["language"] = language }
+        if !track.codec.isEmpty { json["codec"] = track.codec }
+        if let url = subtitleURLs[track.id] { json["url"] = url }
+        return json
+    }
+
+    private func sendTracks() {
+        let tracks = engine.audioTracks.compactMap { trackJSON($0, type: "audio") }
+            + engine.subtitleTracks.compactMap { trackJSON($0, type: "subtitle") }
+        send(["type": "player-tracks", "tracks": tracks])
+    }
+
+    private func sendChapters() {
+        let chapters: [[String: Any]] = engine.mediaChapters.map { chapter in
+            var json: [String: Any] = ["startMs": JSON.finite(chapter.startSeconds * 1000)]
+            if !chapter.name.isEmpty { json["title"] = chapter.name }
+            return json
+        }
+        send(["type": "player-chapters", "chapters": chapters])
+    }
+
+    private func sendAll() {
+        var full: [String: Any] = [
+            "idle": loadedURL == nil,
+            "paused": loadedURL == nil ? wantsPaused : engine.state != .playing,
+            "buffering": engine.isBuffering,
+            "seeking": engine.isSeeking,
+            "volume": volume,
+            "maxVolume": 1.0,
+            "muted": muted,
+            "speed": speed,
+            "audio": JSON.id(engine.activeAudioTrackIndex),
+            "subtitle": JSON.id(engine.activeSubtitleTrackIndex),
+        ]
+        if loadedURL != nil {
+            full["positionMs"] = JSON.finite(engine.currentTime * 1000)
+            if engine.duration > 0 { full["durationMs"] = JSON.finite(engine.duration * 1000) }
+        }
+        state(full)
+        sendTracks()
+        sendChapters()
+    }
+
+    private func reject(_ reason: String) {
+        AppLog.warn("player", "refused: \(reason)")
+        send(["type": "error", "message": reason])
+    }
+
+    // MARK: - From the page
+
+    /// False for a message that isn't the player's.
+    func handle(_ type: String, _ message: [String: Any]) -> Bool {
+        switch type {
+        case "player-load": load(message)
+        case "player-stop": stop()
+        case "player-set": change(message)
+        case "player-seek":
+            guard let ms = JSON.number(message["positionMs"]) else { break }
+            let exact = (JSON.number(message["snapMs"]) ?? 0) <= 0
+            Task { await engine.seek(to: max(ms, 0) / 1000, exact: exact) }
+        case "player-subtitle-add": addSubtitle(message)
+        case "subtitle-file": addSubtitleFile(message)
+        case "player-style": style(message)
+        case "player-sync": sendAll()
+        case "player-thumbnail": thumbnail(message)
+        case "player-subtitle-index":
+            // The engine keeps no index of a file's subtitles to read ahead from.
+            send(["type": "player-subtitle-index", "tracks": NSNull()])
+        case "player-subtitle-lines", "player-skips", "player-controls", "player-stats-overlay", "player-frame", "player-unqueue":
+            break
+        case "player-settings":
+            if let delay = JSON.number(message["audioDelayMs"]) { engine.setAudioDelay(delay / 1000) }
+        case "now-playing":
+            nowPlaying.setItem(message["item"] as? [String: Any])
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// A page that loads again never owns the video the last one started.
+    func pageLoading() {
+        if loadedURL != nil { stop() }
+        nowPlaying.setItem(nil)
+    }
+
+    private func load(_ message: [String: Any]) {
+        guard let text = message["url"] as? String,
+              let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https"
+        else { return reject("only http(s) urls play") }
+        let headers = (message["headers"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+        let startMs = JSON.number(message["startMs"]) ?? 0
+        let mode = message["subtitleMode"] as? String ?? "default"
+
+        var options = LoadOptions()
+        options.httpHeaders = headers
+        options.isLive = JSON.flag(message["live"]) ?? false
+        options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
+        // Forced-only and none leave full subtitles off; the page picks forced ones itself.
+        if mode == "default" || mode == "always" || mode == "smart" {
+            options.preferredSubtitleLanguages = JSON.strings(message["subtitleLanguages"])
+        }
+
+        generation += 1
+        let current = generation
+        loadTask?.cancel()
+        loadedURL = text
+        ended = false
+        restarted = false
+        lastStatus = nil
+        subtitleURLs = [:]
+        thumbnails.clear()
+        wantedThumbnail = nil
+        overlay.clear()
+        showVideo(true)
+        state(["idle": false])
+        AppLog.info("player", "load live=\(options.isLive) start=\(Int(startMs)) url=\(url.host ?? "?")")
+
+        loadTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.engine.load(url: url, startPosition: startMs > 0 ? startMs / 1000 : nil, options: options)
+                guard current == self.generation else { return }
+                self.applyTransport()
+                self.event("loaded")
+                if self.wantsPaused { self.engine.pause() } else { self.engine.play() }
+            } catch is CancellationError {
+                // A newer load took its place.
+            } catch {
+                guard current == self.generation else { return }
+                self.end("error", error: error.localizedDescription)
+            }
+        }
+    }
+
+    private func stop() {
+        generation += 1
+        loadTask?.cancel()
+        loadTask = nil
+        loadedURL = nil
+        engine.stop()
+        overlay.clear()
+        thumbnails.clear()
+        showVideo(false)
+        state(["idle": true])
+    }
+
+    private func applyTransport() {
+        engine.volume = muted ? 0 : Float(min(max(volume, 0), 1))
+        if speed != 1 { engine.setRate(Float(speed)) }
+    }
+
+    private func change(_ message: [String: Any]) {
+        var echo: [String: Any] = [:]
+        if let paused = JSON.flag(message["paused"]) {
+            wantsPaused = paused
+            if loadedURL != nil, engine.isSessionReady {
+                paused ? engine.pause() : engine.play()
+            } else {
+                echo["paused"] = paused
+            }
+        }
+        if let value = JSON.number(message["volume"]) {
+            volume = value
+            echo["volume"] = value
+        }
+        if let value = JSON.flag(message["muted"]) {
+            muted = value
+            echo["muted"] = value
+        }
+        if message["volume"] != nil || message["muted"] != nil {
+            engine.volume = muted ? 0 : Float(min(max(volume, 0), 1))
+        }
+        if let value = JSON.number(message["speed"]), value > 0 {
+            speed = value
+            engine.setRate(Float(value))
+            echo["speed"] = value
+        }
+        if let audio = message["audio"] as? String, let id = Int(audio) {
+            engine.selectAudioTrack(index: id)
+        }
+        if let subtitle = message["subtitle"] {
+            if subtitle is NSNull {
+                engine.clearSubtitle()
+            } else if let text = subtitle as? String, let id = Int(text) {
+                engine.selectSubtitleTrack(index: id)
+            }
+        }
+        if let delay = JSON.number(message["subtitleDelayMs"]) {
+            overlay.delay = delay / 1000
+        }
+        if !echo.isEmpty { state(echo) }
+    }
+
+    private func addSubtitle(_ message: [String: Any]) {
+        guard let text = message["url"] as? String,
+              let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https"
+        else { return reject("only http(s) subtitles load") }
+        if let replace = JSON.number(message["replace"]) {
+            engine.removeExternalSubtitleTrack(id: Int(replace))
+            subtitleURLs[Int(replace)] = nil
+        }
+        let language = (message["language"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let track = engine.addExternalSubtitleTrack(ExternalSubtitleTrack(
+            url: url,
+            name: message["title"] as? String,
+            language: language,
+            // The media's headers belong to its own server, not the subtitles'.
+            httpHeaders: [:]
+        ))
+        subtitleURLs[track.id] = text
+        engine.selectSubtitleTrack(index: track.id)
+        sendTracks()
+    }
+
+    /// The page never names a path to open, so a file it adds is written here first.
+    private func addSubtitleFile(_ message: [String: Any]) {
+        guard let name = message["name"] as? String else { return reject("subtitle file without a name") }
+        let ext = (name as NSString).pathExtension.lowercased()
+        guard ["srt", "vtt", "ass", "ssa", "sub", "sup"].contains(ext) else { return reject("\(name) is not a subtitle file") }
+        guard let data = Data(base64Encoded: message["data"] as? String ?? "", options: .ignoreUnknownCharacters) else {
+            return reject("\(name) could not be read")
+        }
+        guard data.count <= 10 << 20 else { return reject("\(name) is too big") }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("subtitles", isDirectory: true)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        subtitleFiles += 1
+        let file = folder.appendingPathComponent("\(subtitleFiles).\(ext)")
+        do {
+            try data.write(to: file)
+        } catch {
+            return reject("\(name) could not be saved")
+        }
+        let track = engine.addExternalSubtitleTrack(ExternalSubtitleTrack(
+            url: file,
+            name: String(name.prefix(200)),
+            formatHint: ext
+        ))
+        engine.selectSubtitleTrack(index: track.id)
+        sendTracks()
+    }
+
+    private func style(_ message: [String: Any]) {
+        let gravity: AVLayerVideoGravity
+        switch message["fit"] as? String {
+        case "crop": gravity = .resizeAspectFill
+        case "stretch": gravity = .resize
+        default: gravity = .resizeAspect
+        }
+        engine.videoGravity = gravity
+        overlay.gravity = gravity
+        if let look = message["subtitles"] as? [String: Any] {
+            overlay.look = SubtitleLook(json: look)
+        }
+    }
+
+    private func thumbnail(_ message: [String: Any]) {
+        guard let url = message["url"] as? String else { return }
+        // Without a position the page only readies the file, which the engine already has open.
+        guard let positionMs = JSON.number(message["positionMs"]) else { return }
+        guard url == loadedURL else {
+            send(["type": "player-thumbnail", "url": url, "src": NSNull()])
+            return
+        }
+        wantedThumbnail = (url, positionMs)
+        pumpThumbnails()
+    }
+
+    /// One keyframe at a time, always the latest one wanted.
+    private func pumpThumbnails() {
+        guard !thumbnailBusy, let wanted = wantedThumbnail else { return }
+        wantedThumbnail = nil
+        thumbnailBusy = true
+        let current = generation
+        Task { [weak self] in
+            guard let self else { return }
+            let image = await self.engine.scrubThumbnail(atSeconds: wanted.positionMs / 1000, maxWidth: 320)
+            self.thumbnailBusy = false
+            if current == self.generation, let image,
+               let jpeg = UIImage(cgImage: image).jpegData(compressionQuality: 0.7) {
+                self.thumbnailCount += 1
+                let path = "/thumbnail/\(self.thumbnailCount).jpg"
+                self.thumbnails.put(path, jpeg)
+                self.send(["type": "player-thumbnail", "url": wanted.url, "positionMs": wanted.positionMs, "src": path])
+            }
+            self.pumpThumbnails()
+        }
+    }
+
+    var diagnostics: String {
+        [
+            "Engine: \(AppInfo.player)",
+            "State: \(engine.state)",
+            "Route: \(engine.videoRoute.rawValue)",
+            "Audio: \(engine.audioDelivery.rawValue) \(engine.activeAudioDecoder ?? "")",
+            "Video: \(engine.sourceVideoCodecName ?? "?") \(engine.sourceVideoWidth)x\(engine.sourceVideoHeight) \(engine.videoFormat)",
+            "Decoder: \(engine.activeVideoDecoder ?? "?")",
+        ].joined(separator: "\n")
+    }
+}
