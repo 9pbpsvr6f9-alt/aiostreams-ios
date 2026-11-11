@@ -2,6 +2,37 @@
 
 An unofficial iPhone, iPad and Apple TV port of the [AIOStreams](https://github.com/Viren070/AIOStreams) app, playing through [AetherEngine](https://github.com/superuser404notfound/AetherEngine).
 
+### Apple TV
+
+<p>
+  <img src="docs/screenshots/tv-home.jpg" width="49%" alt="Apple TV home: the rotating hero over Continue watching">
+  <img src="docs/screenshots/tv-show.jpg" width="49%" alt="A show's page with season pills and episodes">
+</p>
+<p>
+  <img src="docs/screenshots/tv-versions.jpg" width="49%" alt="The version picker">
+  <img src="docs/screenshots/tv-player.jpg" width="49%" alt="The player, with subtitles lifted above its controls">
+</p>
+<p>
+  <img src="docs/screenshots/tv-movie.jpg" width="32%" alt="A movie's page">
+  <img src="docs/screenshots/tv-signin.jpg" width="32%" alt="Who's watching? sign-in">
+  <img src="docs/screenshots/tv-settings.jpg" width="32%" alt="Settings, synced with the web app">
+</p>
+
+### iPhone and iPad
+
+<p>
+  <img src="docs/screenshots/iphone-home.jpg" width="24%" alt="iPhone home">
+  <img src="docs/screenshots/iphone-show.jpg" width="24%" alt="A show on iPhone">
+  <img src="docs/screenshots/iphone-movie.jpg" width="24%" alt="A movie on iPhone">
+  <img src="docs/screenshots/iphone-versions.jpg" width="24%" alt="Versions on iPhone">
+</p>
+<p>
+  <img src="docs/screenshots/ipad-home.jpg" width="49%" alt="iPad home">
+  <img src="docs/screenshots/ipad-show.jpg" width="49%" alt="A show on iPad">
+</p>
+
+The screenshots come from Apple's simulators connected to a demo server with a made-up catalogue. Every title, poster and video in them is drawn by `tools/demo-server`. To retake them, run the **Screenshots** workflow from the Actions tab, or `scripts/screenshots.sh` on a Mac.
+
 It follows the design of the official Android and desktop apps, which are a web view over a native player. Their source is public under AGPL-3.0, so this port builds from that source rather than from the APK.
 
 - The page is AIOStreams' own web app (`packages/web`, standalone build). It draws every screen and the player's controls.
