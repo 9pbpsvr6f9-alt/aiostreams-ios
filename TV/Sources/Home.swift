@@ -265,7 +265,7 @@ struct HeroCarousel: View {
             .focusSection()
         }
         .frame(maxWidth: Theme.px(768), alignment: .leading)
-        .padding(.leading, Theme.px(80))
+        .padding(.leading, Theme.px(80) + pageInset)
         .padding(.bottom, Theme.px(56))
     }
 
@@ -370,7 +370,7 @@ struct WideRow<Action: View>: View {
                 Spacer()
                 action()
             }
-            .padding(.trailing, Theme.px(40))
+            .pagePadding()
             .focusSection()
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Theme.px(16)) {
@@ -378,7 +378,7 @@ struct WideRow<Action: View>: View {
                         WideCard(item: item) { play(item) }
                     }
                 }
-                .padding(.trailing, Theme.px(40))
+                .pagePadding()
                 .padding(.vertical, Theme.px(8))
             }
             .edgeToEdge()

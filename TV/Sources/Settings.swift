@@ -241,6 +241,7 @@ struct SettingsView: View {
                 }
             }
             .frame(maxWidth: Theme.px(760), alignment: .leading)
+            .pagePadding()
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, Theme.px(64))
         }

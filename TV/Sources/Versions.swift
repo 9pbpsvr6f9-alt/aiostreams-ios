@@ -29,11 +29,13 @@ struct VersionsView: View {
             }
             .frame(width: Theme.px(896))
             .frame(maxHeight: Theme.px(612))
-            .background(
-                RoundedRectangle(cornerRadius: Theme.px(16), style: .continuous)
-                    .fill(Color(white: 17 / 255))
-            )
-            .overlay(alignment: .top) { banner }
+            // The art sits behind the header, under everything the panel lists.
+            .background(alignment: .top) {
+                ZStack(alignment: .top) {
+                    Color(white: 17 / 255)
+                    banner
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: Theme.px(16), style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.px(16), style: .continuous)
@@ -57,7 +59,9 @@ struct VersionsView: View {
                 endPoint: .bottom
             )
         }
+        .frame(maxWidth: .infinity)
         .frame(height: Theme.px(180))
+        .clipped()
         .allowsHitTesting(false)
     }
 

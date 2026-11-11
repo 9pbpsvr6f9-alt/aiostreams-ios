@@ -41,6 +41,7 @@ private struct DayRow: View {
                 Text(title).font(Theme.font(Theme.lg, .semibold))
                 if let detail { Text(detail).font(Theme.font(Theme.sm)).foregroundStyle(Theme.gray400) }
             }
+            .pagePadding()
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Theme.px(16)) {
                     ForEach(items) { item in

@@ -47,8 +47,12 @@ func openingGenre(_ client: JellyfinClient, userId: String, view: Item) async ->
 /// Beside the docked rail a page starts flush against it, with 40 px on the far side.
 let pageMargin = Theme.px(40)
 
+/// Room beside the rail for a focused card's ring, drawn just outside the card.
+let pageInset = Theme.px(8)
+
 extension View {
-    func pagePadding() -> some View { padding(.trailing, pageMargin) }
+    /// A page's edges: 8 px off the rail, which a focused card's ring needs, and 40 px on the far side.
+    func pagePadding() -> some View { padding(.leading, pageInset).padding(.trailing, pageMargin) }
 
     /// The web app draws a TV's pages edge to edge. A scroll view otherwise insets its content
     /// by tvOS's TV-safe margins, even inside a screen that ignores them.
@@ -247,15 +251,20 @@ struct RemoteImage: View {
     let url: URL?
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
-            switch phase {
-            case .success(let image):
-                image.resizable().aspectRatio(contentMode: .fill)
-            default:
-                Rectangle().fill(Theme.gray900)
+        // Takes exactly the frame it's given and clips the picture to it; a filling image would
+        // otherwise spill past its frame over whatever is around it.
+        Color.clear
+            .overlay {
+                AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    default:
+                        Rectangle().fill(Theme.gray900)
+                    }
+                }
             }
-        }
-        .clipped()
+            .clipped()
     }
 }
 

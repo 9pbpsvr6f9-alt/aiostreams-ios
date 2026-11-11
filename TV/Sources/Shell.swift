@@ -64,6 +64,8 @@ struct MainView: View {
                     .toolbar(.hidden, for: .navigationBar)
             }
             .id(place)
+            // One area the focus can move into from the rail, wherever on the page it lands.
+            .focusSection()
             .environment(\.openPlace, { place = $0 })
             .environment(\.openRoute, { route in
                 var path = paths[place] ?? NavigationPath()
@@ -139,7 +141,9 @@ struct MainView: View {
         }
         .padding(.horizontal, Theme.px(12))
         .padding(.vertical, Theme.px(32))
-        .frame(width: open ? Theme.px(256) : Theme.px(80), alignment: .leading)
+        // The rail keeps its icons' width when it opens: its names are drawn beside the buttons,
+        // not in them, so the page stays to their right and a press right reaches it.
+        .frame(width: Theme.px(80), alignment: .leading)
         .frame(maxHeight: .infinity)
         .focusSection()
         .focusScope(railScope)
@@ -181,8 +185,12 @@ private struct RailEntry: View {
     let open: Bool
     let avatar: URL?
 
+    /// An open entry's pill, icon and name together, as the web app's open rail draws it.
+    private static let openWidth = Theme.px(232)
+    private static let width = Theme.px(56)
+
     var body: some View {
-        HStack(spacing: Theme.px(16)) {
+        HStack(spacing: 0) {
             Group {
                 if item == .account {
                     AsyncImage(url: avatar) { phase in
@@ -200,21 +208,27 @@ private struct RailEntry: View {
                 }
             }
             .frame(width: Theme.px(24))
+        }
+        .padding(.horizontal, Theme.px(16))
+        .frame(width: Self.width, height: Theme.px(48), alignment: .leading)
+        .foregroundStyle(current || focused ? Color.white : Theme.gray400)
+        // Drawn past the button's own frame, which focus moves are measured from.
+        .background(alignment: .leading) {
+            Capsule()
+                .fill(Color.white.opacity((current ? 0.1 : 0) + (focused ? 0.2 : 0)))
+                .frame(width: open ? Self.openWidth : Self.width, height: Theme.px(48))
+        }
+        .overlay(alignment: .leading) {
             if open {
                 Text(item.name)
                     .font(Theme.font(Theme.base, .medium))
+                    .foregroundStyle(current || focused ? Color.white : Theme.gray400)
                     .lineLimit(1)
                     .fixedSize()
+                    .offset(x: Theme.px(56))
                     .transition(.opacity)
             }
         }
-        .padding(.horizontal, Theme.px(14))
-        .frame(height: Theme.px(48))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .foregroundStyle(current || focused ? Color.white : Theme.gray400)
-        .background(
-            Capsule().fill(Color.white.opacity((current ? 0.1 : 0) + (focused ? 0.2 : 0)))
-        )
     }
 }
 
