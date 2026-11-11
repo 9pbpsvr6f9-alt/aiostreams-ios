@@ -30,6 +30,8 @@ struct PlayFlow: ViewModifier {
                     self.choice = nil
                 }
                 .environmentObject(session)
+                // The page stays in sight, dimmed, behind the panel.
+                .presentationBackground(.clear)
             }
             .fullScreenCover(item: $playing) { request in
                 PlayerScreen(request: request) {

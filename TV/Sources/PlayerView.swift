@@ -31,6 +31,23 @@ final class PlayerModel: ObservableObject {
     @Published private(set) var activeSubtitle: Int?
     @Published private(set) var failure: String?
     @Published private(set) var finished = false
+    @Published private(set) var chapters: [ChapterInfo] = []
+    /// How far ahead of the start the stream is held, in seconds.
+    @Published private(set) var buffered: Double = 0
+    @Published private(set) var speed: Double = 1
+    @Published private(set) var fit: Fit = .fit
+
+    enum Fit: String, CaseIterable {
+        case fit = "Fit", crop = "Crop", stretch = "Stretch"
+
+        var gravity: AVLayerVideoGravity {
+            switch self {
+            case .fit: return .resizeAspect
+            case .crop: return .resizeAspectFill
+            case .stretch: return .resize
+            }
+        }
+    }
 
     let engine: AetherEngine
     let overlay: SubtitleOverlayView
@@ -73,6 +90,11 @@ final class PlayerModel: ObservableObject {
             .sink { [weak self] in self?.position = $0 }
             .store(in: &bag)
         engine.$duration.sink { [weak self] in self?.duration = $0 }.store(in: &bag)
+        engine.$mediaChapters.sink { [weak self] in self?.chapters = $0 }.store(in: &bag)
+        engine.clock.$bufferedPosition
+            .throttle(for: .seconds(1), scheduler: RunLoop.main, latest: true)
+            .sink { [weak self] in self?.buffered = $0 }
+            .store(in: &bag)
         engine.$audioTracks.sink { [weak self] in self?.audioTracks = $0 }.store(in: &bag)
         engine.$subtitleTracks.sink { [weak self] in self?.subtitleTracks = $0 }.store(in: &bag)
         engine.$activeAudioTrackIndex.sink { [weak self] in self?.activeAudio = $0 }.store(in: &bag)
@@ -150,6 +172,23 @@ final class PlayerModel: ObservableObject {
 
     func togglePause() { engine.togglePlayPause() }
 
+    func seek(to seconds: Double) {
+        let target = min(max(seconds, 0), max(duration - 1, 0))
+        position = target
+        Task { await engine.seek(to: target) }
+    }
+
+    func setSpeed(_ value: Double) {
+        speed = value
+        engine.setRate(Float(value))
+    }
+
+    func setFit(_ value: Fit) {
+        fit = value
+        engine.videoGravity = value.gravity
+        overlay.gravity = value.gravity
+    }
+
     func skip(_ seconds: Double) {
         let target = min(max(position + seconds, 0), max(duration - 1, 0))
         position = target
@@ -225,211 +264,3 @@ struct VideoSurface: UIViewRepresentable {
     func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
-struct PlayerScreen: View {
-    let request: PlayRequest
-    let close: () -> Void
-
-    @EnvironmentObject private var session: Session
-    @State private var model: PlayerModel?
-
-    var body: some View {
-        Group {
-            if let model {
-                PlayerControls(model: model, close: finish)
-            } else {
-                Color.black
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            guard model == nil, let client = session.client else { return }
-            let player = PlayerModel(request: request, client: client)
-            model = player
-            player.start()
-        }
-    }
-
-    private func finish() {
-        model?.stop()
-        close()
-    }
-}
-
-private struct PlayerControls: View {
-    @ObservedObject var model: PlayerModel
-    let close: () -> Void
-
-    @State private var shown = true
-    @State private var tracks = false
-    @State private var hideTask: Task<Void, Never>?
-    @FocusState private var focused: Bool
-
-    var body: some View {
-        ZStack {
-            VideoSurface(model: model)
-                .ignoresSafeArea()
-
-            if model.waiting && model.failure == nil {
-                ProgressView().scaleEffect(1.6)
-            }
-
-            if let failure = model.failure {
-                VStack(spacing: 24) {
-                    Text("This version didn't play").font(.title2).bold()
-                    Text(failure).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                    Text("Press Menu to pick another version.").font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(60)
-                .background(.black.opacity(0.75), in: RoundedRectangle(cornerRadius: 24))
-            }
-
-            if shown && !tracks { transport }
-            if tracks {
-                TrackPanel(model: model) { tracks = false; focused = true; wake() }
-            }
-        }
-        // The whole screen takes the remote while the track panel is closed.
-        .focusable(!tracks)
-        .focused($focused)
-        .onAppear { focused = true; wake() }
-        .onPlayPauseCommand { model.togglePause(); wake() }
-        .onTapGesture { model.togglePause(); wake() }
-        .onMoveCommand { direction in
-            switch direction {
-            case .left: model.skip(-10)
-            case .right: model.skip(30)
-            case .down: tracks = true
-            default: break
-            }
-            wake()
-        }
-        .onExitCommand {
-            if tracks { tracks = false; focused = true }
-            else if shown && !model.paused { shown = false }
-            else { close() }
-        }
-        .onChange(of: model.finished) { _, done in if done { close() } }
-        .onChange(of: model.paused) { _, _ in wake() }
-    }
-
-    private var transport: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Spacer()
-            Text(model.request.item.isEpisode ? "\(model.request.item.seriesName ?? "") · \(model.request.item.displayTitle)" : (model.request.item.name ?? ""))
-                .font(.title3).bold()
-                .lineLimit(1)
-            ProgressBar(position: model.position, duration: model.duration)
-            HStack {
-                Image(systemName: model.paused ? "play.fill" : "pause.fill")
-                Text(clock(model.position))
-                Spacer()
-                Text("◀ 10s · 30s ▶ · ▼ Audio & subtitles").foregroundStyle(.secondary)
-                Spacer()
-                Text("-" + clock(max(model.duration - model.position, 0)))
-            }
-            .font(.callout.monospacedDigit())
-        }
-        .padding(.horizontal, 90)
-        .padding(.bottom, 60)
-        .background(alignment: .bottom) {
-            LinearGradient(colors: [.black.opacity(0.85), .clear], startPoint: .bottom, endPoint: .top)
-                .frame(height: 360)
-        }
-        .ignoresSafeArea()
-        .transition(.opacity)
-    }
-
-    /// Shows the controls, and hides them again a few seconds into playback.
-    private func wake() {
-        withAnimation { shown = true }
-        hideTask?.cancel()
-        hideTask = Task {
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled, !model.paused, !tracks else { return }
-            withAnimation { shown = false }
-        }
-    }
-
-    private func clock(_ seconds: Double) -> String {
-        let total = Int(seconds.isFinite ? seconds : 0)
-        return total >= 3600
-            ? String(format: "%d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
-            : String(format: "%d:%02d", total / 60, total % 60)
-    }
-}
-
-private struct ProgressBar: View {
-    let position: Double
-    let duration: Double
-
-    var body: some View {
-        GeometryReader { geometry in
-            Capsule().fill(.white.opacity(0.25))
-                .overlay(alignment: .leading) {
-                    Capsule().fill(.white)
-                        .frame(width: duration > 0 ? geometry.size.width * min(position / duration, 1) : 0)
-                }
-        }
-        .frame(height: 10)
-    }
-}
-
-/// Audio and subtitle choices as plain buttons; a SwiftUI `Menu` blinks in player controls on tvOS 26.
-private struct TrackPanel: View {
-    @ObservedObject var model: PlayerModel
-    let done: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 60) {
-            column("Audio") {
-                ForEach(model.audioTracks) { track in
-                    choice(label(track), on: track.id == model.activeAudio) { model.selectAudio(track.id) }
-                }
-            }
-            column("Subtitles") {
-                choice("Off", on: model.activeSubtitle == nil) { model.selectSubtitle(nil) }
-                ForEach(model.subtitleTracks) { track in
-                    choice(label(track), on: track.id == model.activeSubtitle) { model.selectSubtitle(track.id) }
-                }
-            }
-        }
-        .padding(60)
-        .frame(maxWidth: .infinity, maxHeight: 620, alignment: .topLeading)
-        .background(.ultraThinMaterial)
-        .frame(maxHeight: .infinity, alignment: .bottom)
-        .onExitCommand(perform: done)
-    }
-
-    private func column<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title).font(.headline).foregroundStyle(.secondary)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) { content() }
-                    .padding(20)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .focusSection()
-    }
-
-    private func choice(_ text: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack {
-                Image(systemName: "checkmark").opacity(on ? 1 : 0)
-                Text(text).lineLimit(1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func label(_ track: TrackInfo) -> String {
-        var parts: [String] = []
-        if !track.name.isEmpty { parts.append(track.name) }
-        if let language = track.language, !language.isEmpty, !track.name.localizedCaseInsensitiveContains(language) {
-            parts.append(Locale.current.localizedString(forLanguageCode: language) ?? language)
-        }
-        if track.isForced { parts.append("Forced") }
-        if track.isExternal { parts.append("Addon") }
-        return parts.isEmpty ? "Track \(track.id)" : parts.joined(separator: " · ")
-    }
-}

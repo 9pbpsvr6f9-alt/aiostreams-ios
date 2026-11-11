@@ -101,8 +101,8 @@ struct MainView: View {
         case .discover: LibrariesView()
         case .search: SearchView()
         case .favourites: FavouritesView()
-        case .calendar: ComingSoonView(title: "Calendar", text: "What airs when, from your configuration's catalogs.")
-        case .activity: ComingSoonView(title: "Activity", text: "What you've watched, with the history the web app keeps.")
+        case .calendar: CalendarView()
+        case .activity: ActivityView()
         case .account, .settings: SettingsView()
         }
     }
