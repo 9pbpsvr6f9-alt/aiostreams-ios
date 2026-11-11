@@ -11,6 +11,10 @@ on:
         description: AIOStreams commit, tag or branch for the web app (blank for web/AIOSTREAMS_REF)
         required: false
         default: ""
+      height_channels:
+        description: Build with TrueHD Atmos and DTS:X height channels (may need patent licences; not for public releases)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,6 +29,8 @@ jobs:
     timeout-minutes: 60
     env:
       AIOSTREAMS_REF: ${{ inputs.aiostreams_ref }}
+      # Only a manual run can turn them on; pushes, tags and releases build without them.
+      HEIGHT_CHANNELS: ${{ inputs.height_channels && 'on' || 'off' }}
     steps:
       - uses: actions/checkout@v5
 

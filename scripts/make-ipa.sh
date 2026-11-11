@@ -6,6 +6,10 @@
 #   scripts/make-ipa.sh            # both
 #   scripts/make-ipa.sh ios        # one of them
 #   scripts/make-ipa.sh tvos
+#   HEIGHT_CHANNELS=on scripts/make-ipa.sh   # with TrueHD Atmos and DTS:X height channels
+#
+# Height channels are off unless asked for: AetherEngine notes they may be subject to third-party
+# patent licensing, so public releases leave them out. Dolby Vision FEL (curve fold) is in both.
 #
 # Needs Xcode 27 (AetherEngine's supported toolchain; 26.3 is best effort) and XcodeGen.
 set -euo pipefail
@@ -14,7 +18,16 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$here"
 which="${1:-all}"
 
-xcodegen generate
+# The engine package to build with: the same module, with or without height channels.
+if [ "${HEIGHT_CHANNELS:-off}" = on ]; then
+  engine=AetherEngineHeights
+  echo "building with height channels"
+else
+  engine=AetherEngineFeatures
+fi
+sed "s#path: Packages/AetherEngineFeatures#path: Packages/$engine#" project.yml > project.gen.yml
+xcodegen generate --spec project.gen.yml
+rm -f project.gen.yml
 derived="$here/build/DerivedData"
 
 build() {

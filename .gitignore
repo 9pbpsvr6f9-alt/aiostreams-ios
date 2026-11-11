@@ -4,3 +4,4 @@ AIOStreams/Resources/web/*
 !AIOStreams/Resources/web/.gitkeep
 .DS_Store
 *.ipa
+project.gen.yml

@@ -82,12 +82,24 @@ Not in the Apple TV app yet: scrubbing with the touch surface, playing the next 
 
 ## Optional AetherEngine components
 
-Both apps build AetherEngine through `Packages/AetherEngineFeatures`, which turns on three of its optional components (XcodeGen can't set a package's traits itself):
+AetherEngine compiles some components only when a build asks for them, and XcodeGen can't set that itself, so the apps build the engine through a small local package. There are two, with the same module name, so the app code is the same either way:
 
-- **TrueHD Atmos and DTS:X height channels** (`TrueHDObjectAudio`, `DTSXObjectAudio`). The apps ask the engine to render them for 7.1.4 speakers. On Apple TV the layout is a setting (Settings → Audio), and the result reaches an Atmos receiver as Dolby MAT. iPhone and iPad play it as Spatial Audio. Needs iOS or tvOS 26. Otherwise they play as their 7.1 channels.
-- **Dolby Vision Profile 7 FEL, by curve fold only** (`DolbyVisionFelCurves`): the enhancement layer is folded into the Profile 8.1 picture on Apple's own video path, which applies it with its licensed decoder. The engine's software dual-layer composer (`DualLayerDolbyVision`), whose steps are covered by Dolby patents, is deliberately left off.
+| Package | Components | Used by |
+| --- | --- | --- |
+| `Packages/AetherEngineFeatures` | Dolby Vision Profile 7 FEL, by curve fold only (`DolbyVisionFelCurves`) | Every build unless told otherwise, and all public releases |
+| `Packages/AetherEngineHeights` | The same, plus TrueHD Atmos and DTS:X height channels (`TrueHDObjectAudio`, `DTSXObjectAudio`) | Builds made with `HEIGHT_CHANNELS=on` |
 
-AetherEngine notes that these components may be subject to third-party patent licensing, which is the responsibility of whoever builds and distributes the app with them.
+- **FEL by curve fold:** the enhancement layer is folded into the Profile 8.1 picture on Apple's own video path, which applies it with its licensed decoder. The engine's software dual-layer composer (`DualLayerDolbyVision`), whose steps are covered by Dolby patents, is left off in both.
+- **Height channels:** TrueHD Atmos and DTS:X are rendered with their heights. On Apple TV they reach an Atmos receiver as Dolby MAT, with the speaker layout in Settings → Audio, which only appears in these builds. iPhone and iPad play them as Spatial Audio. Needs iOS or tvOS 26. Without them, these tracks play as their 7.1 channels.
+
+To build with height channels:
+
+- **Locally:** run `HEIGHT_CHANNELS=on scripts/make-ipa.sh`.
+- **On GitHub:** open Actions → Build IPA → Run workflow and tick **Height channels**. The IPAs are attached to that run, not to a release.
+
+Pushes, tags and releases always build without them.
+
+AetherEngine notes that these components may be subject to third-party patent licensing, which is the responsibility of whoever builds and distributes the app with them. That's why public releases leave height channels out.
 
 ## Licence
 

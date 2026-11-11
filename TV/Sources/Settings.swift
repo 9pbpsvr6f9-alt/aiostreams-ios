@@ -218,14 +218,17 @@ struct SettingsView: View {
                         .clipShape(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous))
                         .padding(.top, Theme.px(8))
                 }
-                section("Audio", note: "TrueHD Atmos and DTS:X play with their height channels, rendered for your speakers and sent to your receiver as Dolby MAT. Needs tvOS 26. DTS:X needs 7.1.4 or 9.1.6.") {
-                    row("Atmos and DTS:X speakers", value: speakerName(prefs.speakerChoice)) {
-                        var options: [(label: String, value: String)] = [(label: "Off: play the 7.1 channels", value: "off")]
-                        for layout in SpatialSpeakerLayout.allCases {
-                            options.append((label: speakerName(layout.rawValue), value: layout.rawValue))
-                        }
-                        chooser = Chooser(title: "Atmos and DTS:X speakers", options: options, current: prefs.speakerChoice) {
-                            prefs.speakerChoice = $0
+                // Only a build with the height channel components has anything to set here.
+                if AetherEngine.OptionalComponent.trueHDObjectAudio.isBuiltIn || AetherEngine.OptionalComponent.dtsxObjectAudio.isBuiltIn {
+                    section("Audio", note: "TrueHD Atmos and DTS:X play with their height channels, rendered for your speakers and sent to your receiver as Dolby MAT. Needs tvOS 26. DTS:X needs 7.1.4 or 9.1.6.") {
+                        row("Atmos and DTS:X speakers", value: speakerName(prefs.speakerChoice)) {
+                            var options: [(label: String, value: String)] = [(label: "Off: play the 7.1 channels", value: "off")]
+                            for layout in SpatialSpeakerLayout.allCases {
+                                options.append((label: speakerName(layout.rawValue), value: layout.rawValue))
+                            }
+                            chooser = Chooser(title: "Atmos and DTS:X speakers", options: options, current: prefs.speakerChoice) {
+                                prefs.speakerChoice = $0
+                            }
                         }
                     }
                 }

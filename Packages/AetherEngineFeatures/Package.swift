@@ -6,8 +6,9 @@ import PackageDescription
 // a package's traits, so the apps depend on this package instead, the way AetherEngine's docs suggest
 // (docs/installation.md, "Optional components").
 //
-// - TrueHDObjectAudio: TrueHD Atmos with its height channels (LoadOptions.objectAudioRendering).
-// - DTSXObjectAudio: DTS:X with its height channels (the same option).
+// The default build, and the one public releases use. Packages/AetherEngineHeights is the same with
+// TrueHD Atmos and DTS:X height channels added, chosen with HEIGHT_CHANNELS=on (scripts/make-ipa.sh).
+//
 // - DolbyVisionFelCurves: the curve fold. A Profile 7 FEL source's enhancement layer is folded into the
 //   Profile 8.1 RPU on the native route, leaving every evaluation of the mapping to Apple's licensed
 //   decoder; on whenever built in.
@@ -31,7 +32,7 @@ let package = Package(
         .package(
             url: "https://github.com/superuser404notfound/AetherEngine",
             exact: "7.62.1",
-            traits: ["TrueHDObjectAudio", "DTSXObjectAudio", "DolbyVisionFelCurves"]
+            traits: ["DolbyVisionFelCurves"]
         ),
     ],
     targets: [
