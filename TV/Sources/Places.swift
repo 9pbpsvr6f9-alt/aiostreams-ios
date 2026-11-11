@@ -50,7 +50,7 @@ private struct DayRow: View {
                 .pagePadding()
                 .padding(.vertical, Theme.px(8))
             }
-            .scrollClipDisabled()
+            .edgeToEdge()
         }
         .focusSection()
     }
@@ -86,7 +86,7 @@ struct CalendarView: View {
             }
             .padding(.bottom, Theme.px(64))
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .task { if !loaded { await load() } }
         .playFlow($choice)
     }
@@ -178,9 +178,15 @@ struct ActivityView: View {
             }
             .padding(.bottom, Theme.px(64))
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .task { if !loaded { await more() } }
         .refreshOnReturn {
+            entries = []
+            cursor = nil
+            loaded = false
+            await more()
+        }
+        .reloadOnWatchChange {
             entries = []
             cursor = nil
             loaded = false

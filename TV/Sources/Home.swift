@@ -59,9 +59,10 @@ struct HomeView: View {
             }
             .padding(.bottom, Theme.px(64))
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .task { if libraries.isEmpty && hero.isEmpty { await load() } }
         .refreshOnReturn { await load() }
+        .reloadOnWatchChange { await load() }
         .playFlow($choice) { Task { await load() } }
     }
 
@@ -380,7 +381,7 @@ struct WideRow<Action: View>: View {
                 .padding(.trailing, Theme.px(40))
                 .padding(.vertical, Theme.px(8))
             }
-            .scrollClipDisabled()
+            .edgeToEdge()
         }
         .focusSection()
     }
@@ -414,6 +415,7 @@ struct WideCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.px(8), style: .continuous))
             }
             .buttonStyle(CardStyle())
+            .itemMenu(item)
             VStack(alignment: .leading, spacing: Theme.px(2)) {
                 HStack(alignment: .firstTextBaseline) {
                     Text(item.isEpisode ? (item.seriesName ?? "") : (item.name ?? ""))

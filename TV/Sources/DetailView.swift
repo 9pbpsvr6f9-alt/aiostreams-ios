@@ -38,9 +38,10 @@ struct DetailView: View {
                 .padding(.top, Theme.px(187))
                 .padding(.bottom, Theme.px(64))
             }
-            .scrollClipDisabled()
+            .edgeToEdge()
         }
         .task { await load() }
+        .reloadOnWatchChange { await load() }
         .playFlow($choice) { Task { await load() } }
         .onAppear { playFocused = true }
     }
@@ -176,7 +177,7 @@ struct DetailView: View {
                     .pagePadding()
                     .padding(.vertical, Theme.px(6))
                 }
-                .scrollClipDisabled()
+                .edgeToEdge()
                 .focusSection()
             } else if let only = seasons.first {
                 Text(only.name ?? "Episodes").font(Theme.font(Theme.xl, .semibold))
@@ -192,7 +193,7 @@ struct DetailView: View {
                 .pagePadding()
                 .padding(.vertical, Theme.px(8))
             }
-            .scrollClipDisabled()
+            .edgeToEdge()
             .focusSection()
         }
     }
@@ -213,7 +214,7 @@ struct DetailView: View {
                     .pagePadding()
                     .padding(.vertical, Theme.px(8))
                 }
-                .scrollClipDisabled()
+                .edgeToEdge()
             }
             .focusSection()
         }
@@ -393,6 +394,7 @@ struct EpisodeCard: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous))
             }
             .buttonStyle(CardStyle(radius: Theme.px(12)))
+            .itemMenu(episode, onPage: true)
             VStack(alignment: .leading, spacing: Theme.px(3)) {
                 Text([episode.indexNumber.map { "\($0)." }, episode.name].compactMap { $0 }.joined(separator: " "))
                     .font(Theme.font(15, .semibold))

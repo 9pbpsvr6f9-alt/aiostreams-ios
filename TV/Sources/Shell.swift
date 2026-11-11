@@ -43,6 +43,8 @@ struct MainView: View {
     @State private var place: Place = .home
     @State private var paths: [Place: NavigationPath] = [:]
     @FocusState private var railFocus: Place?
+    /// What a card's menu asked to play, from any page.
+    @State private var choice: VersionChoice?
     @Namespace private var railScope
 
     private var open: Bool { railFocus != nil }
@@ -62,6 +64,14 @@ struct MainView: View {
             }
             .id(place)
             .environment(\.openPlace, { place = $0 })
+            .environment(\.openRoute, { route in
+                var path = paths[place] ?? NavigationPath()
+                path.append(route)
+                paths[place] = path
+            })
+            .environment(\.playItem, { item in
+                Task { choice = await playChoice(for: item, session: session) }
+            })
             .padding(.leading, Theme.px(80))
 
             // The rail's own column, which rows scrolled under it disappear beneath.
@@ -91,6 +101,7 @@ struct MainView: View {
         .font(Theme.font(Theme.base))
         .foregroundStyle(.white)
         .animation(.easeOut(duration: 0.2), value: open)
+        .playFlow($choice) { NotificationCenter.default.post(name: .watchStateChanged, object: nil) }
         // Back from another place's first page goes Home; from Home, it leaves the app.
         .onExitCommand(perform: place != .home && (paths[place]?.isEmpty ?? true) ? { place = .home } : nil)
     }

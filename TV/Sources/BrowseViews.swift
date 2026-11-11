@@ -49,6 +49,12 @@ let pageMargin = Theme.px(40)
 
 extension View {
     func pagePadding() -> some View { padding(.trailing, pageMargin) }
+
+    /// The web app draws a TV's pages edge to edge. A scroll view otherwise insets its content
+    /// by tvOS's TV-safe margins, even inside a screen that ignores them.
+    func edgeToEdge() -> some View {
+        scrollClipDisabled().ignoresSafeArea()
+    }
 }
 
 /// A page's heading, as the web app's are.
@@ -102,7 +108,7 @@ struct ItemRow: View {
                 .pagePadding()
                 .padding(.vertical, Theme.px(8))
             }
-            .scrollClipDisabled()
+            .edgeToEdge()
         }
         .focusSection()
     }
@@ -170,6 +176,7 @@ struct PosterLink: View {
                 .clipShape(RoundedRectangle(cornerRadius: Theme.px(8), style: .continuous))
             }
             .buttonStyle(CardStyle())
+            .itemMenu(item)
             VStack(alignment: .leading, spacing: Theme.px(2)) {
                 Text(item.isEpisode ? (item.seriesName ?? item.displayTitle) : (item.name ?? ""))
                     .font(Theme.font(Theme.sm, .medium))
@@ -269,7 +276,7 @@ struct LibrariesView: View {
             .pagePadding()
             .padding(.vertical, pageMargin)
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .task {
             guard let client = session.client, let userId = session.userId, views.isEmpty else { return }
             let result: ItemsResult? = try? await client.get("/UserViews", ["userId": userId])
@@ -298,7 +305,7 @@ struct LibraryView: View {
                 Text("Nothing in this library.").foregroundStyle(Theme.gray400)
             }
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .task {
             guard !started, let client = session.client, let userId = session.userId else { return }
             started = true
@@ -348,9 +355,10 @@ struct FavouritesView: View {
             }
             PosterGrid(items: items)
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .task { await load() }
         .refreshOnReturn { await load() }
+        .reloadOnWatchChange { await load() }
     }
 
     private func load() async {
@@ -384,7 +392,7 @@ struct SearchView: View {
                 Text("No results for “\(term)”.").font(Theme.font(Theme.base)).foregroundStyle(Theme.gray400)
             }
         }
-        .scrollClipDisabled()
+        .edgeToEdge()
         .searchable(text: $term, prompt: "Movies and shows")
         .task(id: term) {
             guard term.count >= 2 else {
@@ -436,6 +444,7 @@ struct SettingsView: View {
             .frame(maxWidth: Theme.px(760), alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .edgeToEdge()
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
