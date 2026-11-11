@@ -58,6 +58,14 @@ private struct PlayerChrome: View {
     @State private var shown = true
     @State private var panel: PlayerPanel?
     @State private var hideTask: Task<Void, Never>?
+    @State private var controlsTop: CGFloat?
+
+    /// The share of the screen under the top of the controls, with a little room above them.
+    private var liftShare: Double {
+        guard let controlsTop else { return 0 }
+        let height = UIScreen.main.bounds.height
+        return height > 0 ? Double(1 - (controlsTop - Theme.px(8)) / height) : 0
+    }
     @FocusState private var focus: PlayerFocus?
 
     var body: some View {
@@ -112,6 +120,8 @@ private struct PlayerChrome: View {
         }
         .onAppear { focus = .play; wake() }
         .onChange(of: focus) { _, _ in if shown { wake() } }
+        // The subtitles rise over the controls while they show, and settle back as they hide.
+        .onChange(of: shown) { _, shown in model.liftSubtitles(shown ? liftShare : 0) }
         .onChange(of: model.finished) { _, done in if done { close() } }
         .onChange(of: model.paused) { _, paused in if paused { reveal(nil) } else { wake() } }
     }
@@ -200,6 +210,13 @@ private struct PlayerChrome: View {
                 .focused($focus, equals: .fit)
             }
             .focusSection()
+        }
+        // Where the controls start, which the subtitles are kept above while they show.
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.frame(in: .global).minY
+        } action: { top in
+            controlsTop = top
+            if shown { model.liftSubtitles(liftShare) }
         }
         .padding(.horizontal, Theme.px(20))
         .padding(.bottom, Theme.px(16))

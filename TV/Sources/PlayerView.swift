@@ -73,6 +73,7 @@ final class PlayerModel: ObservableObject {
         engine = SharedEngine.engine
         overlay = SubtitleOverlayView()
         overlay.look = look
+        baseLook = look
         observe()
     }
 
@@ -196,6 +197,42 @@ final class PlayerModel: ObservableObject {
     func setSpeed(_ value: Double) {
         speed = value
         engine.setRate(Float(value))
+    }
+
+    // MARK: Subtitle lift
+
+    /// The user's subtitle style, which the lift raises from.
+    private var baseLook = SubtitleLook()
+    /// The share of the screen the subtitles are kept above now.
+    private var lift: Double = 0
+    private var liftTask: Task<Void, Never>?
+
+    /// Keeps the subtitles above `share` of the screen's height, which the controls cover, or back
+    /// to their own height at 0, sliding over the web app's 300 ms (SUBTITLE_LIFT_MS).
+    func liftSubtitles(_ share: Double) {
+        let target = min(max(share, 0), 0.9)
+        guard abs(target - lift) > 0.001 else { return }
+        liftTask?.cancel()
+        let from = lift
+        let start = Date()
+        liftTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let done = min(1, Date().timeIntervalSince(start) / 0.3)
+                // The web app's ease, 1 - (1 - t)^3.
+                let value = from + (target - from) * (1 - pow(1 - done, 3))
+                self?.applyLift(value)
+                if done >= 1 { return }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+    }
+
+    private func applyLift(_ value: Double) {
+        lift = value
+        var look = baseLook
+        // Percent from the top where the bottom line sits: the higher of the user's own and the controls'.
+        look.position = min(baseLook.position, 100 - value * 100)
+        overlay.look = look
     }
 
     func setFit(_ value: Fit) {
