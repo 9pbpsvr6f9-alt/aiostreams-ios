@@ -1,4 +1,4 @@
-import AetherEngine
+import AetherEngineFeatures
 import SwiftUI
 
 // Settings that follow the user, kept where the web app keeps them: its synced settings in
@@ -104,6 +104,14 @@ final class Preferences: ObservableObject {
 
     var heroSeconds: Double { number("heroSeconds", 9) }
 
+    /// The speakers TrueHD Atmos and DTS:X are rendered for. Kept on this Apple TV, as it's about
+    /// the receiver it's plugged into; nil plays them as their 7.1 channels.
+    @Published var speakerChoice: String = UserDefaults.standard.string(forKey: "audio.speakers") ?? SpatialSpeakerLayout.l714.rawValue {
+        didSet { UserDefaults.standard.set(speakerChoice, forKey: "audio.speakers") }
+    }
+
+    var speakers: SpatialSpeakerLayout? { SpatialSpeakerLayout(rawValue: speakerChoice) }
+
     /// The web app's subtitle style, in the overlay's units (lib/subtitles/style.ts).
     var subtitleLook: SubtitleLook {
         var look = SubtitleLook()
@@ -199,6 +207,17 @@ struct SettingsView: View {
                         .frame(width: Theme.px(480), height: Theme.px(270))
                         .clipShape(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous))
                         .padding(.top, Theme.px(8))
+                }
+                section("Audio", note: "TrueHD Atmos and DTS:X play with their height channels, rendered for your speakers and sent to your receiver as Dolby MAT. Needs tvOS 26. DTS:X needs 7.1.4 or 9.1.6.") {
+                    row("Atmos and DTS:X speakers", value: speakerName(prefs.speakerChoice)) {
+                        var options: [(label: String, value: String)] = [(label: "Off: play the 7.1 channels", value: "off")]
+                        for layout in SpatialSpeakerLayout.allCases {
+                            options.append((label: speakerName(layout.rawValue), value: layout.rawValue))
+                        }
+                        chooser = Chooser(title: "Atmos and DTS:X speakers", options: options, current: prefs.speakerChoice) {
+                            prefs.speakerChoice = $0
+                        }
+                    }
                 }
                 section("Home", note: nil) {
                     synced("Hero turns every", key: "heroSeconds", fallback: "9",
@@ -303,6 +322,10 @@ struct SettingsView: View {
                 prefs.configure([list: next, one: code])
             }
         }
+    }
+
+    private func speakerName(_ value: String) -> String {
+        value == "off" ? "Off" : value + (value == SpatialSpeakerLayout.l714.rawValue ? " (most Atmos setups)" : "")
     }
 
     private func modeName(_ mode: String) -> String {

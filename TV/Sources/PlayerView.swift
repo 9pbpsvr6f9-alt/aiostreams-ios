@@ -1,4 +1,4 @@
-import AetherEngine
+import AetherEngineFeatures
 import AVKit
 import Combine
 import SwiftUI
@@ -61,12 +61,15 @@ final class PlayerModel: ObservableObject {
 
     private let audioLanguages: [String]
     private let subtitleLanguages: [String]
+    private let speakers: SpatialSpeakerLayout?
 
-    init(request: PlayRequest, client: JellyfinClient, audioLanguages: [String] = [], subtitleLanguages: [String] = [], look: SubtitleLook = SubtitleLook()) {
+    init(request: PlayRequest, client: JellyfinClient, audioLanguages: [String] = [], subtitleLanguages: [String] = [],
+         look: SubtitleLook = SubtitleLook(), speakers: SpatialSpeakerLayout? = .l714) {
         self.request = request
         self.client = client
         self.audioLanguages = audioLanguages
         self.subtitleLanguages = subtitleLanguages
+        self.speakers = speakers
         engine = SharedEngine.engine
         overlay = SubtitleOverlayView()
         overlay.look = look
@@ -132,6 +135,9 @@ final class PlayerModel: ObservableObject {
         // The account's languages and subtitle mode, as the web app passes them to its players.
         options.preferredAudioLanguages = audioLanguages
         options.preferredSubtitleLanguages = subtitleLanguages
+        // TrueHD Atmos and DTS:X with their heights, rendered for the receiver's speakers and sent to it
+        // as Dolby MAT (tvOS 26 and later); off, they play as their 7.1 channels.
+        options.objectAudioRendering = speakers.map { .render($0) } ?? .off
 
         AppLog.info("player", "load \(request.item.id) source=\(request.source.ownId) host=\(url.host ?? "?")")
         loadTask = Task { [weak self] in

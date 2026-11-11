@@ -1,4 +1,4 @@
-import AetherEngine
+import AetherEngineFeatures
 import AVFoundation
 import Combine
 import UIKit
@@ -275,6 +275,8 @@ final class PlayerChannel {
         options.httpHeaders = headers
         options.isLive = JSON.flag(message["live"]) ?? false
         options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
+        // TrueHD Atmos and DTS:X with their heights, which iOS plays as Spatial Audio (OS 26 and later).
+        options.objectAudioRendering = .render(.l714)
         // Forced-only and none leave full subtitles off; the page picks forced ones itself.
         if mode == "default" || mode == "always" || mode == "smart" {
             options.preferredSubtitleLanguages = JSON.strings(message["subtitleLanguages"])

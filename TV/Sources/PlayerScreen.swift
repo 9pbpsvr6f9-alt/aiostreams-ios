@@ -1,4 +1,4 @@
-import AetherEngine
+import AetherEngineFeatures
 import SwiftUI
 
 // The web app's player as a TV shows it: the title over the top, a purple progress bar with
@@ -29,7 +29,8 @@ struct PlayerScreen: View {
                 client: client,
                 audioLanguages: prefs.audioLanguages,
                 subtitleLanguages: prefs.subtitleLanguages,
-                look: prefs.subtitleLook
+                look: prefs.subtitleLook,
+                speakers: prefs.speakers
             )
             model = player
             player.start()

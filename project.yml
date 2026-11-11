@@ -11,9 +11,9 @@ settings:
     MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
 packages:
-  AetherEngine:
-    url: https://github.com/superuser404notfound/AetherEngine
-    exactVersion: "7.62.1"
+  # AetherEngine 7.62.1 with TrueHD Atmos and DTS:X heights and Dolby Vision FEL turned on.
+  AetherEngineFeatures:
+    path: Packages/AetherEngineFeatures
 targets:
   AIOStreams:
     type: application
@@ -26,8 +26,8 @@ targets:
         type: folder
         buildPhase: resources
     dependencies:
-      - package: AetherEngine
-        product: AetherEngine
+      - package: AetherEngineFeatures
+        product: AetherEngineFeatures
     info:
       path: AIOStreams/Info.plist
       properties:
@@ -91,8 +91,8 @@ targets:
       - path: AIOStreams/Sources/Support.swift
       - path: AIOStreams/Sources/SubtitleOverlayView.swift
     dependencies:
-      - package: AetherEngine
-        product: AetherEngine
+      - package: AetherEngineFeatures
+        product: AetherEngineFeatures
     info:
       path: TV/Info.plist
       properties:
