@@ -84,6 +84,9 @@ targets:
     sources:
       - path: TV/Sources
       - path: TV/Assets.xcassets
+      # Inter, the web app's typeface (SIL Open Font License, TV/Fonts/OFL.txt).
+      - path: TV/Fonts
+        buildPhase: resources
       # Shared with the iOS app.
       - path: AIOStreams/Sources/Support.swift
       - path: AIOStreams/Sources/SubtitleOverlayView.swift
@@ -107,6 +110,12 @@ targets:
           NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
         NSLocalNetworkUsageDescription: AIOStreams connects to your server and streams on your local network.
+        UIAppFonts:
+          - Inter-Regular.ttf
+          - Inter-Medium.ttf
+          - Inter-SemiBold.ttf
+          - Inter-Bold.ttf
+          - Inter-ExtraBold.ttf
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.aiostreams-ios.tv

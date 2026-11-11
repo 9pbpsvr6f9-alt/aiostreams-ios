@@ -6,30 +6,16 @@ enum Route: Hashable {
     case library(Item)
 }
 
-struct MainView: View {
-    @EnvironmentObject private var session: Session
-
-    var body: some View {
-        TabView {
-            NavigationStack { HomeView().routes() }
-                .tabItem { Text("Home") }
-            NavigationStack { SearchView().routes() }
-                .tabItem { Text("Search") }
-            NavigationStack { LibrariesView().routes() }
-                .tabItem { Text("Libraries") }
-            NavigationStack { SettingsView() }
-                .tabItem { Text("Settings") }
-        }
-    }
-}
-
 extension View {
     func routes() -> some View {
         navigationDestination(for: Route.self) { route in
-            switch route {
-            case .item(let item): DetailView(item: item)
-            case .library(let view): LibraryView(view: view)
+            Group {
+                switch route {
+                case .item(let item): DetailView(item: item)
+                case .library(let view): LibraryView(view: view)
+                }
             }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }
@@ -58,6 +44,22 @@ func openingGenre(_ client: JellyfinClient, userId: String, view: Item) async ->
     return (list.first { $0.name == "None" } ?? list.first)?.id
 }
 
+/// The page's own margin, beside the rail: 40 px.
+let pageMargin = Theme.px(40)
+
+/// A page's heading, as the web app's are.
+struct PageTitle: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(Theme.font(Theme.xl3, .bold))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, pageMargin)
+            .padding(.top, Theme.px(40))
+    }
+}
+
 // MARK: - Home
 
 struct HomeRow: Identifiable {
@@ -65,6 +67,8 @@ struct HomeRow: Identifiable {
     let title: String
     let items: [Item]
     var library: Item?
+    /// Stills rather than posters: what's under way.
+    var wide = false
 }
 
 struct HomeView: View {
@@ -75,22 +79,28 @@ struct HomeView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 50) {
+            LazyVStack(alignment: .leading, spacing: Theme.px(32)) {
                 ForEach(rows) { row in
                     ItemRow(row: row)
                 }
-                if loading && rows.isEmpty { ProgressView().frame(maxWidth: .infinity) }
+                if loading && rows.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, Theme.px(200))
+                }
                 if !loading && rows.isEmpty {
-                    VStack(spacing: 20) {
+                    VStack(spacing: Theme.px(16)) {
                         Text(error ?? "Nothing here yet. Add catalogs to your configuration.")
-                            .foregroundStyle(.secondary)
+                            .font(Theme.font(Theme.base))
+                            .foregroundStyle(Theme.gray400)
                         Button("Try again") { Task { await load() } }
+                            .buttonStyle(SoftPillStyle())
                     }
                     .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.px(200))
                 }
             }
-            .padding(.vertical, 40)
+            .padding(.vertical, Theme.px(40))
         }
+        .scrollClipDisabled()
         .task { if rows.isEmpty { await load() } }
         .refreshOnReturn { await load() }
     }
@@ -106,10 +116,10 @@ struct HomeView: View {
             async let views: ItemsResult = client.get("/UserViews", ["userId": userId])
             var built: [HomeRow] = []
             if let items = try? await resume.items, !items.isEmpty {
-                built.append(HomeRow(id: "resume", title: "Continue Watching", items: items))
+                built.append(HomeRow(id: "resume", title: "Continue watching", items: items, wide: true))
             }
             if let items = try? await nextUp.items, !items.isEmpty {
-                built.append(HomeRow(id: "nextup", title: "Next Up", items: items))
+                built.append(HomeRow(id: "nextup", title: "Next up", items: items, wide: true))
             }
             rows = built
             let libraries = (try await views.items ?? []).filter(isBrowsable)
@@ -148,25 +158,27 @@ struct ItemRow: View {
     let row: HomeRow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(row.title).font(.title3).bold()
+        VStack(alignment: .leading, spacing: Theme.px(12)) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(row.title).font(Theme.font(Theme.xl, .semibold))
+                Spacer()
                 if let library = row.library {
                     NavigationLink(value: Route.library(library)) {
-                        Text("See all").font(.callout)
+                        Label("See all", systemImage: "chevron.right")
+                            .labelStyle(TrailingIconLabel())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(SoftPillStyle())
                 }
             }
-            .padding(.horizontal, 80)
+            .padding(.horizontal, pageMargin)
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 40) {
+                LazyHStack(alignment: .top, spacing: Theme.px(16)) {
                     ForEach(row.items) { item in
-                        PosterLink(item: item)
+                        PosterLink(item: item, wide: row.wide)
                     }
                 }
-                .padding(.horizontal, 80)
-                .padding(.vertical, 30)
+                .padding(.horizontal, pageMargin)
+                .padding(.vertical, Theme.px(8))
             }
             .scrollClipDisabled()
         }
@@ -174,46 +186,70 @@ struct ItemRow: View {
     }
 }
 
-/// A title's poster, or an episode's still, that opens its page.
+struct TrailingIconLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: Theme.px(6)) {
+            configuration.title
+            configuration.icon.font(.system(size: Theme.px(12), weight: .semibold))
+        }
+    }
+}
+
+/// A title's poster, or a still for what's under way, that opens its page.
 struct PosterLink: View {
     @EnvironmentObject private var session: Session
     let item: Item
+    var wide: Bool = false
 
-    private var wide: Bool { item.isEpisode }
-    private var size: CGSize { wide ? CGSize(width: 480, height: 270) : CGSize(width: 250, height: 375) }
+    private var stillWide: Bool { wide || item.isEpisode }
+    /// The web app's TV rows: 304 × 171 stills, 152 × 228 posters.
+    private var size: CGSize {
+        stillWide ? CGSize(width: Theme.px(304), height: Theme.px(171)) : CGSize(width: Theme.px(152), height: Theme.px(228))
+    }
+
+    private var imageURL: URL? {
+        guard let client = session.client else { return nil }
+        if stillWide, !item.isEpisode, let backdrop = client.backdrop(item, height: Int(size.height * 2)) {
+            return backdrop
+        }
+        return client.poster(item, height: Int(size.height * 2))
+    }
 
     var body: some View {
-        NavigationLink(value: item.isFolder ? Route.library(item) : Route.item(item)) {
-            ZStack(alignment: .bottom) {
-                RemoteImage(url: session.client?.poster(item, height: Int(size.height * 2)))
-                    .frame(width: size.width, height: size.height)
-                if let progress = item.userData?.playedPercentage, progress > 0, item.userData?.played != true {
-                    GeometryReader { geometry in
-                        Capsule().fill(.white.opacity(0.3))
-                            .overlay(alignment: .leading) {
-                                Capsule().fill(.white).frame(width: geometry.size.width * progress / 100)
+        VStack(alignment: .leading, spacing: Theme.px(8)) {
+            NavigationLink(value: item.isFolder ? Route.library(item) : Route.item(item)) {
+                ZStack(alignment: .bottom) {
+                    RemoteImage(url: imageURL)
+                        .frame(width: size.width, height: size.height)
+                    if let progress = item.userData?.playedPercentage, progress > 0, item.userData?.played != true {
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Rectangle().fill(.white.opacity(0.3))
+                                Rectangle().fill(Theme.brand500).frame(width: geometry.size.width * progress / 100)
                             }
+                        }
+                        .frame(height: Theme.px(4))
                     }
-                    .frame(height: 6)
-                    .padding(12)
                 }
+                .frame(width: size.width, height: size.height)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.px(8), style: .continuous))
             }
-            .frame(width: size.width, height: size.height)
-        }
-        .buttonStyle(.card)
-        .overlay(alignment: .bottomLeading) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.isEpisode ? (item.seriesName ?? item.displayTitle) : (item.name ?? ""))
-                    .font(.caption)
-                    .lineLimit(1)
-                if item.isEpisode {
-                    Text(item.displayTitle).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            .buttonStyle(CardStyle())
+            if stillWide {
+                VStack(alignment: .leading, spacing: Theme.px(2)) {
+                    Text(item.isEpisode ? (item.seriesName ?? item.displayTitle) : (item.name ?? ""))
+                        .font(Theme.font(Theme.sm, .medium))
+                        .lineLimit(1)
+                    if item.isEpisode {
+                        Text(item.displayTitle)
+                            .font(Theme.font(Theme.xs))
+                            .foregroundStyle(Theme.gray400)
+                            .lineLimit(1)
+                    }
                 }
+                .frame(width: size.width, alignment: .leading)
             }
-            .frame(width: size.width, alignment: .leading)
-            .offset(y: item.isEpisode ? 70 : 44)
         }
-        .padding(.bottom, item.isEpisode ? 70 : 44)
     }
 }
 
@@ -222,13 +258,12 @@ struct RemoteImage: View {
     let url: URL?
 
     var body: some View {
-        AsyncImage(url: url) { phase in
+        AsyncImage(url: url, transaction: Transaction(animation: .easeOut(duration: 0.2))) { phase in
             switch phase {
             case .success(let image):
                 image.resizable().aspectRatio(contentMode: .fill)
             default:
-                Rectangle().fill(Color.white.opacity(0.08))
-                    .overlay { Image(systemName: "film").font(.largeTitle).foregroundStyle(.secondary) }
+                Rectangle().fill(Theme.gray900)
             }
         }
         .clipped()
@@ -254,7 +289,28 @@ private struct RefreshOnReturn: ViewModifier {
     }
 }
 
-// MARK: - Libraries
+/// Posters in rows of six, which a page of items shows.
+struct PosterGrid: View {
+    let items: [Item]
+    var onLast: (() -> Void)? = nil
+
+    var body: some View {
+        LazyVGrid(
+            columns: Array(repeating: GridItem(.fixed(Theme.px(152)), spacing: Theme.px(24)), count: 6),
+            alignment: .leading,
+            spacing: Theme.px(28)
+        ) {
+            ForEach(items) { item in
+                PosterLink(item: item)
+                    .onAppear { if item.id == items.last?.id { onLast?() } }
+            }
+        }
+        .padding(.horizontal, pageMargin)
+        .padding(.vertical, Theme.px(16))
+    }
+}
+
+// MARK: - Discover
 
 struct LibrariesView: View {
     @EnvironmentObject private var session: Session
@@ -262,18 +318,22 @@ struct LibrariesView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 40), count: 4), spacing: 40) {
+            PageTitle(text: "Discover")
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: Theme.px(16)), count: 4), spacing: Theme.px(16)) {
                 ForEach(views) { view in
                     NavigationLink(value: Route.library(view)) {
                         Text(view.name ?? "Library")
-                            .font(.title3)
-                            .frame(maxWidth: .infinity, minHeight: 160)
+                            .font(Theme.font(Theme.lg, .semibold))
+                            .multilineTextAlignment(.center)
+                            .padding(Theme.px(16))
+                            .frame(maxWidth: .infinity, minHeight: Theme.px(96))
                     }
-                    .buttonStyle(.card)
+                    .buttonStyle(RowStyle())
                 }
             }
-            .padding(80)
+            .padding(pageMargin)
         }
+        .scrollClipDisabled()
         .task {
             guard let client = session.client, let userId = session.userId, views.isEmpty else { return }
             let result: ItemsResult? = try? await client.get("/UserViews", ["userId": userId])
@@ -295,21 +355,14 @@ struct LibraryView: View {
 
     var body: some View {
         ScrollView {
-            Text(view.name ?? "Library").font(.title2).bold()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 80)
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(250), spacing: 50), count: 6), spacing: 60) {
-                ForEach(items) { item in
-                    PosterLink(item: item)
-                        .onAppear { if item.id == items.last?.id { Task { await more() } } }
-                }
-            }
-            .padding(60)
-            if loading { ProgressView() }
+            PageTitle(text: view.name ?? "Library")
+            PosterGrid(items: items) { Task { await more() } }
+            if loading { ProgressView().padding() }
             if !loading && started && items.isEmpty {
-                Text("Nothing in this library.").foregroundStyle(.secondary)
+                Text("Nothing in this library.").foregroundStyle(Theme.gray400)
             }
         }
+        .scrollClipDisabled()
         .task {
             guard !started, let client = session.client, let userId = session.userId else { return }
             started = true
@@ -338,6 +391,46 @@ struct LibraryView: View {
     }
 }
 
+// MARK: - Favourites
+
+struct FavouritesView: View {
+    @EnvironmentObject private var session: Session
+    @State private var items: [Item] = []
+    @State private var loaded = false
+
+    var body: some View {
+        ScrollView {
+            PageTitle(text: "Favourites")
+            if loaded && items.isEmpty {
+                Text("Titles you favourite show here.")
+                    .font(Theme.font(Theme.base))
+                    .foregroundStyle(Theme.gray400)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(pageMargin)
+                    .focusable()
+            }
+            PosterGrid(items: items)
+        }
+        .scrollClipDisabled()
+        .task { await load() }
+        .refreshOnReturn { await load() }
+    }
+
+    private func load() async {
+        guard let client = session.client, let userId = session.userId else { return }
+        let result: ItemsResult? = try? await client.get("/Items", [
+            "userId": userId,
+            "Filters": "IsFavorite",
+            "Recursive": "true",
+            "IncludeItemTypes": "Movie,Series,Episode",
+            "SortBy": "DatePlayed,SortName",
+            "SortOrder": "Descending",
+        ])
+        items = result?.items ?? []
+        loaded = true
+    }
+}
+
 // MARK: - Search
 
 struct SearchView: View {
@@ -348,15 +441,13 @@ struct SearchView: View {
 
     var body: some View {
         ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(250), spacing: 50), count: 6), spacing: 60) {
-                ForEach(results) { item in PosterLink(item: item) }
-            }
-            .padding(60)
+            PosterGrid(items: results)
             if searching { ProgressView() }
             if !searching && term.count >= 2 && results.isEmpty {
-                Text("No results for “\(term)”.").foregroundStyle(.secondary)
+                Text("No results for “\(term)”.").font(Theme.font(Theme.base)).foregroundStyle(Theme.gray400)
             }
         }
+        .scrollClipDisabled()
         .searchable(text: $term, prompt: "Movies and shows")
         .task(id: term) {
             guard term.count >= 2 else {
@@ -386,21 +477,47 @@ struct SettingsView: View {
     @EnvironmentObject private var session: Session
 
     var body: some View {
-        List {
-            Section("Account") {
-                LabeledContent("Server", value: session.serverName ?? session.client?.base.host ?? "")
-                LabeledContent("Signed in as", value: session.userName ?? "")
-                Button("Sign out") { session.signOut() }
-                Button("Use a different server", role: .destructive) { session.forgetServer() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.px(24)) {
+                PageTitle(text: "Settings").padding(.horizontal, -pageMargin)
+                section("Account") {
+                    fact("Server", session.serverName ?? session.client?.base.host ?? "")
+                    fact("Signed in as", session.userName ?? "")
+                    HStack(spacing: Theme.px(12)) {
+                        Button("Sign out") { session.signOut() }.buttonStyle(SoftPillStyle())
+                        Button("Change server") { session.forgetServer() }.buttonStyle(SoftPillStyle())
+                    }
+                }
+                section("About") {
+                    fact("App", "AIOStreams tvOS \(AppInfo.version)")
+                    fact("Player", AppInfo.player)
+                    Text("An unofficial app, not affiliated with AIOStreams or AetherEngine. AGPL-3.0; AetherEngine is LGPL-3.0, FFmpeg LGPL-2.1+, and the Inter font is under the SIL Open Font License.")
+                        .font(Theme.font(Theme.sm))
+                        .foregroundStyle(Theme.gray400)
+                }
             }
-            Section("About") {
-                LabeledContent("App", value: "AIOStreams tvOS \(AppInfo.version)")
-                LabeledContent("Player", value: AppInfo.player)
-                Text("An unofficial app, not affiliated with AIOStreams or AetherEngine. AGPL-3.0; AetherEngine is LGPL-3.0 and FFmpeg LGPL-2.1+.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.horizontal, pageMargin)
+            .frame(maxWidth: Theme.px(760), alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: 1200)
+    }
+
+    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: Theme.px(12)) {
+            Text(title).font(Theme.font(Theme.sm, .semibold)).foregroundStyle(Theme.gray400)
+            VStack(alignment: .leading, spacing: Theme.px(12)) { content() }
+                .padding(Theme.px(20))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: Theme.px(12)).fill(Theme.gray900))
+        }
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(Theme.gray400)
+            Spacer()
+            Text(value)
+        }
+        .font(Theme.font(Theme.base))
     }
 }
