@@ -42,6 +42,9 @@ struct Item: Decodable, Identifiable, Hashable {
     var parentLogoImageTag: String?
     var locationType: String?
     var premiereDate: String?
+    var taglines: [String]?
+    var people: [Person]?
+    var status: String?
     var userData: UserData?
     var aiostreams: ItemExtension?
 
@@ -92,6 +95,14 @@ struct Item: Decodable, Identifiable, Hashable {
         guard let minutes = runtimeMinutes else { return nil }
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
     }
+}
+
+struct Person: Decodable, Hashable, Identifiable {
+    var id: String
+    var name: String?
+    var role: String?
+    var type: String?
+    var primaryImageTag: String?
 }
 
 struct ItemsResult: Decodable {

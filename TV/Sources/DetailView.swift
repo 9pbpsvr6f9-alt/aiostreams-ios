@@ -1,13 +1,8 @@
 import SwiftUI
 
-/// What the player is asked to play: an item, from a position, in a chosen version.
-struct PlayRequest: Identifiable {
-    let id = UUID()
-    let item: Item
-    let source: MediaSource
-    let playSessionId: String?
-    let startMs: Double?
-}
+// The web app's title page (pages/item.tsx) as a TV shows it: the backdrop over the top,
+// the poster beside the title's logo, facts, genres and overview, its actions, then the
+// seasons as pills over a row of episodes, the cast, and titles like it.
 
 struct DetailView: View {
     @EnvironmentObject private var session: Session
@@ -18,190 +13,242 @@ struct DetailView: View {
     @State private var season: Item?
     @State private var episodes: [Item] = []
     @State private var nextUp: Item?
-    @State private var versionsFor: VersionChoice?
-    @State private var playing: PlayRequest?
-    /// Waits for the version sheet to close, as one screen can't open over another closing.
-    @State private var pendingPlay: PlayRequest?
+    @State private var similar: [Item] = []
+    @State private var choice: VersionChoice?
+    @FocusState private var playFocused: Bool
 
     private var shown: Item { full ?? item }
 
+    /// What Play plays: the title, or a show's next episode.
+    private var target: Item? { shown.isSeries ? nextUp : (shown.playable ? shown : nil) }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
-            RemoteImage(url: session.client?.backdrop(shown, height: 1080))
-                .ignoresSafeArea()
-                .overlay {
-                    LinearGradient(colors: [.black.opacity(0.95), .black.opacity(0.6), .clear], startPoint: .bottom, endPoint: .top)
-                        .ignoresSafeArea()
-                }
-                .overlay {
-                    LinearGradient(colors: [.black.opacity(0.85), .clear], startPoint: .leading, endPoint: .trailing)
-                        .ignoresSafeArea()
-                }
-
+            ItemBackdrop(item: shown)
             ScrollView {
-                VStack(alignment: .leading, spacing: 36) {
-                    Spacer(minLength: 260)
+                VStack(alignment: .leading, spacing: Theme.px(48)) {
                     header
-                    actions
-                    if shown.isSeries { seriesSection }
+                    if shown.isSeries { seasonsSection }
+                    castSection
+                    if !similar.isEmpty {
+                        ItemRow(row: HomeRow(id: "similar", title: "More like this", items: similar))
+                    }
                 }
-                .padding(.horizontal, 80)
-                .padding(.bottom, 80)
+                // 26% down a 720-line screen.
+                .padding(.top, Theme.px(187))
+                .padding(.bottom, Theme.px(64))
             }
+            .scrollClipDisabled()
         }
         .task { await load() }
-        .sheet(item: $versionsFor, onDismiss: {
-            if let request = pendingPlay {
-                pendingPlay = nil
-                playing = request
-            }
-        }) { choice in
-            VersionsView(choice: choice) { request in
-                pendingPlay = request
-                versionsFor = nil
-            }
-            .environmentObject(session)
-        }
-        .fullScreenCover(item: $playing) { request in
-            PlayerScreen(request: request) {
-                playing = nil
-                Task { await load() }
-            }
-            .environmentObject(session)
-        }
+        .playFlow($choice) { Task { await load() } }
+        .onAppear { playFocused = true }
     }
+
+    // MARK: Header
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if shown.isEpisode, let series = shown.seriesName {
-                Text(series).font(.title3).foregroundStyle(.secondary)
+        HStack(alignment: .bottom, spacing: Theme.px(32)) {
+            RemoteImage(url: session.client?.poster(shown, height: 672))
+                .frame(width: Theme.px(224), height: Theme.px(336))
+                .clipShape(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous).stroke(.white.opacity(0.1), lineWidth: Theme.px(1)))
+                .shadow(color: .black.opacity(0.6), radius: Theme.px(24), y: Theme.px(12))
+            VStack(alignment: .leading, spacing: Theme.px(16)) {
+                TitleLogo(item: shown, maxHeight: Theme.px(128), maxWidth: Theme.px(416), titleSize: 48)
+                if let tagline = shown.taglines?.first, !tagline.isEmpty {
+                    Text(tagline).font(Theme.font(Theme.base)).italic().foregroundStyle(Theme.gray300)
+                }
+                facts
+                if let genres = shown.genres, !genres.isEmpty {
+                    HStack(spacing: Theme.px(6)) {
+                        ForEach(genres.prefix(6), id: \.self) { genre in
+                            Text(genre)
+                                .font(Theme.font(13, .semibold))
+                                .padding(.horizontal, Theme.px(10))
+                                .padding(.vertical, Theme.px(3))
+                                .background(Capsule().fill(.white.opacity(0.1)))
+                                .overlay(Capsule().stroke(.white.opacity(0.15), lineWidth: Theme.px(1)))
+                        }
+                    }
+                }
+                if let overview = shown.overview, !overview.isEmpty {
+                    Text(overview)
+                        .font(Theme.font(Theme.base))
+                        .lineSpacing(Theme.px(5))
+                        .foregroundStyle(Theme.gray300)
+                        .lineLimit(4)
+                }
+                actions
             }
-            Text(shown.isEpisode ? shown.displayTitle : (shown.name ?? ""))
-                .font(.system(size: 64, weight: .bold))
-                .lineLimit(2)
-            HStack(spacing: 24) {
-                if let year = shown.productionYear { Text(String(year)) }
-                if let minutes = shown.runtimeMinutes { Text(minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m") }
-                if let rating = shown.officialRating { Text(rating).padding(.horizontal, 8).overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary)) }
-                if let score = shown.communityRating { Text(String(format: "★ %.1f", score)) }
-                if let genres = shown.genres, !genres.isEmpty { Text(genres.prefix(3).joined(separator: ", ")) }
-            }
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            if let overview = shown.overview {
-                Text(overview)
-                    .font(.callout)
-                    .lineLimit(5)
-                    .frame(maxWidth: 1200, alignment: .leading)
-            }
+            .frame(maxWidth: Theme.px(768), alignment: .leading)
         }
+        .pagePadding()
     }
 
-    @ViewBuilder private var actions: some View {
-        HStack(spacing: 30) {
-            if shown.isSeries {
-                if let next = nextUp {
-                    Button {
-                        versionsFor = VersionChoice(item: next, startMs: next.resumeMs)
-                    } label: {
-                        Label("Play \(next.displayTitle)", systemImage: "play.fill")
-                    }
-                }
-            } else {
-                if let resume = shown.resumeMs {
-                    Button {
-                        versionsFor = VersionChoice(item: shown, startMs: resume)
-                    } label: {
-                        Label("Resume from \(clock(resume))", systemImage: "play.fill")
-                    }
-                }
+    /// `2024 • PG-13 • 2h 47m • ★ 8.4`, the rating boxed.
+    private var facts: some View {
+        var parts: [AnyView] = []
+        if let year = shown.productionYear { parts.append(AnyView(Text(String(year)))) }
+        if let rating = shown.officialRating, !rating.isEmpty {
+            parts.append(AnyView(
+                Text(rating)
+                    .font(Theme.font(Theme.xs))
+                    .padding(.horizontal, Theme.px(6))
+                    .padding(.vertical, Theme.px(1))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.px(4)).stroke(.white.opacity(0.3), lineWidth: Theme.px(1)))
+            ))
+        }
+        if !shown.isSeries, let runtime = shown.runtimeText { parts.append(AnyView(Text(runtime))) }
+        if shown.isSeries, let status = shown.status, status == "Continuing" || status == "Ended" {
+            parts.append(AnyView(Text(status)))
+        }
+        if let score = shown.communityRating, score > 0 {
+            parts.append(AnyView(HStack(spacing: Theme.px(4)) {
+                Image(systemName: "star.fill").foregroundStyle(Theme.star).font(.system(size: Theme.px(12)))
+                Text(String(format: "%.1f", score))
+            }))
+        }
+        return MetaLine(parts: parts)
+            .font(Theme.font(Theme.sm))
+            .foregroundStyle(Theme.gray200)
+    }
+
+    /// The web app's labels: `Resume S01E04`, `Resume from 1:35:11`, `Play S01E01`, `Play`.
+    private var playLabel: String {
+        let code = shown.isSeries ? target?.episodeCode : nil
+        if let resume = target?.resumeMs {
+            return code.map { "Resume \($0)" } ?? "Resume from \(clock(resume))"
+        }
+        return code.map { "Play \($0)" } ?? "Play"
+    }
+
+    private var actions: some View {
+        HStack(spacing: Theme.px(8)) {
+            if let target {
                 Button {
-                    versionsFor = VersionChoice(item: shown, startMs: nil)
+                    choice = VersionChoice(item: target, startMs: target.resumeMs)
                 } label: {
-                    Label(shown.resumeMs == nil ? "Play" : "Play from start", systemImage: shown.resumeMs == nil ? "play.fill" : "arrow.counterclockwise")
+                    Label(playLabel, systemImage: "play.fill")
+                }
+                .buttonStyle(PrimaryPillStyle())
+                .focused($playFocused)
+                if target.resumeMs != nil {
+                    Button {
+                        choice = VersionChoice(item: target, startMs: 0)
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise")
+                    }
+                    .buttonStyle(CircleIconStyle())
                 }
             }
             Button {
                 Task { await setPlayed(!(shown.userData?.played ?? false)) }
             } label: {
-                Label(shown.userData?.played == true ? "Watched" : "Mark watched", systemImage: shown.userData?.played == true ? "checkmark.circle.fill" : "checkmark.circle")
+                Image(systemName: "checkmark")
             }
+            .buttonStyle(CircleIconStyle(active: shown.userData?.played == true))
+            Button {
+                Task { await setFavourite(!(shown.userData?.isFavorite ?? false)) }
+            } label: {
+                Image(systemName: shown.userData?.isFavorite == true ? "heart.fill" : "heart")
+            }
+            .buttonStyle(CircleIconStyle(active: shown.userData?.isFavorite == true))
         }
         .focusSection()
     }
 
-    @ViewBuilder private var seriesSection: some View {
-        if !seasons.isEmpty {
-            ScrollView(.horizontal) {
-                HStack(spacing: 20) {
-                    ForEach(seasons) { candidate in
-                        Button(candidate.name ?? "Season") {
-                            season = candidate
-                            Task { await loadEpisodes() }
+    // MARK: Seasons and episodes
+
+    @ViewBuilder private var seasonsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.px(16)) {
+            if seasons.count > 1 {
+                ScrollView(.horizontal) {
+                    HStack(spacing: Theme.px(8)) {
+                        ForEach(seasons) { candidate in
+                            Button(candidate.name ?? "Season") {
+                                season = candidate
+                                Task { await loadEpisodes() }
+                            }
+                            .buttonStyle(SeasonPillStyle(selected: candidate.id == season?.id))
                         }
-                        .buttonStyle(.bordered)
-                        .tint(candidate.id == season?.id ? .white : nil)
+                    }
+                    .pagePadding()
+                    .padding(.vertical, Theme.px(6))
+                }
+                .scrollClipDisabled()
+                .focusSection()
+            } else if let only = seasons.first {
+                Text(only.name ?? "Episodes").font(Theme.font(Theme.xl, .semibold))
+            }
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: Theme.px(16)) {
+                    ForEach(episodes) { episode in
+                        EpisodeCard(episode: episode) {
+                            choice = VersionChoice(item: episode, startMs: episode.resumeMs)
+                        }
                     }
                 }
-                .padding(.vertical, 20)
+                .pagePadding()
+                .padding(.vertical, Theme.px(8))
             }
             .scrollClipDisabled()
             .focusSection()
         }
-        LazyVStack(alignment: .leading, spacing: 30) {
-            ForEach(episodes) { episode in
-                Button {
-                    versionsFor = VersionChoice(item: episode, startMs: episode.resumeMs)
-                } label: {
-                    HStack(alignment: .top, spacing: 30) {
-                        RemoteImage(url: session.client?.poster(episode, height: 360))
-                            .frame(width: 400, height: 225)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Text(episode.displayTitle).font(.headline)
-                                if episode.userData?.played == true {
-                                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.secondary)
-                                }
-                            }
-                            if let minutes = episode.runtimeMinutes {
-                                Text("\(minutes)m").font(.caption).foregroundStyle(.secondary)
-                            }
-                            if let overview = episode.overview {
-                                Text(overview).font(.caption).lineLimit(3).foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .padding(16)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .focusSection()
     }
+
+    // MARK: Cast
+
+    @ViewBuilder private var castSection: some View {
+        let cast = Array((shown.people ?? []).filter { $0.type == "Actor" || $0.type == nil }.prefix(30))
+        if !cast.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.px(16)) {
+                Text("Cast").font(Theme.font(Theme.xl, .semibold))
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: Theme.px(16)) {
+                        ForEach(cast) { person in
+                            PersonCard(person: person, url: personImage(person))
+                        }
+                    }
+                    .pagePadding()
+                    .padding(.vertical, Theme.px(8))
+                }
+                .scrollClipDisabled()
+            }
+            .focusSection()
+        }
+    }
+
+    private func personImage(_ person: Person) -> URL? {
+        guard let client = session.client, let tag = person.primaryImageTag else { return nil }
+        return client.image(person.id, .primary, tag: tag, height: 192)
+    }
+
+    // MARK: Loading
 
     private func load() async {
         guard let client = session.client, let userId = session.userId else { return }
         let found: ItemsResult? = try? await client.get("/Items", [
             "userId": userId,
             "Ids": item.id,
-            "Fields": "Genres,Overview,People,ProviderIds,Studios,Taglines,RemoteTrailers",
+            "Fields": "Genres,Overview,People,Taglines,Status,RemoteTrailers,ProviderIds",
         ])
         if let first = found?.items?.first { full = first }
+        let similarResult: ItemsResult? = try? await client.get("/Items/\(item.id)/Similar", ["userId": userId, "Limit": "12"])
+        similar = similarResult?.items ?? []
         guard shown.isSeries else { return }
         let next: ItemsResult? = try? await client.get("/Shows/NextUp", ["userId": userId, "SeriesId": item.id, "Limit": "1"])
         nextUp = next?.items?.first
         let list: ItemsResult? = try? await client.get("/Shows/\(item.id)/Seasons", ["userId": userId])
         seasons = list?.items ?? []
-        // Opens on the season of the next episode, else the first one with something left to watch.
-        if season == nil {
+        // Opens on the next episode's season, else the first with something left, as the web app does.
+        if season == nil || !seasons.contains(where: { $0.id == season?.id }) {
             season = seasons.first { $0.id == nextUp?.seasonId }
                 ?? seasons.first { $0.userData?.played != true && ($0.indexNumber ?? 0) > 0 }
                 ?? seasons.first
         }
         await loadEpisodes()
-        if nextUp == nil { nextUp = episodes.first }
+        if nextUp == nil { nextUp = episodes.first { $0.playable } }
     }
 
     private func loadEpisodes() async {
@@ -220,6 +267,12 @@ struct DetailView: View {
         await load()
     }
 
+    private func setFavourite(_ favourite: Bool) async {
+        guard let client = session.client, let userId = session.userId else { return }
+        try? await client.call(favourite ? "POST" : "DELETE", "/UserFavoriteItems/\(shown.id)", ["userId": userId])
+        await load()
+    }
+
     private func clock(_ ms: Double) -> String {
         let seconds = Int(ms / 1000)
         return seconds >= 3600
@@ -228,91 +281,206 @@ struct DetailView: View {
     }
 }
 
-/// The streams the configuration's addons found for one title, best first, as the server sorted them.
-struct VersionsView: View {
+/// The title's backdrop over the top 85% of the screen, under the rail, shaded into the page.
+struct ItemBackdrop: View {
     @EnvironmentObject private var session: Session
-    let choice: VersionChoice
-    let play: (PlayRequest) -> Void
+    let item: Item
 
-    @State private var info: PlaybackInfo?
-    @State private var error: String?
-    @State private var opening: String?
+    private static let height = Theme.px(612)
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if let sources = info?.mediaSources, !sources.isEmpty {
-                    List(sources, id: \.ownId) { source in
-                        Button {
-                            Task { await open(source) }
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    Text(source.label).font(.headline).lineLimit(2)
-                                    Spacer()
-                                    if opening == source.ownId { ProgressView() }
-                                }
-                                if let description = source.aiostreams?.description, !description.isEmpty {
-                                    Text(description).font(.caption).foregroundStyle(.secondary).lineLimit(4)
-                                }
-                                if let size = source.size, size > 0 {
-                                    Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                                        .font(.caption2).foregroundStyle(.secondary)
-                                }
+        GeometryReader { geometry in
+            let width = min(geometry.size.width + Theme.px(80), Self.height * 2.6)
+            ZStack(alignment: .bottom) {
+                RemoteImage(url: session.client?.backdrop(item, height: 1080))
+                    .frame(width: width, height: Self.height)
+                    .mask(
+                        LinearGradient(
+                            stops: [.init(color: .clear, location: 0), .init(color: .black, location: Theme.px(192) / width)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                LinearGradient(
+                    stops: [
+                        .init(color: Theme.background, location: 0),
+                        .init(color: Theme.background.opacity(0.6), location: 0.4),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+                LinearGradient(
+                    stops: [
+                        .init(color: Theme.background, location: 0),
+                        .init(color: Theme.background.opacity(0.7), location: 0.5),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+                .frame(height: Self.height * 3 / 4)
+            }
+            .frame(height: Self.height)
+        }
+        .frame(height: Self.height)
+        .padding(.leading, -Theme.px(80))
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}
+
+/// A season's pill: white when chosen, as the web app's season pills are.
+struct SeasonPillStyle: ButtonStyle {
+    var selected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        SeasonPill(label: configuration.label, selected: selected, pressed: configuration.isPressed)
+    }
+
+    private struct SeasonPill<Label: View>: View {
+        @Environment(\.isFocused) private var focused
+        let label: Label
+        let selected: Bool
+        let pressed: Bool
+
+        var body: some View {
+            label
+                .font(Theme.font(Theme.sm, .medium))
+                .foregroundStyle(selected ? Color.black : (focused ? Color.white : Theme.gray200))
+                .padding(.horizontal, Theme.px(14))
+                .frame(height: Theme.px(34))
+                .background(Capsule().fill(selected ? Color.white : (focused ? Color.white.opacity(0.16) : Theme.gray800)))
+                .focusRing(focused)
+                .opacity(pressed ? 0.8 : 1)
+        }
+    }
+}
+
+/// An episode in the row: its still with how far it got, its number and name, length and score,
+/// and its synopsis.
+struct EpisodeCard: View {
+    @EnvironmentObject private var session: Session
+    let episode: Item
+    let action: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.px(8)) {
+            Button(action: action) {
+                ZStack(alignment: .bottom) {
+                    RemoteImage(url: session.client?.poster(episode, height: Int(WideCard.size.height * 2)))
+                        .frame(width: WideCard.size.width, height: WideCard.size.height)
+                    if let progress = episode.userData?.playedPercentage, progress > 0, episode.userData?.played != true {
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Rectangle().fill(.white.opacity(0.25))
+                                Rectangle().fill(Theme.brand500).frame(width: geometry.size.width * progress / 100)
                             }
                         }
-                        .disabled(opening != nil || source.aiostreams?.ytId != nil)
-                    }
-                } else if let error {
-                    VStack(spacing: 30) {
-                        ErrorText(text: error)
-                        Button("Try again") { Task { await load(refresh: true) } }
-                    }
-                } else if info != nil {
-                    VStack(spacing: 30) {
-                        Text("No playable versions found. Only streams with a link play: use debrid or Usenet.")
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        Button("Search again") { Task { await load(refresh: true) } }
-                    }
-                } else {
-                    VStack(spacing: 20) {
-                        ProgressView()
-                        Text("Searching your addons…").foregroundStyle(.secondary)
+                        .frame(height: Theme.px(4))
                     }
                 }
+                .overlay(alignment: .topTrailing) {
+                    if episode.userData?.played == true {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: Theme.px(18)))
+                            .foregroundStyle(.white, Theme.brand500)
+                            .padding(Theme.px(8))
+                    }
+                }
+                .frame(width: WideCard.size.width, height: WideCard.size.height)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous))
             }
-            .navigationTitle(choice.item.isEpisode ? "\(choice.item.seriesName ?? "") · \(choice.item.displayTitle)" : (choice.item.name ?? "Versions"))
+            .buttonStyle(CardStyle(radius: Theme.px(12)))
+            VStack(alignment: .leading, spacing: Theme.px(3)) {
+                Text([episode.indexNumber.map { "\($0)." }, episode.name].compactMap { $0 }.joined(separator: " "))
+                    .font(Theme.font(15, .semibold))
+                    .lineLimit(1)
+                HStack(spacing: Theme.px(8)) {
+                    if let runtime = episode.runtimeText { Text(runtime) }
+                    if let score = episode.communityRating, score > 0 {
+                        HStack(spacing: Theme.px(3)) {
+                            Image(systemName: "star.fill").foregroundStyle(Theme.star).font(.system(size: Theme.px(10)))
+                            Text(String(format: "%.1f", score))
+                        }
+                    }
+                    if let left = episode.timeLeft { Text(left) }
+                }
+                .font(Theme.font(Theme.xs))
+                .foregroundStyle(Theme.gray400)
+                if let overview = episode.overview, !overview.isEmpty {
+                    Text(overview)
+                        .font(Theme.font(13))
+                        .foregroundStyle(Theme.gray400)
+                        .lineLimit(3)
+                }
+            }
+            .padding(.horizontal, Theme.px(2))
+            .frame(width: WideCard.size.width, alignment: .leading)
         }
-        .task { await load(refresh: false) }
+    }
+}
+
+/// A cast member: a round picture, their name and role.
+struct PersonCard: View {
+    let person: Person
+    let url: URL?
+
+    var body: some View {
+        VStack(spacing: Theme.px(8)) {
+            Button {} label: {
+                ZStack {
+                    Circle().fill(Theme.gray900)
+                    Text(initials).font(Theme.font(Theme.lg, .semibold)).foregroundStyle(Theme.gray400)
+                    if let url {
+                        AsyncImage(url: url) { phase in
+                            if case .success(let image) = phase { image.resizable().aspectRatio(contentMode: .fill) }
+                        }
+                    }
+                }
+                .frame(width: Theme.px(96), height: Theme.px(96))
+                .clipShape(Circle())
+                .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: Theme.px(1)))
+            }
+            .buttonStyle(CircleCardStyle())
+            Text(person.name ?? "")
+                .font(Theme.font(Theme.xs, .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            if let role = person.role, !role.isEmpty {
+                Text(role)
+                    .font(Theme.font(Theme.xs))
+                    .foregroundStyle(Theme.gray400)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(width: Theme.px(112))
     }
 
-    private func load(refresh: Bool) async {
-        guard let client = session.client, let userId = session.userId else { return }
-        error = nil
-        if refresh { info = nil }
-        do {
-            var result = try await client.playbackInfo(userId: userId, itemId: choice.item.id, refresh: refresh)
-            // Versions only the app's own player could open from YouTube aren't offered here.
-            result.mediaSources = result.mediaSources?.filter { $0.aiostreams?.ytId == nil }
-            info = result
-        } catch {
-            self.error = error.localizedDescription
-        }
+    private var initials: String {
+        (person.name ?? "").split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
+    }
+}
+
+/// A round picture's ring, round the circle.
+struct CircleCardStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Ringed(label: configuration.label)
     }
 
-    /// Naming the version again gets its subtitles from the configuration's subtitle addons.
-    private func open(_ source: MediaSource) async {
-        guard let client = session.client, let userId = session.userId else { return }
-        opening = source.ownId
-        defer { opening = nil }
-        var chosen = source
-        var playSession = info?.playSessionId
-        if let named = try? await client.playbackInfo(userId: userId, itemId: choice.item.id, sourceId: source.ownId),
-           let match = named.mediaSources?.first(where: { $0.ownId == source.ownId }) ?? named.mediaSources?.first {
-            chosen = match
-            playSession = named.playSessionId ?? playSession
+    private struct Ringed<Label: View>: View {
+        @Environment(\.isFocused) private var focused
+        let label: Label
+
+        var body: some View {
+            label.overlay {
+                if focused {
+                    Circle().stroke(Theme.ring, lineWidth: Theme.ringWidth)
+                        .padding(-(Theme.ringOffset + Theme.ringWidth / 2))
+                }
+            }
         }
-        play(PlayRequest(item: choice.item, source: chosen, playSessionId: playSession, startMs: choice.startMs))
     }
 }

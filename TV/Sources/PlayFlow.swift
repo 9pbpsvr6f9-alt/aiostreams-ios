@@ -69,3 +69,12 @@ extension EnvironmentValues {
         set { self[OpenPlaceKey.self] = newValue }
     }
 }
+
+/// What the player is asked to play: an item, from a position, in a chosen version.
+struct PlayRequest: Identifiable {
+    let id = UUID()
+    let item: Item
+    let source: MediaSource
+    let playSessionId: String?
+    let startMs: Double?
+}
