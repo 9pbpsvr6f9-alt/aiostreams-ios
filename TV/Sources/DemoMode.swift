@@ -17,6 +17,9 @@ enum DemoMode {
 
     static var active: Bool { server != nil }
 
+    /// Keeps focus off the rail, which a simulator gives it on launch, except for the rail's own picture.
+    static var keepsRailShut: Bool { active && screen != "rail" }
+
     /// Keeps the player's controls in sight for the photograph.
     static var holdsControls: Bool { active && screen == "player" }
 

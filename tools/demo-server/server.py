@@ -218,7 +218,8 @@ def versions(item):
     ]
     out = []
     for n, (name, line1, line2, size, release) in enumerate(rows):
-        source_id = make_id("src", item["Id"], str(n))
+        # The version's number first: ids are cut to 32 characters, which would drop it at the end.
+        source_id = make_id("src", str(n), item["Id"])
         out.append({
             "Id": item["Id"] if n == 0 else source_id,
             "Name": name,

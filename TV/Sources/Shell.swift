@@ -169,6 +169,8 @@ struct MainView: View {
         .frame(maxHeight: .infinity)
         .focusSection()
         .focusScope(railScope)
+        // Screenshot mode only: the page takes focus, as it does on a real Apple TV.
+        .disabled(DemoMode.keepsRailShut)
     }
 
     private func entry(_ item: Place) -> some View {

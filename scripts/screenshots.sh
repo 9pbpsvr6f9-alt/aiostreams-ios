@@ -27,6 +27,7 @@ for _ in $(seq 1 30); do curl -sf "$server/System/Info/Public" >/dev/null && bre
 id() { python3 -c "import sys; sys.path.insert(0, 'tools/demo-server'); import server; print(server.make_id(*sys.argv[1:]))" "$@"; }
 show=$(id show "Signal & Noise")
 movie=$(id movie "Northern Lights")
+source=$(id src 0 "$movie")
 user=$(id user Alex)
 server_id=$(python3 -c "import sys; sys.path.insert(0, 'tools/demo-server'); import server; print(server.SERVER_ID)")
 
@@ -104,7 +105,7 @@ web() {
   shot "$udid" $appid "$prefix-show" 14 "${args[@]}" -demoRoute "/item/$show"
   shot "$udid" $appid "$prefix-movie" 14 "${args[@]}" -demoRoute "/item/$movie"
   shot "$udid" $appid "$prefix-versions" 16 "${args[@]}" -demoRoute "/item/$movie?pick=$movie"
-  shot "$udid" $appid "$prefix-player" 20 "${args[@]}" -demoRoute "/play/$movie?source=$movie"
+  shot "$udid" $appid "$prefix-player" 20 "${args[@]}" -demoRoute "/play/$movie?source=$source"
 }
 
 phone=$(simulator "Pro Max" iOS)
@@ -116,5 +117,16 @@ ipad=$(simulator "iPad Pro 13" iOS)
 prepare "$ipad"
 web "$ipad" ipad
 xcrun simctl shutdown "$ipad" || true
+
+# The phone's player turns it to landscape, which the simulator captures on its side.
+python3 - "$out" <<'PY'
+import sys
+from pathlib import Path
+from PIL import Image
+for path in Path(sys.argv[1]).glob("iphone-player.png"):
+    image = Image.open(path)
+    if image.height > image.width:
+        image.rotate(90, expand=True).save(path)
+PY
 
 ls -l "$out"
