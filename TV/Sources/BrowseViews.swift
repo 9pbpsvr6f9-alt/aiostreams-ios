@@ -86,23 +86,17 @@ struct ItemRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.px(12)) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(row.title).font(Theme.font(Theme.xl, .semibold))
-                Spacer()
-                if let library = row.library {
-                    NavigationLink(value: Route.library(library)) {
-                        Label("See all", systemImage: "chevron.right")
-                            .labelStyle(TrailingIconLabel())
-                    }
-                    .buttonStyle(SoftPillStyle())
-                }
-            }
-            .pagePadding()
-            .focusSection()
+            Text(row.title)
+                .font(Theme.font(Theme.xl, .semibold))
+                .pagePadding()
             ScrollView(.horizontal) {
                 LazyHStack(alignment: .top, spacing: Theme.px(16)) {
                     ForEach(row.items) { item in
                         PosterLink(item: item, wide: row.wide)
+                    }
+                    // The whole library, from the end of its row.
+                    if let library = row.library {
+                        SeeAllCard(library: library, wide: row.wide)
                     }
                 }
                 .pagePadding()
@@ -111,6 +105,59 @@ struct ItemRow: View {
             .edgeToEdge()
         }
         .focusSection()
+    }
+}
+
+/// The last card in a library's row, the size of its posters, that opens the library.
+struct SeeAllCard: View {
+    let library: Item
+    var wide = false
+
+    private var size: CGSize {
+        wide ? WideCard.size : CGSize(width: Theme.px(168), height: Theme.px(252))
+    }
+
+    var body: some View {
+        NavigationLink(value: Route.library(library)) {
+            SeeAllFace(name: library.name ?? "Library")
+                .frame(width: size.width, height: size.height)
+        }
+        .buttonStyle(CardStyle())
+    }
+}
+
+private struct SeeAllFace: View {
+    @Environment(\.isFocused) private var focused
+    let name: String
+
+    var body: some View {
+        VStack(spacing: Theme.px(12)) {
+            ZStack {
+                Circle().fill(focused ? Color.white : Color.white.opacity(0.1))
+                Image(systemName: "arrow.right")
+                    .font(.system(size: Theme.px(18), weight: .semibold))
+                    .foregroundStyle(focused ? Color.black : Color.white)
+            }
+            .frame(width: Theme.px(48), height: Theme.px(48))
+            VStack(spacing: Theme.px(2)) {
+                Text("See all").font(Theme.font(Theme.sm, .semibold))
+                Text(name)
+                    .font(Theme.font(Theme.xs))
+                    .foregroundStyle(Theme.gray400)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, Theme.px(12))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: Theme.px(8), style: .continuous)
+                .fill(Color.white.opacity(focused ? 0.08 : 0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.px(8), style: .continuous)
+                .stroke(Color.white.opacity(0.08), lineWidth: Theme.px(1))
+        )
     }
 }
 
@@ -413,56 +460,5 @@ struct SearchView: View {
             ])
             if !Task.isCancelled { results = result?.items ?? [] }
         }
-    }
-}
-
-// MARK: - Settings
-
-struct SettingsView: View {
-    @EnvironmentObject private var session: Session
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Theme.px(24)) {
-                PageTitle(text: "Settings")
-                section("Account") {
-                    fact("Server", session.serverName ?? session.client?.base.host ?? "")
-                    fact("Signed in as", session.userName ?? "")
-                    HStack(spacing: Theme.px(12)) {
-                        Button("Sign out") { session.signOut() }.buttonStyle(SoftPillStyle())
-                        Button("Change server") { session.forgetServer() }.buttonStyle(SoftPillStyle())
-                    }
-                }
-                section("About") {
-                    fact("App", "AIOStreams tvOS \(AppInfo.version)")
-                    fact("Player", AppInfo.player)
-                    Text("An unofficial app, not affiliated with AIOStreams or AetherEngine. AGPL-3.0; AetherEngine is LGPL-3.0, FFmpeg LGPL-2.1+, and the Inter font is under the SIL Open Font License.")
-                        .font(Theme.font(Theme.sm))
-                        .foregroundStyle(Theme.gray400)
-                }
-            }
-            .frame(maxWidth: Theme.px(760), alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .edgeToEdge()
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: Theme.px(12)) {
-            Text(title).font(Theme.font(Theme.sm, .semibold)).foregroundStyle(Theme.gray400)
-            VStack(alignment: .leading, spacing: Theme.px(12)) { content() }
-                .padding(Theme.px(20))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: Theme.px(12)).fill(Theme.gray900))
-        }
-    }
-
-    private func fact(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label).foregroundStyle(Theme.gray400)
-            Spacer()
-            Text(value)
-        }
-        .font(Theme.font(Theme.base))
     }
 }

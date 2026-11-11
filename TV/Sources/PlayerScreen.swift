@@ -10,6 +10,7 @@ struct PlayerScreen: View {
     let close: () -> Void
 
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var prefs: Preferences
     @State private var model: PlayerModel?
 
     var body: some View {
@@ -23,7 +24,13 @@ struct PlayerScreen: View {
         .ignoresSafeArea()
         .onAppear {
             guard model == nil, let client = session.client else { return }
-            let player = PlayerModel(request: request, client: client)
+            let player = PlayerModel(
+                request: request,
+                client: client,
+                audioLanguages: prefs.audioLanguages,
+                subtitleLanguages: prefs.subtitleLanguages,
+                look: prefs.subtitleLook
+            )
             model = player
             player.start()
         }

@@ -10,6 +10,7 @@ struct VersionChoice: Identifiable {
 /// Lists a choice's versions, then plays the one picked, over whatever screen asked.
 struct PlayFlow: ViewModifier {
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var prefs: Preferences
     @Binding var choice: VersionChoice?
     var finished: () -> Void = {}
 
@@ -30,6 +31,7 @@ struct PlayFlow: ViewModifier {
                     self.choice = nil
                 }
                 .environmentObject(session)
+                .environmentObject(prefs)
                 // The page stays in sight, dimmed, behind the panel.
                 .presentationBackground(.clear)
             }
@@ -39,6 +41,7 @@ struct PlayFlow: ViewModifier {
                     finished()
                 }
                 .environmentObject(session)
+                .environmentObject(prefs)
             }
     }
 }

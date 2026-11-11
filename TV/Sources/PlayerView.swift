@@ -59,11 +59,17 @@ final class PlayerModel: ObservableObject {
     private var reported = false
     private var stopped = false
 
-    init(request: PlayRequest, client: JellyfinClient) {
+    private let audioLanguages: [String]
+    private let subtitleLanguages: [String]
+
+    init(request: PlayRequest, client: JellyfinClient, audioLanguages: [String] = [], subtitleLanguages: [String] = [], look: SubtitleLook = SubtitleLook()) {
         self.request = request
         self.client = client
+        self.audioLanguages = audioLanguages
+        self.subtitleLanguages = subtitleLanguages
         engine = SharedEngine.engine
         overlay = SubtitleOverlayView()
+        overlay.look = look
         observe()
     }
 
@@ -123,6 +129,9 @@ final class PlayerModel: ObservableObject {
         // Serves Dolby Vision profile 8 as profile 5 on a TV without Dolby Vision; ignored on one with it.
         options.forceDolbyVisionOnNonDVDisplay = true
         options.externalSubtitles = serverSubtitles()
+        // The account's languages and subtitle mode, as the web app passes them to its players.
+        options.preferredAudioLanguages = audioLanguages
+        options.preferredSubtitleLanguages = subtitleLanguages
 
         AppLog.info("player", "load \(request.item.id) source=\(request.source.ownId) host=\(url.host ?? "?")")
         loadTask = Task { [weak self] in

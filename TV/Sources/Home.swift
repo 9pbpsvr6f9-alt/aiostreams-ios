@@ -154,7 +154,7 @@ struct HeroCarousel: View {
 
     /// `max(36rem, 53vh)` on a 720-line TV.
     static let height = Theme.px(576)
-    private static let seconds: UInt64 = 9
+    @EnvironmentObject private var prefs: Preferences
 
     private var item: Item { items[min(index, items.count - 1)] }
 
@@ -175,7 +175,7 @@ struct HeroCarousel: View {
         .animation(.easeInOut(duration: 0.6), value: index)
         .task(id: "\(index)-\(focus == nil)") {
             guard focus == nil, items.count > 1 else { return }
-            try? await Task.sleep(nanoseconds: Self.seconds * 1_000_000_000)
+            try? await Task.sleep(for: .seconds(prefs.heroSeconds))
             guard !Task.isCancelled, focus == nil else { return }
             index = (index + 1) % items.count
         }

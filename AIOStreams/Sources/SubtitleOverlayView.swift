@@ -38,7 +38,7 @@ struct SubtitleLook: Equatable {
     }
 
     /// The page's font names, as iOS knows them.
-    private static func family(_ name: String?) -> String? {
+    static func family(_ name: String?) -> String? {
         switch name {
         case "serif": return "Georgia"
         case "monospace", "serif-monospace": return "Menlo"
@@ -174,8 +174,8 @@ final class SubtitleOverlayView: UIView {
     /// picture where it can, as on a letterboxed or portrait video.
     private func bottomLine(video: CGRect) -> CGFloat {
         let share = min(max(look.position, 0), 100) / 100
-        let onPicture = min(video.minY + video.height * share, video.maxY - video.height * 0.02)
-        let onScreen = min(bounds.height * share, bounds.maxY - bounds.height * 0.02)
+        let onPicture = min(video.minY + video.height * share, video.maxY - video.height * 0.03)
+        let onScreen = min(bounds.height * share, bounds.maxY - bounds.height * 0.03)
         return min(onPicture, onScreen)
     }
 

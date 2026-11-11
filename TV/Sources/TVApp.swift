@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct AIOStreamsTVApp: App {
     @StateObject private var session = Session()
+    @StateObject private var prefs = Preferences()
 
     init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -20,6 +21,7 @@ struct AIOStreamsTVApp: App {
                 }
             }
             .environmentObject(session)
+            .environmentObject(prefs)
             .preferredColorScheme(.dark)
             .tint(Theme.ring)
         }

@@ -257,6 +257,13 @@ struct JellyfinClient: Sendable {
         try await send("POST", path, query: query, body: body)
     }
 
+    /// An answer as plain JSON, for objects sent back whole, such as a user's configuration.
+    func json(_ method: String, _ path: String, _ query: [String: String?] = [:], body: [String: Any]? = nil) async throws -> [String: Any] {
+        let data = try await raw(method, path, query: query, body: body)
+        guard !data.isEmpty else { return [:] }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+    }
+
     /// A request whose answer has no body worth reading.
     func call(_ method: String, _ path: String, _ query: [String: String?] = [:]) async throws {
         _ = try await raw(method, path, query: query, body: nil)

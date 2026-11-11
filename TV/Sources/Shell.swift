@@ -40,6 +40,7 @@ enum Place: String, CaseIterable, Identifiable {
 /// side that open out with names, over a shade, while the rail has focus.
 struct MainView: View {
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var prefs: Preferences
     @State private var place: Place = .home
     @State private var paths: [Place: NavigationPath] = [:]
     @FocusState private var railFocus: Place?
@@ -102,6 +103,10 @@ struct MainView: View {
         .foregroundStyle(.white)
         .animation(.easeOut(duration: 0.2), value: open)
         .playFlow($choice) { NotificationCenter.default.post(name: .watchStateChanged, object: nil) }
+        .task {
+            guard let client = session.client, let userId = session.userId else { return }
+            await prefs.load(client: client, userId: userId)
+        }
         // Back from another place's first page goes Home; from Home, it leaves the app.
         .onExitCommand(perform: place != .home && (paths[place]?.isEmpty ?? true) ? { place = .home } : nil)
     }

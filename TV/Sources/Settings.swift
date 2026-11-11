@@ -1,0 +1,387 @@
+import AetherEngine
+import SwiftUI
+
+// Settings that follow the user, kept where the web app keeps them: its synced settings in
+// Jellyfin's display preferences under the web app's own id and keys (lib/settings.ts), and
+// the playback languages and subtitle mode in the user's Jellyfin configuration
+// (lib/user-config.ts). A change on the TV shows in the web app on every other device.
+
+@MainActor
+final class Preferences: ObservableObject {
+    /// The web app's synced settings, by its keys; a default is left out, as it leaves it.
+    @Published private(set) var custom: [String: String] = [:]
+    /// The user's Jellyfin configuration, sent back whole when it changes.
+    @Published private(set) var configuration: [String: Any] = [:]
+    @Published private(set) var loaded = false
+
+    static let prefsId = "aiostreams-web"
+    private static let savedMark = "saved"
+
+    private var client: JellyfinClient?
+    private var userId: String?
+    private var pushTask: Task<Void, Never>?
+
+    func load(client: JellyfinClient, userId: String) async {
+        self.client = client
+        self.userId = userId
+        if let prefs = try? await client.json("GET", "/DisplayPreferences/\(Self.prefsId)", ["client": Self.prefsId, "userId": userId]),
+           let saved = prefs["CustomPrefs"] as? [String: Any] {
+            custom = saved.compactMapValues { $0 as? String }
+        }
+        if let me = try? await client.json("GET", "/Users/Me") {
+            configuration = me["Configuration"] as? [String: Any] ?? [:]
+        }
+        loaded = true
+    }
+
+    // MARK: Synced settings
+
+    func text(_ key: String, _ fallback: String) -> String { custom[key] ?? fallback }
+    func flag(_ key: String, _ fallback: Bool) -> Bool { custom[key].map { $0 == "1" } ?? fallback }
+    func number(_ key: String, _ fallback: Double) -> Double { custom[key].flatMap(Double.init) ?? fallback }
+
+    /// Saves a synced setting; the default is stored as nothing, as the web app stores it.
+    func set(_ key: String, _ value: String?, fallback: String) {
+        if let value, value != fallback { custom[key] = value } else { custom.removeValue(forKey: key) }
+        // Settles before it saves, as a run of presses would otherwise send each.
+        pushTask?.cancel()
+        pushTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            await self?.push()
+        }
+    }
+
+    private func push() async {
+        guard let client, let userId else { return }
+        var prefs = custom
+        prefs[Self.savedMark] = "1"
+        let body: [String: Any] = ["Id": Self.prefsId, "Client": Self.prefsId, "CustomPrefs": prefs]
+        do {
+            _ = try await client.json("POST", "/DisplayPreferences/\(Self.prefsId)", ["client": Self.prefsId, "userId": userId], body: body)
+        } catch {
+            AppLog.warn("settings", "could not save: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: Jellyfin configuration
+
+    func configured<T>(_ key: String) -> T? { configuration[key] as? T }
+
+    func configure(_ changes: [String: Any]) {
+        configuration.merge(changes) { _, new in new }
+        guard let client, let userId else { return }
+        let body = configuration
+        Task {
+            do {
+                _ = try await client.json("POST", "/Users/Configuration", ["userId": userId], body: body)
+            } catch {
+                AppLog.warn("settings", "could not save the configuration: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// The languages tried in order: the server's list, else Jellyfin's one language.
+    func languages(list: String, one: String) -> [String] {
+        let all = (configuration[list] as? [String]) ?? []
+        if !all.isEmpty { return all }
+        return (configuration[one] as? String).map { [$0] } ?? []
+    }
+
+    // MARK: What the player uses
+
+    var audioLanguages: [String] {
+        languages(list: "AudioLanguages", one: "AudioLanguagePreference").filter { $0 != "OriginalLanguage" }
+    }
+
+    var subtitleMode: String { configuration["SubtitleMode"] as? String ?? "Default" }
+
+    /// Subtitles in these languages start on their own, unless the mode keeps them off.
+    var subtitleLanguages: [String] {
+        guard ["Default", "Always", "Smart"].contains(subtitleMode) else { return [] }
+        return languages(list: "SubtitleLanguages", one: "SubtitleLanguagePreference")
+    }
+
+    var heroSeconds: Double { number("heroSeconds", 9) }
+
+    /// The web app's subtitle style, in the overlay's units (lib/subtitles/style.ts).
+    var subtitleLook: SubtitleLook {
+        var look = SubtitleLook()
+        look.scale = ["small": 0.8, "normal": 1, "large": 1.25, "huge": 1.5][text("subtitleSize", "normal")] ?? 1
+        look.bold = flag("subtitleBold", false)
+        look.color = JSON.color(text("subtitleColor", "#ffffff")) ?? .white
+        look.outlineColor = JSON.color(text("subtitleOutlineColor", "#000000")) ?? .black
+        look.outlineSize = ["none": 0, "thin": 1, "normal": 1.65, "thick": 3][text("subtitleOutline", "normal")] ?? 1.65
+        look.shadowSize = flag("subtitleShadow", false) ? 3 : 0
+        look.fontFamily = SubtitleLook.family(text("subtitleFont", "default"))
+        let opacity = number("subtitleBackgroundOpacity", 0)
+        let background = JSON.color(text("subtitleBackgroundColor", "#000000")) ?? .black
+        look.backColor = background.withAlphaComponent(opacity / 100)
+        look.box = opacity > 0
+        look.forceStyle = flag("subtitleOverrideStyled", false)
+        look.position = 100 - number("subtitlePosition", 0)
+        return look
+    }
+}
+
+// MARK: - The page
+
+/// A setting's choices, shown in a panel over the page.
+private struct Chooser: Identifiable {
+    let id = UUID()
+    let title: String
+    let options: [(label: String, value: String)]
+    let current: String
+    let choose: (String) -> Void
+}
+
+/// Jellyfin's three-letter codes, as its language settings take them.
+private let languageOptions: [(String, String)] = [
+    ("eng", "English"), ("spa", "Spanish"), ("fre", "French"), ("ger", "German"), ("ita", "Italian"),
+    ("por", "Portuguese"), ("dut", "Dutch"), ("swe", "Swedish"), ("nor", "Norwegian"), ("dan", "Danish"),
+    ("fin", "Finnish"), ("pol", "Polish"), ("cze", "Czech"), ("hun", "Hungarian"), ("rum", "Romanian"),
+    ("gre", "Greek"), ("tur", "Turkish"), ("rus", "Russian"), ("ukr", "Ukrainian"), ("ara", "Arabic"),
+    ("heb", "Hebrew"), ("hin", "Hindi"), ("tam", "Tamil"), ("tel", "Telugu"), ("tha", "Thai"),
+    ("vie", "Vietnamese"), ("ind", "Indonesian"), ("may", "Malay"), ("fil", "Filipino"),
+    ("jpn", "Japanese"), ("kor", "Korean"), ("chi", "Chinese"),
+]
+
+private func languageName(_ code: String) -> String {
+    if code == "OriginalLanguage" { return "Original language" }
+    return languageOptions.first { $0.0 == code }?.1
+        ?? Locale.current.localizedString(forLanguageCode: code)
+        ?? code
+}
+
+struct SettingsView: View {
+    @EnvironmentObject private var session: Session
+    @EnvironmentObject private var prefs: Preferences
+    @State private var chooser: Chooser?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Theme.px(28)) {
+                PageTitle(text: "Settings")
+                section("Playback", note: "Saved to your account, so the web app and your other devices use them too.") {
+                    row("Audio language", value: listLabel(prefs.languages(list: "AudioLanguages", one: "AudioLanguagePreference"), none: "The file's default")) {
+                        chooseLanguage("Audio language", list: "AudioLanguages", one: "AudioLanguagePreference", original: true)
+                    }
+                    row("Subtitle language", value: listLabel(prefs.languages(list: "SubtitleLanguages", one: "SubtitleLanguagePreference"), none: "Any")) {
+                        chooseLanguage("Subtitle language", list: "SubtitleLanguages", one: "SubtitleLanguagePreference", original: false)
+                    }
+                    row("Subtitles", value: modeName(prefs.subtitleMode)) {
+                        chooser = Chooser(
+                            title: "Subtitles",
+                            options: ["Default", "Smart", "Always", "OnlyForced", "None"].map { (modeName($0), $0) },
+                            current: prefs.subtitleMode
+                        ) { prefs.configure(["SubtitleMode": $0]) }
+                    }
+                }
+                section("Subtitle style", note: "The same style as the web app's, on every device you sign in to.") {
+                    synced("Size", key: "subtitleSize", fallback: "normal",
+                           options: [("Small", "small"), ("Normal", "normal"), ("Large", "large"), ("Huge", "huge")])
+                    synced("Font", key: "subtitleFont", fallback: "default",
+                           options: [("The player's own", "default"), ("Sans serif", "sans-serif"), ("Serif", "serif"),
+                                     ("Monospace", "monospace"), ("Casual", "casual"), ("Cursive", "cursive")])
+                    synced("Text colour", key: "subtitleColor", fallback: "#ffffff",
+                           options: [("White", "#ffffff"), ("Yellow", "#ffff00"), ("Light grey", "#d1d1d1"),
+                                     ("Cyan", "#00ffff"), ("Green", "#00ff00")])
+                    toggle("Bold", key: "subtitleBold", fallback: false)
+                    synced("Outline", key: "subtitleOutline", fallback: "normal",
+                           options: [("None", "none"), ("Thin", "thin"), ("Normal", "normal"), ("Thick", "thick")])
+                    toggle("Shadow", key: "subtitleShadow", fallback: false)
+                    synced("Background", key: "subtitleBackgroundOpacity", fallback: "0",
+                           options: [("None", "0"), ("Faint", "25"), ("Half", "50"), ("Strong", "75"), ("Solid", "100")])
+                    synced("Height", key: "subtitlePosition", fallback: "0",
+                           options: [("Lowest", "-3"), ("Normal", "0"), ("Raised a little", "5"), ("Raised", "10"), ("High", "20")])
+                    toggle("Override styled subtitles", key: "subtitleOverrideStyled", fallback: false)
+                    SubtitlePreview(look: prefs.subtitleLook)
+                        .frame(width: Theme.px(480), height: Theme.px(270))
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.px(12), style: .continuous))
+                        .padding(.top, Theme.px(8))
+                }
+                section("Home", note: nil) {
+                    synced("Hero turns every", key: "heroSeconds", fallback: "9",
+                           options: [5, 7, 9, 12, 15, 20, 30].map { ("\($0) seconds", String($0)) })
+                }
+                section("Account", note: nil) {
+                    fact("Server", session.serverName ?? session.client?.base.host ?? "")
+                    fact("Signed in as", session.userName ?? "")
+                    HStack(spacing: Theme.px(8)) {
+                        Button("Switch user") { session.signOut() }.buttonStyle(SoftPillStyle())
+                        Button("Change server") { session.forgetServer() }.buttonStyle(SoftPillStyle())
+                    }
+                    .padding(.top, Theme.px(4))
+                }
+                section("About", note: nil) {
+                    fact("App", "AIOStreams tvOS \(AppInfo.version)")
+                    fact("Player", AppInfo.player)
+                    Text("An unofficial app, not affiliated with AIOStreams or AetherEngine. AGPL-3.0; AetherEngine is LGPL-3.0, FFmpeg LGPL-2.1+, and the Inter font is under the SIL Open Font License.")
+                        .font(Theme.font(Theme.sm))
+                        .foregroundStyle(Theme.gray400)
+                }
+            }
+            .frame(maxWidth: Theme.px(760), alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, Theme.px(64))
+        }
+        .edgeToEdge()
+        .fullScreenCover(item: $chooser) { chooser in
+            ChooserPanel(chooser: chooser) { self.chooser = nil }
+                .presentationBackground(.clear)
+        }
+    }
+
+    // MARK: Rows
+
+    private func section<Content: View>(_ title: String, note: String?, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: Theme.px(8)) {
+            Text(title).font(Theme.font(Theme.lg, .semibold))
+            if let note { Text(note).font(Theme.font(Theme.sm)).foregroundStyle(Theme.gray400) }
+            VStack(alignment: .leading, spacing: Theme.px(6)) { content() }
+                .padding(.top, Theme.px(6))
+        }
+        .focusSection()
+    }
+
+    private func row(_ title: String, value: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack {
+                Text(title).font(Theme.font(Theme.base))
+                Spacer(minLength: Theme.px(16))
+                Text(value).font(Theme.font(Theme.base)).foregroundStyle(Theme.gray400).lineLimit(1)
+                Image(systemName: "chevron.right").font(.system(size: Theme.px(12), weight: .semibold)).foregroundStyle(Theme.gray500)
+            }
+            .padding(.horizontal, Theme.px(16))
+            .frame(height: Theme.px(48))
+        }
+        .buttonStyle(RowStyle())
+    }
+
+    private func synced(_ title: String, key: String, fallback: String, options: [(String, String)]) -> some View {
+        let current = prefs.text(key, fallback)
+        return row(title, value: options.first { $0.1 == current }?.0 ?? current) {
+            chooser = Chooser(title: title, options: options.map { ($0.0, $0.1) }, current: current) {
+                prefs.set(key, $0, fallback: fallback)
+            }
+        }
+    }
+
+    private func toggle(_ title: String, key: String, fallback: Bool) -> some View {
+        let on = prefs.flag(key, fallback)
+        return row(title, value: on ? "On" : "Off") {
+            prefs.set(key, on ? "0" : "1", fallback: fallback ? "1" : "0")
+        }
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).foregroundStyle(Theme.gray400)
+            Spacer()
+            Text(value)
+        }
+        .font(Theme.font(Theme.base))
+        .padding(.horizontal, Theme.px(16))
+        .frame(height: Theme.px(40))
+    }
+
+    private func listLabel(_ codes: [String], none: String) -> String {
+        codes.isEmpty ? none : codes.map(languageName).joined(separator: ", ")
+    }
+
+    /// Puts the chosen language first, keeping the others the web app may have listed after it.
+    private func chooseLanguage(_ title: String, list: String, one: String, original: Bool) {
+        let current = prefs.languages(list: list, one: one)
+        var options: [(label: String, value: String)] = [(original ? "The file's default" : "Any", "")]
+        if original { options.append(("Original language", "OriginalLanguage")) }
+        options += languageOptions.map { ($0.1, $0.0) }
+        chooser = Chooser(title: title, options: options, current: current.first ?? "") { code in
+            if code.isEmpty {
+                prefs.configure([list: [String](), one: NSNull()])
+            } else {
+                let next = [code] + current.filter { $0 != code }
+                prefs.configure([list: next, one: code])
+            }
+        }
+    }
+
+    private func modeName(_ mode: String) -> String {
+        switch mode {
+        case "Smart": return "Smart: when the audio isn't in your language"
+        case "Always": return "Always"
+        case "OnlyForced": return "Only forced"
+        case "None": return "Off"
+        default: return "Default"
+        }
+    }
+}
+
+/// A line of subtitle in the chosen style, over a dark picture.
+private struct SubtitlePreview: UIViewRepresentable {
+    let look: SubtitleLook
+
+    func makeUIView(context: Context) -> SubtitleOverlayView {
+        let view = SubtitleOverlayView()
+        view.backgroundColor = UIColor(white: 0.12, alpha: 1)
+        view.setCues([SubtitleCuePreview.cue])
+        view.setTime(1)
+        return view
+    }
+
+    func updateUIView(_ view: SubtitleOverlayView, context: Context) {
+        view.look = look
+    }
+}
+
+/// The preview's one line, showing for as long as the preview does.
+private enum SubtitleCuePreview {
+    static let cue = SubtitleCue(id: 0, startTime: 0, endTime: .greatestFiniteMagnitude, body: .text("This is how subtitles will look."))
+}
+
+/// A list of choices over the dimmed page.
+private struct ChooserPanel: View {
+    let chooser: Chooser
+    let done: () -> Void
+    @FocusState private var focused: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.6).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: Theme.px(12)) {
+                Text(chooser.title).font(Theme.font(Theme.xl, .semibold)).padding(.horizontal, Theme.px(8))
+                ScrollView {
+                    VStack(spacing: Theme.px(4)) {
+                        ForEach(chooser.options, id: \.value) { option in
+                            Button {
+                                chooser.choose(option.value)
+                                done()
+                            } label: {
+                                HStack(spacing: Theme.px(10)) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: Theme.px(13), weight: .semibold))
+                                        .opacity(option.value == chooser.current ? 1 : 0)
+                                    Text(option.label).font(Theme.font(Theme.base))
+                                    Spacer()
+                                }
+                                .padding(.horizontal, Theme.px(14))
+                                .frame(height: Theme.px(44))
+                            }
+                            .buttonStyle(RowStyle(radius: Theme.px(8)))
+                            .focused($focused, equals: option.value)
+                        }
+                    }
+                    .padding(Theme.px(8))
+                }
+                .scrollClipDisabled()
+            }
+            .padding(Theme.px(20))
+            .frame(width: Theme.px(480))
+            .frame(maxHeight: Theme.px(600))
+            .background(RoundedRectangle(cornerRadius: Theme.px(16), style: .continuous).fill(Color(white: 17 / 255)))
+            .overlay(RoundedRectangle(cornerRadius: Theme.px(16), style: .continuous).stroke(.white.opacity(0.1), lineWidth: Theme.px(1)))
+        }
+        .foregroundStyle(.white)
+        .onAppear { focused = chooser.current }
+        .onExitCommand(perform: done)
+    }
+}
