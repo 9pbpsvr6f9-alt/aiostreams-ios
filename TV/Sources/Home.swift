@@ -1,0 +1,436 @@
+import SwiftUI
+
+// The web app's home (pages/home.tsx, components/hero.tsx) as a TV shows it by default:
+// a rotating hero over the first rows, then Continue watching, Next up and each library.
+
+/// The web app's hero picks: the heads of the Movies and Shows libraries, interleaved.
+private let heroPerLibrary = 8
+private let heroMax = 10
+
+struct HomeView: View {
+    @EnvironmentObject private var session: Session
+    @Environment(\.openPlace) private var openPlace
+    @State private var hero: [Item] = []
+    @State private var resume: [Item] = []
+    @State private var nextUp: [Item] = []
+    @State private var libraries: [HomeRow] = []
+    @State private var loading = true
+    @State private var error: String?
+    @State private var choice: VersionChoice?
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: Theme.px(40)) {
+                if !hero.isEmpty {
+                    HeroCarousel(items: hero, play: play)
+                        // Rows sit just under it.
+                        .padding(.bottom, -Theme.px(32))
+                } else {
+                    Color.clear.frame(height: Theme.px(16))
+                }
+                if !resume.isEmpty {
+                    WideRow(title: "Continue watching", items: resume, play: play) {
+                        Button { openPlace(.activity) } label: {
+                            Label("Activity", systemImage: "clock.arrow.circlepath")
+                        }
+                        .buttonStyle(SoftPillStyle())
+                    }
+                }
+                if !nextUp.isEmpty {
+                    WideRow(title: "Next up", items: nextUp, play: play) { EmptyView() }
+                }
+                ForEach(libraries) { row in
+                    ItemRow(row: row)
+                }
+                if loading && hero.isEmpty && libraries.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, Theme.px(200))
+                }
+                if !loading && hero.isEmpty && resume.isEmpty && libraries.isEmpty {
+                    VStack(spacing: Theme.px(16)) {
+                        Text(error ?? "Nothing here yet. Add catalogs to your configuration.")
+                            .font(Theme.font(Theme.base))
+                            .foregroundStyle(Theme.gray400)
+                        Button("Try again") { Task { await load() } }
+                            .buttonStyle(SoftPillStyle())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, Theme.px(200))
+                }
+            }
+            .padding(.bottom, Theme.px(64))
+        }
+        .scrollClipDisabled()
+        .task { if libraries.isEmpty && hero.isEmpty { await load() } }
+        .refreshOnReturn { await load() }
+        .playFlow($choice) { Task { await load() } }
+    }
+
+    private func play(_ item: Item) {
+        Task { choice = await playChoice(for: item, session: session) }
+    }
+
+    private func load() async {
+        guard let client = session.client, let userId = session.userId else { return }
+        loading = true
+        error = nil
+        defer { loading = false }
+        do {
+            async let resumeResult: ItemsResult = client.get("/UserItems/Resume", ["userId": userId, "Limit": "24", "MediaTypes": "Video"])
+            async let nextResult: ItemsResult = client.get("/Shows/NextUp", ["userId": userId, "Limit": "24", "EnableResumable": "false"])
+            async let viewsResult: ItemsResult = client.get("/UserViews", ["userId": userId])
+            resume = (try? await resumeResult.items) ?? []
+            nextUp = (try? await nextResult.items) ?? []
+            let views = (try await viewsResult.items ?? []).filter(isBrowsable)
+
+            // Each library's head, in the configuration's order, as each arrives.
+            var heads: [Int: (Item, [Item])] = [:]
+            await withTaskGroup(of: (Int, Item, [Item]).self) { group in
+                for (index, view) in views.enumerated() {
+                    group.addTask {
+                        let genre = await openingGenre(client, userId: userId, view: view)
+                        let result: ItemsResult? = try? await client.get("/Items", [
+                            "userId": userId,
+                            "ParentId": view.id,
+                            "IncludeItemTypes": libraryTypes(view),
+                            "GenreIds": genre,
+                            "Recursive": "true",
+                            "Limit": "24",
+                            "Fields": "Overview,Genres",
+                        ])
+                        return (index, view, result?.items ?? [])
+                    }
+                }
+                for await (index, view, items) in group {
+                    heads[index] = (view, items)
+                    libraries = heads.keys.sorted().compactMap { key in
+                        guard let entry = heads[key], !entry.1.isEmpty else { return nil }
+                        return HomeRow(id: entry.0.id, title: entry.0.name ?? "Library", items: entry.1, library: entry.0)
+                    }
+                }
+            }
+            hero = heroPicks(views: views, heads: heads, client: client)
+        } catch let failure as JellyfinError where failure.status == 401 {
+            session.expired()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// The Movies and Shows libraries' heads, or the first library's, taking turns; only titles with a backdrop.
+    private func heroPicks(views: [Item], heads: [Int: (Item, [Item])], client: JellyfinClient) -> [Item] {
+        let lists = heads.keys.sorted().compactMap { heads[$0] }
+        var sources = ["movies", "tvshows"].compactMap { kind in lists.first { $0.0.collectionType == kind }?.1 }
+        if sources.isEmpty, let first = lists.first?.1 { sources = [first] }
+        let candidates = sources.map { Array($0.prefix(heroPerLibrary)) }
+        var picks: [Item] = []
+        var seen = Set<String>()
+        for index in 0..<(candidates.map(\.count).max() ?? 0) {
+            for list in candidates where index < list.count && picks.count < heroMax {
+                let item = list[index]
+                guard !seen.contains(item.id), client.backdrop(item, height: 100) != nil,
+                      item.backdropImageTags?.isEmpty == false || item.parentBackdropImageTags?.isEmpty == false else { continue }
+                seen.insert(item.id)
+                picks.append(item)
+            }
+        }
+        return picks
+    }
+}
+
+// MARK: - Hero
+
+private enum HeroAction: Hashable { case play, info }
+
+/// One title at a time over the top of Home, turning every 9 seconds while nothing in it has focus.
+/// Right past its last button turns to the next title; left past its first, to the one before.
+struct HeroCarousel: View {
+    @EnvironmentObject private var session: Session
+    let items: [Item]
+    let play: (Item) -> Void
+
+    @State private var index = 0
+    @FocusState private var focus: HeroAction?
+
+    /// `max(36rem, 53vh)` on a 720-line TV.
+    static let height = Theme.px(576)
+    private static let seconds: UInt64 = 9
+
+    private var item: Item { items[min(index, items.count - 1)] }
+
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
+            backdrop
+            shade
+            details
+                .id(item.id)
+                .transition(.opacity)
+            if items.count > 1 { dots }
+        }
+        .frame(height: Self.height)
+        .frame(maxWidth: .infinity)
+        // Under the rail, as the web app's hero is.
+        .padding(.leading, -Theme.px(80))
+        .clipped()
+        .animation(.easeInOut(duration: 0.6), value: index)
+        .task(id: "\(index)-\(focus == nil)") {
+            guard focus == nil, items.count > 1 else { return }
+            try? await Task.sleep(nanoseconds: Self.seconds * 1_000_000_000)
+            guard !Task.isCancelled, focus == nil else { return }
+            index = (index + 1) % items.count
+        }
+        .onChange(of: items.map(\.id)) { _, _ in index = 0 }
+    }
+
+    /// The backdrop sits right, no wider than 2.6 times its height, fading in from the left.
+    private var backdrop: some View {
+        GeometryReader { geometry in
+            let width = min(geometry.size.width, Self.height * 2.6)
+            RemoteImage(url: session.client?.backdrop(item, height: 1080))
+                .frame(width: width, height: Self.height)
+                .mask(
+                    LinearGradient(
+                        stops: [.init(color: .clear, location: 0), .init(color: .black, location: Theme.px(192) / width)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .id(item.id)
+                .transition(.opacity)
+        }
+    }
+
+    private var shade: some View {
+        ZStack(alignment: .bottom) {
+            LinearGradient(
+                stops: [
+                    .init(color: Theme.background, location: 0),
+                    .init(color: Theme.background.opacity(0.7), location: 0.35),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            LinearGradient(
+                stops: [
+                    .init(color: Theme.background, location: 0),
+                    .init(color: Theme.background.opacity(0.6), location: 0.5),
+                    .init(color: .clear, location: 1),
+                ],
+                startPoint: .bottom,
+                endPoint: .top
+            )
+            .frame(height: Self.height * 2 / 3)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: Theme.px(16)) {
+            TitleLogo(item: item, maxHeight: Theme.px(112), maxWidth: Theme.px(384), titleSize: 48)
+            HeroMeta(item: item)
+            if let overview = item.overview, !overview.isEmpty {
+                Text(overview)
+                    .font(Theme.font(Theme.base))
+                    .foregroundStyle(Theme.gray300)
+                    .lineLimit(3)
+                    .frame(maxWidth: Theme.px(672), alignment: .leading)
+            }
+            HStack(spacing: Theme.px(8)) {
+                if item.playable {
+                    Button { play(item) } label: {
+                        Label("Play", systemImage: "play.fill")
+                    }
+                    .buttonStyle(PrimaryPillStyle())
+                    .focused($focus, equals: .play)
+                }
+                NavigationLink(value: Route.item(item)) {
+                    Label("More info", systemImage: "info.circle")
+                }
+                .buttonStyle(item.playable ? AnyButtonStyle(SecondaryPillStyle()) : AnyButtonStyle(PrimaryPillStyle()))
+                .focused($focus, equals: .info)
+            }
+            .onMoveCommand { direction in
+                guard items.count > 1 else { return }
+                let first: HeroAction = item.playable ? .play : .info
+                if direction == .right, focus == .info {
+                    index = (index + 1) % items.count
+                    focus = items[index].playable ? .play : .info
+                } else if direction == .left, focus == first, index > 0 {
+                    index -= 1
+                    focus = .info
+                }
+            }
+            .focusSection()
+        }
+        .frame(maxWidth: Theme.px(768), alignment: .leading)
+        .padding(.leading, Theme.px(80))
+        .padding(.bottom, Theme.px(56))
+    }
+
+    private var dots: some View {
+        HStack(spacing: Theme.px(6)) {
+            ForEach(items.indices, id: \.self) { at in
+                Capsule()
+                    .fill(at == index ? Color.white : Color.white.opacity(0.35))
+                    .frame(width: at == index ? Theme.px(24) : Theme.px(6), height: Theme.px(6))
+            }
+        }
+        .padding(.trailing, Theme.px(16))
+        .padding(.bottom, Theme.px(56))
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+}
+
+/// Wraps a button style chosen at run time.
+struct AnyButtonStyle: ButtonStyle {
+    private let make: (Configuration) -> AnyView
+
+    init<S: ButtonStyle>(_ style: S) {
+        make = { AnyView(style.makeBody(configuration: $0)) }
+    }
+
+    func makeBody(configuration: Configuration) -> some View { make(configuration) }
+}
+
+/// A title's logo artwork where it has one; its name in large type otherwise.
+struct TitleLogo: View {
+    @EnvironmentObject private var session: Session
+    let item: Item
+    let maxHeight: CGFloat
+    let maxWidth: CGFloat
+    let titleSize: CGFloat
+
+    var body: some View {
+        if let url = session.client?.logo(item, width: Int(maxWidth * 2)) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: maxWidth, maxHeight: maxHeight, alignment: .leading)
+                case .failure:
+                    title
+                default:
+                    Color.clear.frame(width: maxWidth, height: maxHeight)
+                }
+            }
+        } else {
+            title
+        }
+    }
+
+    private var title: some View {
+        Text(item.isEpisode ? (item.seriesName ?? item.displayTitle) : (item.name ?? ""))
+            .font(Theme.font(titleSize, .bold))
+            .lineLimit(2)
+            .frame(maxWidth: Theme.px(640), alignment: .leading)
+    }
+}
+
+/// `2025 • ★ 8.3 • Drama, Crime`, or an episode's code and name for the first part.
+struct HeroMeta: View {
+    let item: Item
+
+    var body: some View {
+        var parts: [AnyView] = []
+        if item.isEpisode {
+            parts.append(AnyView(Text(item.displayTitle)))
+        } else if let year = item.productionYear {
+            parts.append(AnyView(Text(String(year))))
+        }
+        if let score = item.communityRating, score > 0 {
+            parts.append(AnyView(HStack(spacing: Theme.px(4)) {
+                Image(systemName: "star.fill").foregroundStyle(Theme.star).font(.system(size: Theme.px(12)))
+                Text(String(format: "%.1f", score))
+            }))
+        }
+        if let genres = item.genres, !genres.isEmpty {
+            parts.append(AnyView(Text(genres.prefix(3).joined(separator: ", "))))
+        }
+        return MetaLine(parts: parts)
+            .font(Theme.font(Theme.sm))
+            .foregroundStyle(Theme.gray200)
+    }
+}
+
+// MARK: - Rows
+
+/// What's under way, as stills that play from the row: the web app's EpisodeRow.
+struct WideRow<Action: View>: View {
+    let title: String
+    let items: [Item]
+    let play: (Item) -> Void
+    @ViewBuilder let action: () -> Action
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.px(12)) {
+            HStack {
+                Text(title).font(Theme.font(Theme.xl, .semibold))
+                Spacer()
+                action()
+            }
+            .padding(.trailing, Theme.px(40))
+            .focusSection()
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: Theme.px(16)) {
+                    ForEach(items) { item in
+                        WideCard(item: item) { play(item) }
+                    }
+                }
+                .padding(.trailing, Theme.px(40))
+                .padding(.vertical, Theme.px(8))
+            }
+            .scrollClipDisabled()
+        }
+        .focusSection()
+    }
+}
+
+/// A 304 × 171 still with how far it got, its name and time left, and the episode or year under it.
+struct WideCard: View {
+    @EnvironmentObject private var session: Session
+    let item: Item
+    let action: () -> Void
+
+    static let size = CGSize(width: Theme.px(304), height: Theme.px(171))
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.px(8)) {
+            Button(action: action) {
+                ZStack(alignment: .bottom) {
+                    RemoteImage(url: session.client?.still(item, height: Int(Self.size.height * 2)))
+                        .frame(width: Self.size.width, height: Self.size.height)
+                    if let progress = item.userData?.playedPercentage, progress > 0, item.userData?.played != true {
+                        GeometryReader { geometry in
+                            ZStack(alignment: .leading) {
+                                Rectangle().fill(.white.opacity(0.25))
+                                Rectangle().fill(Theme.brand500).frame(width: geometry.size.width * progress / 100)
+                            }
+                        }
+                        .frame(height: Theme.px(4))
+                    }
+                }
+                .frame(width: Self.size.width, height: Self.size.height)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.px(8), style: .continuous))
+            }
+            .buttonStyle(CardStyle())
+            VStack(alignment: .leading, spacing: Theme.px(2)) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(item.isEpisode ? (item.seriesName ?? "") : (item.name ?? ""))
+                        .font(Theme.font(15, .semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: Theme.px(8))
+                    if let left = item.timeLeft {
+                        Text(left).font(Theme.font(Theme.xs)).foregroundStyle(Theme.gray400)
+                    }
+                }
+                Text(item.isEpisode ? item.displayTitle : item.productionYear.map(String.init) ?? "")
+                    .font(Theme.font(13))
+                    .foregroundStyle(Theme.gray400)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, Theme.px(2))
+            .frame(width: Self.size.width, alignment: .leading)
+        }
+    }
+}

@@ -228,13 +228,6 @@ struct DetailView: View {
     }
 }
 
-/// An item whose versions are being picked, and where it would start.
-struct VersionChoice: Identifiable {
-    let id = UUID()
-    let item: Item
-    let startMs: Double?
-}
-
 /// The streams the configuration's addons found for one title, best first, as the server sorted them.
 struct VersionsView: View {
     @EnvironmentObject private var session: Session

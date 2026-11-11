@@ -38,6 +38,10 @@ struct Item: Decodable, Identifiable, Hashable {
     var seriesPrimaryImageTag: String?
     var parentThumbItemId: String?
     var parentThumbImageTag: String?
+    var parentLogoItemId: String?
+    var parentLogoImageTag: String?
+    var locationType: String?
+    var premiereDate: String?
     var userData: UserData?
     var aiostreams: ItemExtension?
 
@@ -61,13 +65,32 @@ struct Item: Decodable, Identifiable, Hashable {
         runTimeTicks.map { Int($0 / 600_000_000) }.flatMap { $0 > 0 ? $0 : nil }
     }
 
-    /// "S1:E4 · Name" for an episode, the name otherwise.
+    /// "S02E04 · Name" for an episode, as the web app writes it; the name otherwise.
     var displayTitle: String {
         guard isEpisode else { return name ?? "" }
-        var prefix = ""
-        if let season = parentIndexNumber, let episode = indexNumber { prefix = "S\(season):E\(episode)" }
-        else if let episode = indexNumber { prefix = "E\(episode)" }
-        return [prefix, name ?? ""].filter { !$0.isEmpty }.joined(separator: " · ")
+        return [episodeCode, name ?? ""].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
+    var episodeCode: String? {
+        guard let episode = indexNumber else { return nil }
+        let e = String(format: "E%02d", episode)
+        return parentIndexNumber.map { String(format: "S%02d", $0) + e } ?? e
+    }
+
+    /// Jellyfin can't play a virtual item, such as an episode not yet aired.
+    var playable: Bool { isSeries || ((type == "Movie" || isEpisode) && locationType != "Virtual") }
+
+    /// "1h 12m left", from where playback stopped.
+    var timeLeft: String? {
+        guard let total = runTimeTicks, let at = userData?.playbackPositionTicks, at > 0, total > at else { return nil }
+        let minutes = Int((total - at) / 600_000_000)
+        guard minutes > 0 else { return nil }
+        return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m left" : "\(minutes)m left"
+    }
+
+    var runtimeText: String? {
+        guard let minutes = runtimeMinutes else { return nil }
+        return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
     }
 }
 
@@ -277,7 +300,7 @@ struct JellyfinClient: Sendable {
 
     // MARK: - Images
 
-    enum ImageKind: String { case primary = "Primary", backdrop = "Backdrop", thumb = "Thumb" }
+    enum ImageKind: String { case primary = "Primary", backdrop = "Backdrop", thumb = "Thumb", logo = "Logo" }
 
     func image(_ itemId: String, _ kind: ImageKind, tag: String?, height: Int) -> URL {
         let path = kind == .backdrop ? "/Items/\(itemId)/Images/Backdrop/0" : "/Items/\(itemId)/Images/\(kind.rawValue)"
@@ -293,6 +316,24 @@ struct JellyfinClient: Sendable {
             return nil
         }
         return image(item.id, .primary, tag: item.tag("Primary"), height: height)
+    }
+
+    /// A title's logo artwork, or its show's, where it has one.
+    func logo(_ item: Item, width: Int) -> URL? {
+        if let tag = item.tag("Logo") { return image(item.id, .logo, tag: tag, width: width) }
+        if let id = item.parentLogoItemId, let tag = item.parentLogoImageTag { return image(id, .logo, tag: tag, width: width) }
+        return nil
+    }
+
+    /// A wide picture for a title: its own thumb, else its backdrop; an episode's still.
+    func still(_ item: Item, height: Int) -> URL? {
+        if item.isEpisode { return poster(item, height: height) }
+        if let tag = item.tag("Thumb") { return image(item.id, .thumb, tag: tag, height: height) }
+        return backdrop(item, height: height) ?? poster(item, height: height)
+    }
+
+    func image(_ itemId: String, _ kind: ImageKind, tag: String?, width: Int) -> URL {
+        url("/Items/\(itemId)/Images/\(kind.rawValue)", ["tag": tag, "maxWidth": String(width), "quality": "90"])
     }
 
     func backdrop(_ item: Item, height: Int) -> URL? {

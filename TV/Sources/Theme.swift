@@ -202,8 +202,6 @@ struct MetaLine: View {
                 part
             }
         }
-        .font(Theme.font(15))
-        .foregroundStyle(Theme.gray300)
     }
 }
 

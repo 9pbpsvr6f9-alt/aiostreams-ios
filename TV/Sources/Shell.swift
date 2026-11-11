@@ -61,7 +61,14 @@ struct MainView: View {
                     .toolbar(.hidden, for: .navigationBar)
             }
             .id(place)
+            .environment(\.openPlace, { place = $0 })
             .padding(.leading, Theme.px(80))
+
+            // The rail's own column, which rows scrolled under it disappear beneath.
+            Theme.background
+                .frame(width: Theme.px(80))
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             // The open rail's shade over the page beside it.
             LinearGradient(
