@@ -72,8 +72,8 @@ struct MainView: View {
                 path.append(route)
                 paths[place] = path
             })
-            .environment(\.playItem, { item in
-                Task { choice = await playChoice(for: item, session: session) }
+            .environment(\.playItem, { item, mode in
+                Task { choice = await playChoice(for: item, session: session, mode: mode) }
             })
             .padding(.leading, Theme.px(80))
 

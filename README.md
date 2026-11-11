@@ -85,7 +85,7 @@ Not in the Apple TV app yet: scrubbing with the touch surface, playing the next 
 Both apps build AetherEngine through `Packages/AetherEngineFeatures`, which turns on three of its optional components (XcodeGen can't set a package's traits itself):
 
 - **TrueHD Atmos and DTS:X height channels** (`TrueHDObjectAudio`, `DTSXObjectAudio`). The apps ask the engine to render them for 7.1.4 speakers. On Apple TV the layout is a setting (Settings → Audio), and the result reaches an Atmos receiver as Dolby MAT. iPhone and iPad play it as Spatial Audio. Needs iOS or tvOS 26. Otherwise they play as their 7.1 channels.
-- **Dolby Vision Profile 7 FEL** (`DolbyVisionFelCurves`): the enhancement layer is folded into the Profile 8.1 picture on Apple's own video path, which the engine recommends over its software dual-layer composer.
+- **Dolby Vision Profile 7 FEL, by curve fold only** (`DolbyVisionFelCurves`): the enhancement layer is folded into the Profile 8.1 picture on Apple's own video path, which applies it with its licensed decoder. The engine's software dual-layer composer (`DualLayerDolbyVision`), whose steps are covered by Dolby patents, is deliberately left off.
 
 AetherEngine notes that these components may be subject to third-party patent licensing, which is the responsibility of whoever builds and distributes the app with them.
 

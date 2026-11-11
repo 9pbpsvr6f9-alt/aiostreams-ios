@@ -8,8 +8,13 @@ import PackageDescription
 //
 // - TrueHDObjectAudio: TrueHD Atmos with its height channels (LoadOptions.objectAudioRendering).
 // - DTSXObjectAudio: DTS:X with its height channels (the same option).
-// - DolbyVisionFelCurves: a Profile 7 FEL source's enhancement layer folded into the Profile 8.1 RPU on
-//   the native route; on whenever built in.
+// - DolbyVisionFelCurves: the curve fold. A Profile 7 FEL source's enhancement layer is folded into the
+//   Profile 8.1 RPU on the native route, leaving every evaluation of the mapping to Apple's licensed
+//   decoder; on whenever built in.
+//
+// DualLayerDolbyVision, the engine's own FEL composer, stays off on purpose: it evaluates the RPU's
+// MMR prediction and the enhancement layer itself, steps covered by live Dolby patents, and the engine
+// recommends the curve fold over it for any distributed app.
 //
 // These components may be subject to third-party patent licensing; whoever builds and distributes the
 // app with them is responsible for their own licensing.

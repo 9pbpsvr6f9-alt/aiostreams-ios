@@ -104,6 +104,9 @@ final class Preferences: ObservableObject {
 
     var heroSeconds: Double { number("heroSeconds", 9) }
 
+    /// Play starts the first version rather than listing them (the web app's `autoPlayFirst`).
+    var autoPlayFirst: Bool { flag("autoPlayFirst", false) }
+
     /// The speakers TrueHD Atmos and DTS:X are rendered for. Kept on this Apple TV, as it's about
     /// the receiver it's plugged into; nil plays them as their 7.1 channels.
     @Published var speakerChoice: String = UserDefaults.standard.string(forKey: "audio.speakers") ?? SpatialSpeakerLayout.l714.rawValue {
@@ -177,6 +180,13 @@ struct SettingsView: View {
                     row("Subtitle language", value: listLabel(prefs.languages(list: "SubtitleLanguages", one: "SubtitleLanguagePreference"), none: "Any")) {
                         chooseLanguage("Subtitle language", list: "SubtitleLanguages", one: "SubtitleLanguagePreference", original: false)
                     }
+                    toggle("Auto-play the first version", key: "autoPlayFirst", fallback: false)
+                    Text(prefs.autoPlayFirst
+                        ? "Play starts the first version, and resuming goes back to the version you were watching. Hold select on a title and choose Choose a version to pick instead."
+                        : "Play lists the versions to choose from, but resuming goes back to the version you were watching. Hold select on a title and choose Play straight away to start the first.")
+                        .font(Theme.font(Theme.sm))
+                        .foregroundStyle(Theme.gray400)
+                        .padding(.horizontal, Theme.px(16))
                     row("Subtitles", value: modeName(prefs.subtitleMode)) {
                         chooser = Chooser(
                             title: "Subtitles",

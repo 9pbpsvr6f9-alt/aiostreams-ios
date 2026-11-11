@@ -10,7 +10,7 @@ extension Notification.Name {
 }
 
 private struct PlayItemKey: EnvironmentKey {
-    static let defaultValue: (Item) -> Void = { _ in }
+    static let defaultValue: (Item, PlayMode) -> Void = { _, _ in }
 }
 
 private struct OpenRouteKey: EnvironmentKey {
@@ -18,8 +18,8 @@ private struct OpenRouteKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Plays a title from anywhere: its versions, then the player.
-    var playItem: (Item) -> Void {
+    /// Plays a title from anywhere: its versions, or one straight away, then the player.
+    var playItem: (Item, PlayMode) -> Void {
         get { self[PlayItemKey.self] }
         set { self[PlayItemKey.self] = newValue }
     }
@@ -33,6 +33,7 @@ extension EnvironmentValues {
 
 struct ItemMenu: ViewModifier {
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var prefs: Preferences
     @Environment(\.playItem) private var play
     @Environment(\.openRoute) private var openRoute
     let item: Item
@@ -40,13 +41,28 @@ struct ItemMenu: ViewModifier {
     var onPage = false
 
     private var played: Bool { item.userData?.played == true }
+
+    /// Whether Play would start a version without listing them.
+    private var playsStraight: Bool {
+        prefs.autoPlayFirst || (item.resumeMs != nil && LastVersions.get(item.id) != nil)
+    }
     private var favourite: Bool { item.userData?.isFavorite == true }
 
     func body(content: Content) -> some View {
         content.contextMenu {
             if item.playable {
-                Button { play(item) } label: {
+                Button { play(item, .usual) } label: {
                     Label(item.resumeMs != nil ? "Resume" : "Play", systemImage: "play.fill")
+                }
+                // The other way to start, as holding Play does in the web app.
+                if playsStraight {
+                    Button { play(item, .list) } label: {
+                        Label("Choose a version", systemImage: "list.bullet")
+                    }
+                } else {
+                    Button { play(item, .straight) } label: {
+                        Label("Play straight away", systemImage: "forward.end")
+                    }
                 }
             }
             if item.isEpisode, let seriesId = item.seriesId {
@@ -63,12 +79,24 @@ struct ItemMenu: ViewModifier {
                 }
             }
             if item.type != "BoxSet" {
-                Button {
-                    act { client, userId in
-                        try await client.call(played ? "DELETE" : "POST", "/UserPlayedItems/\(item.id)", ["userId": userId])
+                // Watched before but started again: marking it watched finishes this time through.
+                if !played || item.resumeMs != nil {
+                    Button {
+                        act { client, userId in
+                            try await client.call("POST", "/UserPlayedItems/\(item.id)", ["userId": userId])
+                        }
+                    } label: {
+                        Label("Mark watched", systemImage: "checkmark")
                     }
-                } label: {
-                    Label(played ? "Mark unwatched" : "Mark watched", systemImage: played ? "arrow.uturn.backward" : "checkmark")
+                }
+                if played {
+                    Button {
+                        act { client, userId in
+                            try await client.call("DELETE", "/UserPlayedItems/\(item.id)", ["userId": userId])
+                        }
+                    } label: {
+                        Label("Mark unwatched", systemImage: "arrow.uturn.backward")
+                    }
                 }
                 if item.isEpisode, item.seriesId != nil {
                     Button {

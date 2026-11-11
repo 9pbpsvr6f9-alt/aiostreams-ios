@@ -58,9 +58,10 @@ struct Item: Decodable, Identifiable, Hashable {
     var isSeries: Bool { type == "Series" }
     var isFolder: Bool { type == "CollectionFolder" || type == "BoxSet" || type == "Folder" }
 
-    /// Where playback picks up, unless it was watched to the end.
+    /// Where playback picks up. A title watched before and started again resumes too, as the web app
+    /// reads the position whatever the watched mark says.
     var resumeMs: Double? {
-        guard userData?.played != true, let ticks = userData?.playbackPositionTicks, ticks > 0 else { return nil }
+        guard let ticks = userData?.playbackPositionTicks, ticks > 0 else { return nil }
         return Double(ticks) / 10_000
     }
 
