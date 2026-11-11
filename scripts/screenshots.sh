@@ -32,10 +32,11 @@ server_id=$(python3 -c "import sys; sys.path.insert(0, 'tools/demo-server'); imp
 
 xcodegen generate
 
+# Apple Silicon simulators only: LibDovi ships no Intel simulator slice.
 build() {
   xcodebuild build -project AIOStreams.xcodeproj -scheme "$1" -configuration Debug \
     -destination "generic/platform=$2" -derivedDataPath "$derived" \
-    CODE_SIGNING_ALLOWED=NO | tail -3
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO | tail -3
 }
 build AIOStreams "iOS Simulator"
 build AIOStreamsTV "tvOS Simulator"
