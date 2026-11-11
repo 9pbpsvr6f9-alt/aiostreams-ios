@@ -44,6 +44,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         configuration.applicationNameForUserAgent = "AIOStreams-iOS/\(AppInfo.version)"
         configuration.websiteDataStore = .default()
         bridge.install(into: configuration.userContentController)
+        if let seed = DemoMode.storageScript {
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: seed, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            )
+        }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.isOpaque = false
@@ -82,7 +87,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             self?.overlay.isHidden = !shown
         }
         bridge.onMessage = { [weak self] type, message in self?.handle(type, message) }
-        webView.load(URLRequest(url: WebAssets.startURL))
+        webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
     }
 
     override var prefersStatusBarHidden: Bool { fullscreen }

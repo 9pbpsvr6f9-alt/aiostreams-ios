@@ -5,3 +5,5 @@ AIOStreams/Resources/web/*
 .DS_Store
 *.ipa
 project.gen.yml
+tools/demo-server/demo.mp4
+tools/demo-server/__pycache__/

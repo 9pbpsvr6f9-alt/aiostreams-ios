@@ -257,7 +257,7 @@ private struct PlayerChrome: View {
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled, !model.paused, panel == nil, model.failure == nil else { return }
+            guard !Task.isCancelled, !model.paused, panel == nil, model.failure == nil, !DemoMode.holdsControls else { return }
             hide()
         }
     }

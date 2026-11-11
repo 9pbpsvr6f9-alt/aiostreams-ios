@@ -1,0 +1,52 @@
+name: Screenshots
+
+# Photographs both apps in the simulators against the demo server, whose catalogue and artwork are
+# made up (tools/demo-server). Run by hand from the Actions tab; the pictures come back as an artifact.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select Xcode
+        run: |
+          xcode=$(ls -d /Applications/Xcode_2[6-9]*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Build the web app
+        run: scripts/build-web.sh
+
+      - name: Install tools
+        run: |
+          brew install xcodegen ffmpeg
+          python3 -m pip install --break-system-packages pillow
+
+      - name: Take the screenshots
+        run: scripts/screenshots.sh
+
+      - name: Demo server log
+        if: always()
+        run: tail -n 200 build/demo-server.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: build/screenshots
+          if-no-files-found: warn

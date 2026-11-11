@@ -23,6 +23,8 @@ struct AIOStreamsTVApp: App {
             .environmentObject(session)
             .environmentObject(prefs)
             .preferredColorScheme(.dark)
+            // Screenshot mode only: the demo server's sign-in.
+            .task { await DemoMode.start(session) }
             .tint(Theme.ring)
         }
     }

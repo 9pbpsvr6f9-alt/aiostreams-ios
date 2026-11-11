@@ -108,6 +108,7 @@ struct MainView: View {
         .task {
             guard let client = session.client, let userId = session.userId else { return }
             await prefs.load(client: client, userId: userId)
+            await openDemoScreen()
         }
         // Back from another place's first page goes Home; from Home, it leaves the app.
         .onExitCommand(perform: place != .home && (paths[place]?.isEmpty ?? true) ? { place = .home } : nil)
@@ -122,6 +123,27 @@ struct MainView: View {
         case .calendar: CalendarView()
         case .activity: ActivityView()
         case .account, .settings: SettingsView()
+        }
+    }
+
+    /// Screenshot mode only: opens the screen the launch asked for.
+    private func openDemoScreen() async {
+        guard DemoMode.active else { return }
+        let item = await DemoMode.item(session)
+        switch DemoMode.screen {
+        case "rail":
+            try? await Task.sleep(for: .seconds(1))
+            railFocus = .home
+        case "settings":
+            place = .settings
+        case "title", "movie":
+            if let item { paths[.home] = { var path = NavigationPath(); path.append(Route.item(item)); return path }() }
+        case "versions":
+            if let item { choice = VersionChoice(item: item, startMs: item.resumeMs, mode: .list) }
+        case "player":
+            if let item { choice = VersionChoice(item: item, startMs: nil, mode: .straight) }
+        default:
+            break
         }
     }
 
