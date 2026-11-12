@@ -17,12 +17,11 @@ final class PlayerChannel {
 
     /// Used by the iOS host's swipe controls, including while playback is paused.
     var hasMedia: Bool { loadedURL != nil && !ended }
-    var playbackVolume: Double { muted ? 0 : min(max(volume, 0), 1) }
 
-    func setPlaybackVolume(_ value: Double) {
-        guard value.isFinite else { return }
-        // A deliberate volume swipe also leaves mute, as the page's volume slider does.
-        change(["volume": min(max(value, 0), 1), "muted": false])
+    func prepareForSystemVolumeControl() {
+        // The swipe's percentage describes system volume. Remove any earlier app-level
+        // attenuation or mute so it does not keep sound below that system setting.
+        change(["volume": 1.0, "muted": false])
     }
 
     private var bag = Set<AnyCancellable>()

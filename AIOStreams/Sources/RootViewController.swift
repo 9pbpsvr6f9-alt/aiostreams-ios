@@ -11,6 +11,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private let overlay = SubtitleOverlayView()
     private let thumbnails = ThumbnailStore()
     private let bridge = Bridge()
+    private let systemVolume = SystemVolumeControl()
     private var webView: WKWebView!
     private var player: PlayerChannel!
 
@@ -78,6 +79,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 view.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
         }
+        systemVolume.attach(to: root)
         view = root
     }
 
@@ -120,7 +122,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 "player": AppInfo.player,
             ])
         case "levels":
-            bridge.send(["type": "levels", "volume": player.playbackVolume,
+            bridge.send(["type": "levels", "volume": systemVolume.value,
                          "brightness": Double(playerScreen.brightness)])
         case "set-level":
             setLevel(message)
@@ -202,7 +204,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
               let value = JSON.number(message["value"]) else { return }
         let clamped = min(max(value, 0), 1)
         if level == "volume" {
-            player.setPlaybackVolume(clamped)
+            if systemVolume.set(clamped) {
+                player.prepareForSystemVolumeControl()
+            } else {
+                AppLog.info("player", "System volume is not adjustable on the current audio route")
+            }
         } else if level == "brightness" {
             let screen = playerScreen
             if brightnessScreen !== screen {
