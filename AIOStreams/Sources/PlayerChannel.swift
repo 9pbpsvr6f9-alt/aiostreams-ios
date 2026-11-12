@@ -17,7 +17,7 @@ final class PlayerChannel {
 
     /// Used by the iOS host's swipe controls, including while playback is paused.
     var hasMedia: Bool { loadedURL != nil && !ended }
-    var playbackVolume: Double { volume }
+    var playbackVolume: Double { muted ? 0 : min(max(volume, 0), 1) }
 
     func setPlaybackVolume(_ value: Double) {
         guard value.isFinite else { return }
