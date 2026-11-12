@@ -47,6 +47,13 @@ struct MainView: View {
     /// What a card's menu asked to play, from any page.
     @State private var choice: VersionChoice?
     @Namespace private var railScope
+    @Namespace private var pageScope
+    @Environment(\.resetFocus) private var resetFocus
+    /// Briefly true after a rail choice, so focus leaves the rail for the page.
+    @State private var railLocked = false
+    /// A first Back on Home, which a second within a couple of seconds follows to leave.
+    @State private var exitArmed = false
+    @State private var exitHint: Task<Void, Never>?
 
     private var open: Bool { railFocus != nil }
 
@@ -66,6 +73,7 @@ struct MainView: View {
             .id(place)
             // One area the focus can move into from the rail, wherever on the page it lands.
             .focusSection()
+            .focusScope(pageScope)
             .environment(\.openPlace, { place = $0 })
             .environment(\.openRoute, { route in
                 var path = paths[place] ?? NavigationPath()
@@ -111,7 +119,20 @@ struct MainView: View {
             await openDemoScreen()
         }
         // Back from another place's first page goes Home; from Home, it leaves the app.
-        .onExitCommand(perform: place != .home && (paths[place]?.isEmpty ?? true) ? { place = .home } : nil)
+        .onExitCommand(perform: exitAction)
+        .overlay(alignment: .bottom) {
+            if exitArmed {
+                Text("Press Back again to leave")
+                    .font(Theme.font(Theme.base, .medium))
+                    .padding(.horizontal, Theme.px(20))
+                    .padding(.vertical, Theme.px(12))
+                    .background(Capsule().fill(Color(white: 17 / 255).opacity(0.95)))
+                    .overlay(Capsule().stroke(.white.opacity(0.1), lineWidth: Theme.px(1)))
+                    .padding(.bottom, Theme.px(40))
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: exitArmed)
     }
 
     @ViewBuilder private func page(_ place: Place) -> some View {
@@ -147,6 +168,18 @@ struct MainView: View {
         }
     }
 
+    /// Moves focus from the rail to the page just chosen, so the rail closes without a press right.
+    private func leaveRail() {
+        railLocked = true
+        Task {
+            // The new page's views have to be there to take focus.
+            try? await Task.sleep(for: .milliseconds(150))
+            resetFocus(in: pageScope)
+            try? await Task.sleep(for: .milliseconds(450))
+            railLocked = false
+        }
+    }
+
     private var rail: some View {
         VStack(alignment: .leading, spacing: Theme.px(4)) {
             BrandLogo(height: Theme.px(32))
@@ -169,8 +202,26 @@ struct MainView: View {
         .frame(maxHeight: .infinity)
         .focusSection()
         .focusScope(railScope)
-        // Screenshot mode only: the page takes focus, as it does on a real Apple TV.
-        .disabled(DemoMode.keepsRailShut)
+        // Off for a moment after a choice, which hands focus to the page; and in screenshot mode,
+        // where the page takes focus as it does on a real Apple TV.
+        .disabled(DemoMode.keepsRailShut || railLocked)
+    }
+
+    /// What Back does on a place's first page: from another place, go Home; on Home, leave,
+    /// with "Prevent accidental exit" on only at a second press, as the Android TV app asks.
+    private var exitAction: (() -> Void)? {
+        guard paths[place]?.isEmpty ?? true else { return nil }
+        if place != .home { return { place = .home } }
+        // Left to the system, Back leaves the app.
+        guard prefs.preventAccidentalExit, !exitArmed else { return nil }
+        return {
+            exitArmed = true
+            exitHint?.cancel()
+            exitHint = Task {
+                try? await Task.sleep(for: .seconds(2))
+                if !Task.isCancelled { exitArmed = false }
+            }
+        }
     }
 
     private func entry(_ item: Place) -> some View {
@@ -181,6 +232,7 @@ struct MainView: View {
                 paths[item] = NavigationPath()
             }
             place = item
+            leaveRail()
         } label: {
             RailEntry(item: item, current: current, open: open, avatar: avatarURL)
         }

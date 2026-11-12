@@ -115,6 +115,11 @@ final class Preferences: ObservableObject {
 
     var speakers: SpatialSpeakerLayout? { SpatialSpeakerLayout(rawValue: speakerChoice) }
 
+    /// Back on Home asks for a second press before leaving the app. Kept on this Apple TV.
+    @Published var preventAccidentalExit: Bool = UserDefaults.standard.object(forKey: "app.preventAccidentalExit") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(preventAccidentalExit, forKey: "app.preventAccidentalExit") }
+    }
+
     /// The web app's subtitle style, in the overlay's units (lib/subtitles/style.ts).
     var subtitleLook: SubtitleLook {
         var look = SubtitleLook()
@@ -233,6 +238,15 @@ struct SettingsView: View {
                     }
                 }
                 section("Home", note: nil) {
+                    row("Prevent accidental exit", value: prefs.preventAccidentalExit ? "On" : "Off") {
+                        prefs.preventAccidentalExit.toggle()
+                    }
+                    Text(prefs.preventAccidentalExit
+                        ? "Back on Home shows “Press Back again to leave”, and only a second press leaves the app."
+                        : "Back on Home leaves the app straight away.")
+                        .font(Theme.font(Theme.sm))
+                        .foregroundStyle(Theme.gray400)
+                        .padding(.horizontal, Theme.px(16))
                     synced("Hero turns every", key: "heroSeconds", fallback: "9",
                            options: [5, 7, 9, 12, 15, 20, 30].map { ("\($0) seconds", String($0)) })
                 }
