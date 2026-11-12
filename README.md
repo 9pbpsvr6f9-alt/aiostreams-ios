@@ -1,4 +1,4 @@
-# AIOStreams for iOS and Apple TV
+# AIOStreams for iOS/iPadOS and Apple TV
 
 An unofficial iPhone, iPad and Apple TV port of the [AIOStreams](https://github.com/Viren070/AIOStreams) app, playing through [AetherEngine](https://github.com/superuser404notfound/AetherEngine).
 
