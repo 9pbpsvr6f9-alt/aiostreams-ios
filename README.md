@@ -137,7 +137,7 @@ Not in the Apple TV app yet: scrubbing with the touch surface, playing the next 
 
 ## Updating
 
-`web/AIOSTREAMS_REF` pins the AIOStreams commit the web app is built from, so the patch applies cleanly. To move to a newer one, change it and check that `git apply` of `web/ios-host.patch` still succeeds. If it doesn't, regenerate the patch. `project.yml` pins AetherEngine to an exact version.
+`web/AIOSTREAMS_REF` pins the AIOStreams commit the web app is built from, so the patch applies cleanly. To move to a newer one, change it and check that `git apply` of `web/ios-host.patch` still succeeds. If it doesn't, regenerate the patch. Both local package manifests (`Packages/AetherEngineFeatures/Package.swift` and `Packages/AetherEngineHeights/Package.swift`) pin AetherEngine to the same exact release, currently **7.64.0**. Update both pins together; `project.yml` selects the default wrapper.
 
 ## Optional AetherEngine components
 
