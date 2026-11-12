@@ -72,6 +72,21 @@ private struct PlayerChrome: View {
         ZStack {
             VideoSurface(model: model).ignoresSafeArea()
 
+            // Holding left or right scrubs, while the controls are hidden or the bar has focus.
+            PressHold(
+                begin: { direction in
+                    guard panel == nil, model.failure == nil, !shown || focus == .bar || focus == .surface else { return false }
+                    model.startScrub(direction)
+                    reveal(.bar)
+                    return true
+                },
+                end: {
+                    model.endScrub()
+                    wake()
+                }
+            )
+            .frame(width: 0, height: 0)
+
             // Takes the remote while the controls are hidden.
             Color.clear
                 .contentShape(Rectangle())
@@ -169,6 +184,18 @@ private struct PlayerChrome: View {
                     wake()
                 }
                 .onTapGesture { model.togglePause(); wake() }
+            if model.scrubSpeed != 0 {
+                HStack(spacing: Theme.px(8)) {
+                    Image(systemName: model.scrubSpeed > 0 ? "forward.fill" : "backward.fill")
+                    Text("\(abs(model.scrubSpeed))×").monospacedDigit()
+                }
+                .font(Theme.font(Theme.base, .semibold))
+                .padding(.horizontal, Theme.px(14))
+                .padding(.vertical, Theme.px(6))
+                .background(Capsule().fill(.black.opacity(0.6)))
+                .frame(maxWidth: .infinity)
+                .transition(.opacity)
+            }
             HStack(spacing: Theme.px(8)) {
                 Button { model.togglePause() } label: {
                     Image(systemName: model.paused ? "play.fill" : "pause.fill")
@@ -182,7 +209,7 @@ private struct PlayerChrome: View {
                     .buttonStyle(ControlIconStyle())
                     .focused($focus, equals: .forward)
                 HStack(spacing: 0) {
-                    Text(clock(model.position))
+                    Text(clock(model.scrubTarget ?? model.position))
                     Text(" / " + clock(model.duration)).foregroundStyle(Theme.gray400)
                 }
                 .font(Theme.font(17, .medium))
@@ -257,7 +284,8 @@ private struct PlayerChrome: View {
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled, !model.paused, panel == nil, model.failure == nil, !DemoMode.holdsControls else { return }
+            guard !Task.isCancelled, !model.paused, panel == nil, model.failure == nil, !DemoMode.holdsControls,
+                  model.scrubTarget == nil else { return }
             hide()
         }
     }
@@ -301,7 +329,7 @@ private struct ProgressTrack: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(.white.opacity(0.2))
                 Capsule().fill(.white.opacity(0.35)).frame(width: share(model.buffered))
-                Capsule().fill(Theme.ring).frame(width: share(model.position))
+                Capsule().fill(Theme.ring).frame(width: share(model.scrubTarget ?? model.position))
                 ForEach(model.chapters.dropFirst(), id: \.id) { chapter in
                     Rectangle()
                         .fill(Color.black)
@@ -311,8 +339,8 @@ private struct ProgressTrack: View {
                 Circle()
                     .fill(.white)
                     .frame(width: Theme.px(14), height: Theme.px(14))
-                    .offset(x: share(model.position) - Theme.px(7))
-                    .opacity(focused ? 1 : 0)
+                    .offset(x: share(model.scrubTarget ?? model.position) - Theme.px(7))
+                    .opacity(focused || model.scrubTarget != nil ? 1 : 0)
             }
             .frame(height: focused ? Theme.px(8) : Theme.px(4))
             .frame(maxHeight: .infinity)

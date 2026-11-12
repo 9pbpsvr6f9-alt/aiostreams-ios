@@ -188,6 +188,42 @@ final class PlayerModel: ObservableObject {
 
     func togglePause() { engine.togglePlayPause() }
 
+    // MARK: Holding left or right
+
+    /// Where a held left or right has scrubbed to, while it's held.
+    @Published private(set) var scrubTarget: Double?
+    /// How many times faster than playback the scrub moves, for its badge; negative backwards.
+    @Published private(set) var scrubSpeed = 0
+    private var scrubTask: Task<Void, Never>?
+
+    /// Scrubs while left or right is held, faster the longer it's held: 10x, then 30x after
+    /// 1.5 s, 60x after 3 s and 120x from 5 s. Letting go seeks there once.
+    func startScrub(_ direction: Int) {
+        scrubTask?.cancel()
+        scrubTarget = position
+        let tick = 0.2
+        scrubTask = Task { [weak self] in
+            var held = 0.0
+            while !Task.isCancelled {
+                guard let self else { return }
+                let rate: Double = held < 1.5 ? 10 : held < 3 ? 30 : held < 5 ? 60 : 120
+                self.scrubSpeed = direction * Int(rate)
+                let next = (self.scrubTarget ?? self.position) + Double(direction) * rate * tick
+                self.scrubTarget = min(max(next, 0), max(self.duration - 1, 0))
+                held += tick
+                try? await Task.sleep(for: .milliseconds(Int(tick * 1000)))
+            }
+        }
+    }
+
+    func endScrub() {
+        scrubTask?.cancel()
+        scrubTask = nil
+        if let target = scrubTarget { seek(to: target) }
+        scrubTarget = nil
+        scrubSpeed = 0
+    }
+
     func seek(to seconds: Double) {
         let target = min(max(seconds, 0), max(duration - 1, 0))
         position = target
