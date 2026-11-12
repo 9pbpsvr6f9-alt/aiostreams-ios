@@ -120,15 +120,18 @@ enum YouTube {
         if let visitor { request.setValue(visitor, forHTTPHeaderField: "X-Goog-Visitor-Id") }
         let (data, response) = try await session.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw ProtocolError("HTTP \(http.statusCode)")
+            throw YouTubeError("HTTP \(http.statusCode)")
         }
         guard let answer = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw ProtocolError("not a JSON object")
+            throw YouTubeError("not a JSON object")
         }
         return answer
     }
 }
 
-extension ProtocolError: LocalizedError {
+/// Resolver failures are local to this host; no dependency on the reference app's player protocol.
+private struct YouTubeError: LocalizedError {
+    let message: String
+    init(_ message: String) { self.message = message }
     var errorDescription: String? { message }
 }
