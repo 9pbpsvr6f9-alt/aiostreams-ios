@@ -21,3 +21,5 @@ precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: true, ready
 precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: false, ready: false, paused: true), "Leaving the video must not resurrect it")
 precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: true, ready: false, paused: false), "An in-flight load must not be replaced")
 print("Paused background decoder recovery policy tests passed")
+
+precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: true, ready: false, paused: true, loading: true), "A load can report paused before readiness; returning must not replace it")

@@ -26,7 +26,7 @@ final class PlayerChannel {
     /// Its public reload preserves position, headers and track selection; a live session is untouched.
     func restoreAfterBackground() {
         guard PictureInPicturePolicy.needsForegroundReload(hasMedia: hasMedia,
-              ready: engine.isSessionReady, paused: engine.state == .paused),
+              ready: engine.isSessionReady, paused: engine.state == .paused, loading: loadTask != nil),
               backgroundRecoveryTask == nil else { return }
         let current = generation
         backgroundRecoveryTask = Task { [weak self] in
@@ -393,6 +393,7 @@ final class PlayerChannel {
 
         loadTask = Task { [weak self] in
             guard let self else { return }
+            defer { if current == self.generation { self.loadTask = nil } }
             do {
                 try await self.engine.load(url: url, startPosition: startMs > 0 ? startMs / 1000 : nil, options: options)
                 guard current == self.generation else { return }
