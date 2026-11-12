@@ -14,6 +14,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var webView: WKWebView!
     private var player: PlayerChannel!
 
+    private var brightnessBeforeSwipe: CGFloat?
+    private weak var brightnessScreen: UIScreen?
+    private var backgroundObserver: NSObjectProtocol?
+
     private var fullscreen = false
     private var linksReady = false
     private var pendingLinks: [String] = []
@@ -85,8 +89,14 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         player.showVideo = { [weak self] shown in
             self?.videoView.isHidden = !shown
             self?.overlay.isHidden = !shown
+            if !shown { self?.restoreBrightness() }
         }
         bridge.onMessage = { [weak self] type, message in self?.handle(type, message) }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.restoreBrightness() }
+        }
         webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
     }
 
@@ -109,6 +119,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 "ffmpeg": NSNull(),
                 "player": AppInfo.player,
             ])
+        case "levels":
+            bridge.send(["type": "levels", "volume": player.playbackVolume,
+                         "brightness": Double(playerScreen.brightness)])
+        case "set-level":
+            setLevel(message)
         case "fullscreen":
             setFullscreen(JSON.flag(message["value"]) ?? !fullscreen)
         case "update-check":
@@ -156,7 +171,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             AppLog.warn("web", message["message"] as? String ?? "")
         case "exit", "open-logs", "player-key", "window-buttons", "discord-check", "external-choose",
              "external-open", "external-close", "watch-next", "keyboard-completions", "player-engine",
-             "player-retry", "crash-seen", "set-level", "levels", "voice-search", "voice-cancel":
+             "player-retry", "crash-seen", "voice-search", "voice-cancel":
             break
         default:
             AppLog.info("bridge", "unhandled \(type)")
@@ -170,6 +185,45 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         } else {
             pendingLinks.append(url.absoluteString)
         }
+    }
+
+    private var playerScreen: UIScreen {
+        view.window?.windowScene?.screen ?? UIScreen.main
+    }
+
+    private func setLevel(_ message: [String: Any]) {
+        guard let level = message["level"] as? String else { return }
+        // The web player releases its temporary brightness when its gesture layer unmounts.
+        if level == "brightness", message["value"] is NSNull {
+            restoreBrightness()
+            return
+        }
+        guard player.hasMedia, UIApplication.shared.applicationState == .active,
+              let value = JSON.number(message["value"]) else { return }
+        let clamped = min(max(value, 0), 1)
+        if level == "volume" {
+            player.setPlaybackVolume(clamped)
+        } else if level == "brightness" {
+            let screen = playerScreen
+            if brightnessScreen !== screen {
+                restoreBrightness()
+                brightnessScreen = screen
+                brightnessBeforeSwipe = screen.brightness
+            }
+            screen.brightness = CGFloat(clamped)
+        }
+    }
+
+    private func restoreBrightness() {
+        if let screen = brightnessScreen, let original = brightnessBeforeSwipe {
+            screen.brightness = original
+        }
+        brightnessBeforeSwipe = nil
+        brightnessScreen = nil
+    }
+
+    deinit {
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
     private func setFullscreen(_ on: Bool) {
@@ -223,6 +277,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        restoreBrightness()
         bridge.pageLoading()
         linksReady = false
         player?.pageLoading()
@@ -230,6 +285,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        restoreBrightness()
         AppLog.warn("app", "the page's process ended; loading it again")
         player?.pageLoading()
         webView.reload()

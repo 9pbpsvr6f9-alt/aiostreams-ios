@@ -15,6 +15,16 @@ final class PlayerChannel {
     /// Shows the video beneath the page, or hides it once nothing plays.
     var showVideo: (Bool) -> Void = { _ in }
 
+    /// Used by the iOS host's swipe controls, including while playback is paused.
+    var hasMedia: Bool { loadedURL != nil && !ended }
+    var playbackVolume: Double { volume }
+
+    func setPlaybackVolume(_ value: Double) {
+        guard value.isFinite else { return }
+        // A deliberate volume swipe also leaves mute, as the page's volume slider does.
+        change(["volume": min(max(value, 0), 1), "muted": false])
+    }
+
     private var bag = Set<AnyCancellable>()
     private var loadTask: Task<Void, Never>?
     private var generation = 0

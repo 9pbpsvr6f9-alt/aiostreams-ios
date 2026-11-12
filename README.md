@@ -79,6 +79,15 @@ The IPA is unsigned. Sign it when you install it with AltStore, SideStore, Sidel
 
 To run it from Xcode instead, run `scripts/build-web.sh`, then `xcodegen generate`, open `AIOStreams.xcodeproj`, choose your team under Signing, and run it on a device.
 
+## Player swipes on iPhone and iPad
+
+Swipe vertically on the video: the left half adjusts screen brightness and the
+right half adjusts playback volume. Swipe up to increase, down to decrease; the
+player shows a percentage. Brightness returns to its original value when leaving
+the player or backgrounding the app. Volume affects this app's playback, not the
+iPhone's system volume. Buttons, the seek bar and system edge gestures retain
+their normal behavior. Swipe on the video away from the top/bottom screen edges.
+
 ## What maps to what
 
 | Page message | iOS app |
