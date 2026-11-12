@@ -448,7 +448,9 @@ struct SearchView: View {
                 Text("No results for “\(term)”.").font(Theme.font(Theme.base)).foregroundStyle(Theme.gray400)
             }
         }
-        .edgeToEdge()
+        // Edge to edge across, but under the search bar and keyboard, which take the top of the
+        // screen: ignoring that inset or drawing past the scroll view put results behind them.
+        .ignoresSafeArea(edges: .horizontal)
         .searchable(text: $term, prompt: "Movies and shows")
         .task(id: term) {
             guard term.count >= 2 else {
