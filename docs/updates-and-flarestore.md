@@ -58,3 +58,14 @@ subtitle styling is retained, and that the feed's version matches the installed 
 If hosted macOS ARM capacity prevents a candidate from starting, manually dispatch
 Build IPA with `runner: macos-15-intel`. This fallback validates candidates only;
 it cannot publish a release. Release builds retain the standard macos-26 runner.
+
+## Publish an already validated build
+
+The manually dispatched **Publish validated release** workflow can promote the
+exact two IPAs from a successful Build IPA run after its source is merged. It
+requires an existing tag on main, an identical tested source tree, and both IPA
+SHA-256 digests. The operator must select the standard pinned-web, height-channels-off
+build intended for public distribution. It downloads those immutable artifacts,
+checks their hashes and versions, generates the source history, and publishes all
+four assets together. Existing public releases cannot be overwritten. This avoids
+rebuilding identical app code or relying on local upload-host credentials.
