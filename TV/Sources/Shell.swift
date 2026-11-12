@@ -47,7 +47,8 @@ struct MainView: View {
     /// What a card's menu asked to play, from any page.
     @State private var choice: VersionChoice?
     @Namespace private var railScope
-    @Namespace private var pageScope
+    /// The whole screen, rail and page, which focus is re-picked within after a rail choice.
+    @Namespace private var shellScope
     @Environment(\.resetFocus) private var resetFocus
     /// Briefly true after a rail choice, so focus leaves the rail for the page.
     @State private var railLocked = false
@@ -73,7 +74,8 @@ struct MainView: View {
             .id(place)
             // One area the focus can move into from the rail, wherever on the page it lands.
             .focusSection()
-            .focusScope(pageScope)
+            // The page is where focus goes when the shell picks it again, rather than the rail.
+            .prefersDefaultFocus(true, in: shellScope)
             .environment(\.openPlace, { place = $0 })
             .environment(\.openRoute, { route in
                 var path = paths[place] ?? NavigationPath()
@@ -109,6 +111,7 @@ struct MainView: View {
             rail
         }
         .ignoresSafeArea()
+        .focusScope(shellScope)
         .font(Theme.font(Theme.base))
         .foregroundStyle(.white)
         .animation(.easeOut(duration: 0.2), value: open)
@@ -169,13 +172,18 @@ struct MainView: View {
     }
 
     /// Moves focus from the rail to the page just chosen, so the rail closes without a press right.
+    /// Focus is re-picked within the whole screen, where the page is the preferred default; a scope
+    /// holding only the page wouldn't take focus from the rail. The rail is off meanwhile, so it
+    /// can't be picked again, and a second try covers a page still appearing.
     private func leaveRail() {
         railLocked = true
         Task {
-            // The new page's views have to be there to take focus.
-            try? await Task.sleep(for: .milliseconds(150))
-            resetFocus(in: pageScope)
-            try? await Task.sleep(for: .milliseconds(450))
+            for wait in [100, 350] {
+                try? await Task.sleep(for: .milliseconds(wait))
+                guard railFocus != nil else { break }
+                resetFocus(in: shellScope)
+            }
+            try? await Task.sleep(for: .milliseconds(300))
             railLocked = false
         }
     }
