@@ -10,6 +10,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private let videoView = AetherPlayerView()
     private let overlay = SubtitleOverlayView()
     private let thumbnails = ThumbnailStore()
+    private var videoStage: VideoStage!
     private let bridge = Bridge()
     private let systemVolume = SystemVolumeControl()
     private let haptics = PlayerHaptics()
@@ -71,7 +72,9 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         self.webView = webView
         bridge.webView = webView
 
-        for view in [videoView, overlay, webView] as [UIView] {
+        videoStage = VideoStage(video: videoView, subtitles: overlay)
+        videoStage.web = webView
+        for view in [videoStage.view, webView] as [UIView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
             NSLayoutConstraint.activate([
@@ -81,6 +84,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 view.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
         }
+        videoStage.refresh()
         systemVolume.attach(to: root)
         view = root
     }
@@ -93,7 +97,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         player.showVideo = { [weak self] shown in
             self?.videoView.isHidden = !shown
             self?.overlay.isHidden = !shown
-            if !shown { self?.restoreBrightness() }
+            if !shown {
+                self?.restoreBrightness()
+                self?.videoStage.place(nil)
+            }
         }
         bridge.onMessage = { [weak self] type, message in self?.handle(type, message) }
         backgroundObserver = NotificationCenter.default.addObserver(
@@ -102,6 +109,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             Task { @MainActor [weak self] in self?.restoreBrightness() }
         }
         webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        videoStage?.refresh()
     }
 
     override var prefersStatusBarHidden: Bool { fullscreen }
@@ -138,6 +150,8 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             readLevels(message)
         case "set-level":
             setLevel(message)
+        case "player-frame":
+            videoStage.place(VideoFrame.from(message, webWidth: webView.bounds.width))
         case "fullscreen":
             setFullscreen(JSON.flag(message["value"]) ?? !fullscreen)
         case "update-check":

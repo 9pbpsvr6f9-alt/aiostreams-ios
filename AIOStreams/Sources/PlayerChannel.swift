@@ -27,6 +27,11 @@ final class PlayerChannel {
 
     private var bag = Set<AnyCancellable>()
     private var loadTask: Task<Void, Never>?
+    private var live = false
+    private var trailer = false
+    private let preloader = NextEpisodePreloader { url, headers in
+        await AetherEngine.prewarm(url: url, httpHeaders: headers)
+    }
     private var generation = 0
     /// The url the page asked for, exactly as it sent it, which its thumbnails name.
     private var loadedURL: String?
@@ -243,6 +248,10 @@ final class PlayerChannel {
     func handle(_ type: String, _ message: [String: Any]) -> Bool {
         switch type {
         case "player-load": load(message)
+        case "player-warm":
+            let headers = (message["headers"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+            preloader.prepare(message["url"] as? String, headers: headers,
+                              allowed: hasMedia && !live && !trailer)
         case "player-stop": stop()
         case "player-set": change(message)
         case "player-seek":
@@ -272,7 +281,7 @@ final class PlayerChannel {
                 guard !Task.isCancelled, current == self.generation else { return }
                 self.send(["type": "player-subtitle-lines", "track": track, "lines": tracks?[track] ?? []])
             }
-        case "player-skips", "player-controls", "player-stats-overlay", "player-frame", "player-unqueue":
+        case "player-skips", "player-controls", "player-stats-overlay", "player-unqueue":
             break
         case "player-settings":
             if let delay = JSON.number(message["audioDelayMs"]) { engine.setAudioDelay(delay / 1000) }
@@ -286,6 +295,8 @@ final class PlayerChannel {
 
     /// A page that loads again never owns the video the last one started.
     func pageLoading() {
+        preloader.cancel()
+        AetherEngine.discardPrewarmedSources()
         if loadedURL != nil { stop() }
         nowPlaying.setItem(nil)
     }
@@ -299,6 +310,9 @@ final class PlayerChannel {
         let startMs = JSON.number(message["startMs"]) ?? 0
         let mode = message["subtitleMode"] as? String ?? "default"
 
+        preloader.cancel()
+        live = JSON.flag(message["live"]) ?? false
+        trailer = JSON.flag(message["trailer"]) ?? false
         var options = LoadOptions()
         options.httpHeaders = headers
         options.isLive = JSON.flag(message["live"]) ?? false
@@ -378,6 +392,7 @@ final class PlayerChannel {
     }
 
     private func stop() {
+        preloader.cancel()
         generation += 1
         loadTask?.cancel()
         loadTask = nil

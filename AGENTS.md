@@ -11,3 +11,6 @@
 - Preserve the owner's existing native subtitle renderer changes.
 - Work on feature branches and open PRs. Do not merge into main without a new,
   explicit instruction from the owner.
+
+- Use `experimental` for features that have not been approved for main. Open a PR
+  for review and candidate builds; do not merge experimental work without explicit approval.

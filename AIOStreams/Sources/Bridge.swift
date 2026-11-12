@@ -57,7 +57,14 @@ final class Bridge: NSObject {
           const handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(handlerName);
           if (!handler) return;
           const listeners = new Set();
-          const send = (message) => handler.postMessage(JSON.stringify(message));
+          const send = (message) => {
+            // The page scales its frame by visualViewport.scale; send a width in the same units.
+            if (message.type === 'player-frame' && message.frame) {
+              const scale = window.visualViewport?.scale || 1;
+              message = { ...message, pageWidth: window.innerWidth * scale };
+            }
+            handler.postMessage(JSON.stringify(message));
+          };
           Object.defineProperty(window, '__aiostreamsAppReceive', {
             value(message) {
               for (const listener of listeners) {
@@ -73,7 +80,7 @@ final class Bridge: NSObject {
             protocol: 2,
             version: \(literal(AppInfo.version)),
             platform: 'ios',
-            miniPlayer: false,
+            miniPlayer: true,
             device: \(literal(AppInfo.deviceName)),
             deviceId: \(literal(AppInfo.deviceId)),
             send,

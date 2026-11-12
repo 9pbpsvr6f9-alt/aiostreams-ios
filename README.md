@@ -165,3 +165,10 @@ AetherEngine notes that these components may be subject to third-party patent li
 AGPL-3.0, like AIOStreams (`LICENSE`). AetherEngine is LGPL-3.0 with an App Store exception, and is linked statically from its tagged release. FFmpeg is LGPL-2.1+ and is embedded as dynamic frameworks. The app's licences screen lists both.
 
 This is an unofficial port, not affiliated with AIOStreams or AetherEngine.
+
+## Experimental iOS features
+
+Unreleased work lives on `experimental` until explicitly approved for main. Candidate builds do not publish to the stable FlareStore feed.
+
+- Trailer previews can play automatically in cards, the home hero and title pages, using the existing **Settings → Interface → Trailers** options. The player follows the preview's box beneath the page; Reduce Motion, background pages, data-saving mode and active playback keep the upstream autoplay restrictions. Empty trailer lists in row summaries wait for the title's details.
+- With next-episode autoplay enabled, the countdown warms the next video's first bytes through AetherEngine. It preserves the exact URL and required headers, excludes live video and trailers, and cancels unfinished work when dismissed, replaced or stopped. The page still controls when the next episode starts. Finished warm data is bounded by the engine's cache and cleared on page reload.
