@@ -35,6 +35,34 @@ index 968337d..59796db 100644
            value={overrideStyled}
            onValueChange={setOverrideStyled}
          />
+diff --git a/packages/web/src/features/player/gestures.ts b/packages/web/src/features/player/gestures.ts
+index 07a04fb..e7b74d7 100644
+--- a/packages/web/src/features/player/gestures.ts
++++ b/packages/web/src/features/player/gestures.ts
+@@ -138,7 +138,7 @@ export function usePlayerGestures(gestures: Gestures) {
+       shown: null,
+     };
+     if (levels)
+-      void levels.read().then((now) => {
++      void levels.read(swipe.level).then((now) => {
+         swipe.from = now[swipe.level];
+         apply(swipe);
+       });
+diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
+index f7a92d4..77125c6 100644
+--- a/packages/web/src/lib/hosts/index.ts
++++ b/packages/web/src/lib/hosts/index.ts
+@@ -87,7 +87,9 @@ export interface Host {
+   fullscreen?: { active(): boolean; set(on: boolean): void };
+   /** The device's media volume and screen brightness, 0 to 1, which swipes on the video set. */
+   levels?: {
+-    read(): Promise<{ volume: number; brightness: number }>;
++    read(
++      level?: 'volume' | 'brightness'
++    ): Promise<{ volume: number; brightness: number }>;
+     set(level: 'volume' | 'brightness', value: number): void;
+     /** Hands the brightness back to the system. */
+     release(): void;
 diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
 index 39f60cb..f18c1eb 100644
 --- a/packages/web/src/lib/hosts/shell/bridge.ts
@@ -79,7 +107,7 @@ index 0c2fe1b..935eaf7 100644
  }
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..964adf3
+index 0000000..2d6a82c
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
 @@ -0,0 +1,34 @@
@@ -106,7 +134,7 @@ index 0000000..964adf3
 +  playerFeatures: ['audio', 'chapters', 'headers'],
 +  resolveYouTube,
 +  levels: {
-+    read: () => ask({ type: 'levels' }, 'levels'),
++    read: (level) => ask({ type: 'levels', level }, 'levels'),
 +    set: (level, value) => appBridge()?.send({ type: 'set-level', level, value }),
 +    release: () => appBridge()?.send({ type: 'set-level', level: 'brightness', value: null }),
 +  },

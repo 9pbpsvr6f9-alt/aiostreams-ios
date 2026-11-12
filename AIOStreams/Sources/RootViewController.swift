@@ -122,8 +122,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 "player": AppInfo.player,
             ])
         case "levels":
-            bridge.send(["type": "levels", "volume": systemVolume.value,
-                         "brightness": Double(playerScreen.brightness)])
+            readLevels(message)
         case "set-level":
             setLevel(message)
         case "fullscreen":
@@ -193,6 +192,23 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         view.window?.windowScene?.screen ?? UIScreen.main
     }
 
+    private func readLevels(_ message: [String: Any]) {
+        var volume = systemVolume.value
+        if message["level"] as? String == "volume", player.hasMedia,
+           UIApplication.shared.applicationState == .active,
+           let start = SwipeVolume.start(system: volume, player: player.effectivePlaybackVolume),
+           systemVolume.set(start) {
+            // Lower system volume BEFORE removing player attenuation. This happens once,
+            // on the initial read for a volume swipe, never for a brightness swipe.
+            player.prepareForSystemVolumeControl()
+            // outputVolume may publish asynchronously; the gesture needs the normalized
+            // starting value, not the previous system value, to avoid a first-move jump.
+            volume = start
+        }
+        bridge.send(["type": "levels", "volume": volume,
+                     "brightness": Double(playerScreen.brightness)])
+    }
+
     private func setLevel(_ message: [String: Any]) {
         guard let level = message["level"] as? String else { return }
         // The web player releases its temporary brightness when its gesture layer unmounts.
@@ -204,9 +220,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
               let value = JSON.number(message["value"]) else { return }
         let clamped = min(max(value, 0), 1)
         if level == "volume" {
-            if systemVolume.set(clamped) {
-                player.prepareForSystemVolumeControl()
-            } else {
+            if !systemVolume.set(clamped) {
                 AppLog.info("player", "System volume is not adjustable on the current audio route")
             }
         } else if level == "brightness" {

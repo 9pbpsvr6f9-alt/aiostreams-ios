@@ -84,8 +84,9 @@ To run it from Xcode instead, run `scripts/build-web.sh`, then `xcodegen generat
 Swipe vertically on the video: the left half adjusts screen brightness and the
 right half adjusts the iPhone/iPad system media volume. Swipe up to increase, down to decrease; the
 player shows a percentage. Brightness returns to its original value when leaving
-the player or backgrounding the app. The volume percentage follows the current audio route and hardware buttons. A volume
-swipe clears any earlier player attenuation or mute. System volume remains where
+the player or backgrounding the app. The volume percentage follows the current audio route and hardware buttons. At the start of a volume
+swipe, system volume is multiplied by the current player gain (zero when muted),
+then player gain is reset to full. This avoids a jump when the page slider was lower. System volume remains where
 you set it when leaving the player; fixed-volume routes may require their own controls. Buttons, the seek bar and system edge gestures retain
 their normal behavior. Swipe on the video away from the top/bottom screen edges.
 
