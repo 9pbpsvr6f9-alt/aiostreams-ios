@@ -1,5 +1,6 @@
 import Foundation
 import CoreFoundation
+import CoreGraphics
 
 /// Native placement of a page's trailer or mini player. Coordinates include the viewport zoom.
 struct VideoFrame: Equatable {
