@@ -90,6 +90,15 @@ then player gain is reset to full. This avoids a jump when the page slider was l
 you set it when leaving the player; fixed-volume routes may require their own controls. Buttons, the seek bar and system edge gestures retain
 their normal behavior. Swipe on the video away from the top/bottom screen edges.
 
+Under **Settings → Playback → iPhone and iPad**, you can switch off haptic feedback
+or advanced player gestures. A single tap still shows controls when gestures are off.
+Haptics use light action pulses and spaced five-percent ticks during level changes,
+on supported hardware. Player notices appear near the top safe area.
+
+Enable **Fill screen on start** to crop each new video to fill the screen without
+stretching it. The in-player Fit/Crop control still works for the current video;
+the next video starts filled again. Turning the option off restores Fit.
+
 ## What maps to what
 
 | Page message | iOS app |

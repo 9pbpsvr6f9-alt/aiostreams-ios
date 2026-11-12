@@ -15,8 +15,71 @@ index e41938f..d8ffaba 100644
              shell.app,
            ],
            ...(shell.player && !shell.mpv
+diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
+index 2e7bd37..911ac2b 100644
+--- a/packages/web/src/app/settings/playback.tsx
++++ b/packages/web/src/app/settings/playback.tsx
+@@ -1,4 +1,5 @@
+ import React from 'react';
++import { appBridge } from '@/lib/hosts/shell/bridge';
+ import { plural, t } from '@lingui/core/macro';
+ import { Trans } from '@lingui/react/macro';
+ import { Select } from '@aiostreams/ui/select';
+@@ -102,6 +103,44 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
+   );
+ }
+ 
++function IosPlayerSettings() {
++  const [haptics, setHaptics] = useSetting(settings.ios.haptics);
++  const [gestures, setGestures] = useSetting(settings.ios.gestures);
++  const [fill, setFill] = useSetting(settings.ios.fillOnStart);
++  return (
++    <SettingsCard
++      name="ios-player"
++      title={t`iPhone and iPad`}
++      description={onDevice()}
++    >
++      <Switch
++        side="right"
++        label={t`Haptic feedback`}
++        help={t`Light feedback for play, pause, seeking and brightness or volume adjustments. Available on supported devices.`}
++        value={haptics}
++        onValueChange={setHaptics}
++      />
++      <Switch
++        side="right"
++        label={t`Player gestures`}
++        help={t`Enable brightness and volume swipes, double-tap seeking, hold for speed and pinch to zoom. Buttons and a single tap to show controls still work when off.`}
++        value={gestures}
++        onValueChange={setGestures}
++      />
++      <Switch
++        side="right"
++        label={t`Fill screen on start`}
++        help={t`Zoom each new video to fill the screen without stretching. Picture edges may be cropped. You can still change the picture fit in the player. Turning this off restores Fit.`}
++        value={fill}
++        onValueChange={(on) => {
++          setFill(on);
++          settings.video.fit.write(on ? 'crop' : 'fit');
++        }}
++      />
++    </SettingsCard>
++  );
++}
++
+ export function PlaybackSection() {
+   const { prefs, update } = usePlaybackPrefs();
+   const [seekStep, setSeekStep] = useSetting(settings.controls.seekStep);
+@@ -154,6 +193,7 @@ export function PlaybackSection() {
+ 
+   return (
+     <>
++      {appBridge()?.platform === 'ios' && <IosPlayerSettings />}
+       <SettingsCard
+         name="versions"
+         title={t`Versions`}
 diff --git a/packages/web/src/app/settings/subtitles.tsx b/packages/web/src/app/settings/subtitles.tsx
-index 968337d..59796db 100644
+index 968337d..d6f175e 100644
 --- a/packages/web/src/app/settings/subtitles.tsx
 +++ b/packages/web/src/app/settings/subtitles.tsx
 @@ -1,3 +1,4 @@
@@ -24,22 +87,147 @@ index 968337d..59796db 100644
  import { t } from '@lingui/core/macro';
  import { Trans } from '@lingui/react/macro';
  import { Select } from '@aiostreams/ui/select';
-@@ -253,7 +254,9 @@ export function SubtitlesSection() {
+@@ -253,7 +254,11 @@ export function SubtitlesSection() {
          <Switch
            side="right"
            label={t`Apply to styled subtitles too`}
 -          help={t`Styled subtitles, common in anime, keep their own fonts and colours unless this is on. Blu-ray and DVD subtitles always keep their look and size. Only in the desktop app.`}
-+          help={appBridge()?.platform === 'ios'
-+            ? t`Styled subtitles keep their own colours and placement unless this is on, which shows them as plain text in your style. Blu-ray and DVD subtitles keep their look at the size chosen above.`
-+            : t`Styled subtitles, common in anime, keep their own fonts and colours unless this is on. Blu-ray and DVD subtitles always keep their look and size. Only in the desktop app.`}
++          help={
++            appBridge()?.platform === 'ios'
++              ? t`Styled subtitles keep their own colours and placement unless this is on, which shows them as plain text in your style. Blu-ray and DVD subtitles keep their look at the size chosen above.`
++              : t`Styled subtitles, common in anime, keep their own fonts and colours unless this is on. Blu-ray and DVD subtitles always keep their look and size. Only in the desktop app.`
++          }
            value={overrideStyled}
            onValueChange={setOverrideStyled}
          />
+diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
+index 87e0d0f..10290a7 100644
+--- a/packages/web/src/features/player/controls.tsx
++++ b/packages/web/src/features/player/controls.tsx
+@@ -18,6 +18,7 @@ import { LoadingSpinner } from '@aiostreams/ui/loading-spinner';
+ import { cn } from '@aiostreams/ui/core/styling';
+ import { clock, clockTime, itemSubtitle, itemTitle } from '@/lib/format';
+ import { currentHost } from '@/lib/hosts';
++import { iosFeedback } from '@/lib/hosts/shell/ios-feedback';
+ import { appBridge } from '@/lib/hosts/shell/bridge';
+ import type { PlayerController } from '@/lib/playback/controller';
+ import { settings, useSetting } from '@/lib/settings';
+@@ -213,6 +214,7 @@ export function PlayerControls({
+     if (text) showNotice(text, 'failed' in syncOutcome ? 4000 : 2000);
+   }, [syncOutcome, showNotice]);
+   const togglePlay = () => {
++    iosFeedback('toggle');
+     showFlash(latest.current.state.paused);
+     latest.current.togglePlay();
+   };
+@@ -223,6 +225,7 @@ export function PlayerControls({
+   const [seekPicture, setSeekPicture] = React.useState(true);
+   const seekBy = (deltaMs: number, picture = true) => {
+     if (live) return;
++    iosFeedback('seek');
+     setSeekPicture(picture);
+     burstSeek(deltaMs);
+     showSeekFlash(deltaMs);
+@@ -314,7 +317,7 @@ export function PlayerControls({
+     player,
+     seekBy: (deltaMs) => seekBy(deltaMs, false),
+     seekStepMs: seekStep * 1000,
+-    notice: showNotice,
++    notice: (text) => showNotice(text, 1200, true),
+     onTap: () => (shown.get() ? hide() : wake()),
+     onClick: togglePlay,
+     onDoubleClick: () => latest.current.toggleFullscreen?.(),
+@@ -334,8 +337,10 @@ export function PlayerControls({
+       const s = scrubbing.current;
+       scrubbing.current = null;
+       setScrub(null);
+-      if (commit && s && Math.abs(s.toMs - s.fromMs) >= 1000)
++      if (commit && s && Math.abs(s.toMs - s.fromMs) >= 1000) {
++        iosFeedback('seek');
+         latest.current.seek(s.toMs);
++      }
+       wake();
+     },
+     onPinch: player.fit
+@@ -710,7 +715,10 @@ export function PlayerControls({
+               previewPicture={!strip && (!!scrub || seekPicture)}
+               handle={touch}
+               thumbnails={player.thumbnails}
+-              onSeek={player.seek}
++              onSeek={(ms) => {
++                iosFeedback('seek');
++                player.seek(ms);
++              }}
+               onStep={(direction, held) =>
+                 tv
+                   ? remoteStep(direction * seekStep * 1000, held)
+diff --git a/packages/web/src/features/player/feedback.tsx b/packages/web/src/features/player/feedback.tsx
+index 320a9ca..3d978f8 100644
+--- a/packages/web/src/features/player/feedback.tsx
++++ b/packages/web/src/features/player/feedback.tsx
+@@ -1,14 +1,26 @@
+ import React from 'react';
++import { appBridge } from '@/lib/hosts/shell/bridge';
+ import { motion } from 'motion/react';
+ import { PiPauseDuotone, PiPlayDuotone } from 'react-icons/pi';
+ import { LuFastForward, LuRotateCcw, LuRotateCw } from 'react-icons/lu';
+ import { clock } from '@/lib/format';
+ 
+-export function Notice({ text }: { text: string }) {
++export function Notice({
++  text,
++  nearTop = false,
++}: {
++  text: string;
++  nearTop?: boolean;
++}) {
+   return (
+     <div
+       data-ui="player-notice"
+       className="pointer-events-none absolute inset-x-0 top-20 flex justify-center px-4"
++      style={
++        nearTop && appBridge()?.platform === 'ios'
++          ? { top: 'max(12px, env(safe-area-inset-top))' }
++          : undefined
++      }
+     >
+       <span className="rounded-full bg-black/70 px-4 py-1.5 text-center text-sm font-medium tabular-nums">
+         {text}
+@@ -19,17 +31,19 @@ export function Notice({ text }: { text: string }) {
+ 
+ export function useNotice(): [
+   React.ReactNode,
+-  (text: string, ms?: number) => void,
++  (text: string, ms?: number, nearTop?: boolean) => void,
+ ] {
+   const [text, setText] = React.useState<string | null>(null);
++  const [nearTop, setNearTop] = React.useState(false);
+   const timer = React.useRef<ReturnType<typeof setTimeout>>(undefined);
+   React.useEffect(() => () => clearTimeout(timer.current), []);
+-  const show = React.useCallback((next: string, ms = 1200) => {
++  const show = React.useCallback((next: string, ms = 1200, raised = false) => {
++    setNearTop(raised);
+     clearTimeout(timer.current);
+     setText(next);
+     timer.current = setTimeout(() => setText(null), ms);
+   }, []);
+-  return [text && <Notice text={text} />, show];
++  return [text && <Notice text={text} nearTop={nearTop} />, show];
+ }
+ 
+ export function useToggleFlash(): [React.ReactNode, (paused: boolean) => void] {
 diff --git a/packages/web/src/features/player/gestures.ts b/packages/web/src/features/player/gestures.ts
-index 07a04fb..e7b74d7 100644
+index 07a04fb..e047bb9 100644
 --- a/packages/web/src/features/player/gestures.ts
 +++ b/packages/web/src/features/player/gestures.ts
-@@ -138,7 +138,7 @@ export function usePlayerGestures(gestures: Gestures) {
+@@ -1,5 +1,6 @@
+ import { t } from '@lingui/core/macro';
+ import React from 'react';
++import { iosGesturesEnabled } from '@/lib/hosts/shell/ios-feedback';
+ import { currentHost } from '@/lib/hosts';
+ import type { PlayerController } from '@/lib/playback/controller';
+ import { useLatest } from '@/hooks/use-latest';
+@@ -138,7 +139,7 @@ export function usePlayerGestures(gestures: Gestures) {
        shown: null,
      };
      if (levels)
@@ -48,6 +236,113 @@ index 07a04fb..e7b74d7 100644
          swipe.from = now[swipe.level];
          apply(swipe);
        });
+@@ -162,6 +163,13 @@ export function usePlayerGestures(gestures: Gestures) {
+ 
+   const onTouchDown = (e: React.PointerEvent<HTMLElement>) => {
+     points.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
++    if (!iosGesturesEnabled() && points.current.size > 1) {
++      if (press.current) end(press.current, false);
++      press.current = null;
++      clearTimeout(pending.current);
++      lastTap.current = null;
++      return;
++    }
+     if (points.current.size === 2) {
+       // A second finger makes it a pinch.
+       if (press.current) end(press.current, false);
+@@ -186,7 +194,12 @@ export function usePlayerGestures(gestures: Gestures) {
+       swipe: null,
+       scrubX: 0,
+       timer: setTimeout(() => {
+-        if (press.current !== p || p.kind !== 'pending') return;
++        if (
++          !iosGesturesEnabled() ||
++          press.current !== p ||
++          p.kind !== 'pending'
++        )
++          return;
+         const release = latest.current.hold();
+         p.kind = release ? 'held' : 'none';
+         if (release) p.release = release;
+@@ -196,6 +209,14 @@ export function usePlayerGestures(gestures: Gestures) {
+   };
+ 
+   const onTouchMove = (e: React.PointerEvent<HTMLElement>) => {
++    if (!iosGesturesEnabled()) {
++      const p = press.current;
++      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > SWIPE_PX) {
++        clearTimeout(p.timer);
++        p.kind = 'none';
++      }
++      return;
++    }
+     if (points.current.has(e.pointerId))
+       points.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+     const spread = pinch.current;
+@@ -247,7 +268,8 @@ export function usePlayerGestures(gestures: Gestures) {
+     press.current = null;
+     if (p.kind === 'pending' && !cancel) {
+       clearTimeout(p.timer);
+-      tap(p.side);
++      if (iosGesturesEnabled()) tap(p.side);
++      else latest.current.onTap();
+     } else end(p, !cancel);
+   };
+ 
+@@ -271,7 +293,7 @@ export function usePlayerGestures(gestures: Gestures) {
+       e.currentTarget.setPointerCapture(e.pointerId);
+       const m: NonNullable<typeof mouse.current> = {
+         timer: setTimeout(() => {
+-          if (mouse.current !== m) return;
++          if (!iosGesturesEnabled() || mouse.current !== m) return;
+           m.release = latest.current.hold() || undefined;
+         }, HOLD_MS),
+       };
+@@ -294,7 +316,8 @@ export function usePlayerGestures(gestures: Gestures) {
+       if (!swallow && pointer.current !== 'touch') latest.current.onClick();
+     },
+     onDoubleClick: () => {
+-      if (pointer.current !== 'touch') latest.current.onDoubleClick();
++      if (iosGesturesEnabled() && pointer.current !== 'touch')
++        latest.current.onDoubleClick();
+     },
+   };
+ }
+diff --git a/packages/web/src/features/player/options.tsx b/packages/web/src/features/player/options.tsx
+index 8cc128d..1207b12 100644
+--- a/packages/web/src/features/player/options.tsx
++++ b/packages/web/src/features/player/options.tsx
+@@ -1,3 +1,4 @@
++import { iosFeedback } from '@/lib/hosts/shell/ios-feedback';
+ import { plural, t } from '@lingui/core/macro';
+ import { Trans } from '@lingui/react/macro';
+ import React from 'react';
+@@ -644,7 +645,12 @@ export function OptionButtons({
+           icon={<LuAudioLines />}
+           options={player.audioTracks}
+           value={state.audio}
+-          onSelect={(id) => id && player.setAudio(id)}
++          onSelect={(id) => {
++            if (id) {
++              iosFeedback('track');
++              player.setAudio(id);
++            }
++          }}
+           {...menuState('audio')}
+           pages={
+             player.sound
+@@ -671,7 +677,10 @@ export function OptionButtons({
+             options: subtitles.hidden,
+           }}
+           value={state.subtitle}
+-          onSelect={player.setSubtitle}
++          onSelect={(id) => {
++            iosFeedback('track');
++            player.setSubtitle(id);
++          }}
+           {...menuState('subtitles')}
+           action={
+             player.subtitleFiles && {
 diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
 index f7a92d4..77125c6 100644
 --- a/packages/web/src/lib/hosts/index.ts
@@ -77,7 +372,7 @@ index 39f60cb..f18c1eb 100644
    /** The Android app on a TV. */
    tv?: boolean;
 diff --git a/packages/web/src/lib/hosts/shell/index.ts b/packages/web/src/lib/hosts/shell/index.ts
-index 0c2fe1b..935eaf7 100644
+index 0c2fe1b..6de9d17 100644
 --- a/packages/web/src/lib/hosts/shell/index.ts
 +++ b/packages/web/src/lib/hosts/shell/index.ts
 @@ -10,6 +10,7 @@ import type { Host } from '..';
@@ -88,16 +383,20 @@ index 0c2fe1b..935eaf7 100644
  import { playerSettings } from './player';
  import { onUpscalingChange } from '@/lib/playback/upscaling';
  
-@@ -85,7 +86,7 @@ export function ShellSetup() {
+@@ -85,7 +86,11 @@ export function ShellSetup() {
      const unsubscribeSettings = onSettingsChange(apply);
      const unsubscribeUpscaling = onUpscalingChange(apply);
      const teardown =
 -      shell.platform === 'android' ? setupAndroid() : setupDesktop();
-+      shell.platform === 'android' ? setupAndroid() : shell.platform === 'ios' ? setupIos() : setupDesktop();
++      shell.platform === 'android'
++        ? setupAndroid()
++        : shell.platform === 'ios'
++          ? setupIos()
++          : setupDesktop();
      shell.send({ type: 'player-sync' });
      return () => {
        unsubscribeSettings();
-@@ -182,5 +183,6 @@ export function crashReportSeen(at: number): void {
+@@ -182,5 +187,6 @@ export function crashReportSeen(at: number): void {
  export function shellHost(): Host | null {
    const bridge = appBridge();
    if (bridge?.protocol !== 2) return null;
@@ -105,12 +404,30 @@ index 0c2fe1b..935eaf7 100644
 +  if (bridge.platform === 'android') return androidHost;
 +  return bridge.platform === 'ios' ? iosHost : desktopHost;
  }
+diff --git a/packages/web/src/lib/hosts/shell/ios-feedback.ts b/packages/web/src/lib/hosts/shell/ios-feedback.ts
+new file mode 100644
+index 0000000..aed8da0
+--- /dev/null
++++ b/packages/web/src/lib/hosts/shell/ios-feedback.ts
+@@ -0,0 +1,11 @@
++import { settings } from '@/lib/settings';
++import { appBridge } from './bridge';
++
++export function iosFeedback(action: 'toggle' | 'seek' | 'track'): void {
++  const bridge = appBridge();
++  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
++    bridge.send({ type: 'player-haptic', action });
++}
++
++export const iosGesturesEnabled = () =>
++  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..2d6a82c
+index 0000000..bf0fef1
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,34 @@
+@@ -0,0 +1,52 @@
++import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
 +import { appEngine } from './player';
@@ -123,7 +440,18 @@ index 0000000..2d6a82c
 +  const unsubscribe = appBridge()?.subscribe((m) => {
 +    if (m.type === 'fullscreen') fullscreen = m.value;
 +  });
-+  return () => unsubscribe?.();
++  const apply = () =>
++    appBridge()?.send({
++      type: 'ios-player-settings',
++      haptics: settings.ios.haptics.read(),
++      gestures: settings.ios.gestures.read(),
++    });
++  apply();
++  const stopSettings = onSettingsChange(apply);
++  return () => {
++    unsubscribe?.();
++    stopSettings();
++  };
 +}
 +
 +/** The iOS app: the page over AetherEngine, which draws the video beneath it. */
@@ -135,8 +463,14 @@ index 0000000..2d6a82c
 +  resolveYouTube,
 +  levels: {
 +    read: (level) => ask({ type: 'levels', level }, 'levels'),
-+    set: (level, value) => appBridge()?.send({ type: 'set-level', level, value }),
-+    release: () => appBridge()?.send({ type: 'set-level', level: 'brightness', value: null }),
++    set: (level, value) =>
++      appBridge()?.send({ type: 'set-level', level, value }),
++    release: () =>
++      appBridge()?.send({
++        type: 'set-level',
++        level: 'brightness',
++        value: null,
++      }),
 +  },
 +  fullscreen: {
 +    active: () => fullscreen,
@@ -157,19 +491,61 @@ index 03c7dde..030e75e 100644
    if (shell.platform !== 'android') return 'AIOStreams Desktop';
    return shell.tv ? 'AIOStreams Android TV' : 'AIOStreams Android';
  }
+diff --git a/packages/web/src/lib/playback/use-player.ts b/packages/web/src/lib/playback/use-player.ts
+index 0a565dd..a730fc3 100644
+--- a/packages/web/src/lib/playback/use-player.ts
++++ b/packages/web/src/lib/playback/use-player.ts
+@@ -1,3 +1,4 @@
++import { currentHost } from '@/lib/hosts';
+ import { t } from '@lingui/core/macro';
+ import React from 'react';
+ import type { JellyfinClient } from '@/lib/jellyfin/client';
+@@ -166,6 +167,14 @@ export function usePlayer(
+   const [retry, setRetry] = React.useState<PlayerController['retry']>();
+   const [lift] = React.useState(() => createLive(0));
+   const [shownLift] = React.useState(() => createLive(0));
++  React.useLayoutEffect(() => {
++    if (
++      currentHost().name === 'ios-app' &&
++      settings.ios.fillOnStart.read() &&
++      opts.fit === undefined
++    )
++      settings.video.fit.write('crop');
++  }, [url, opts.fit]);
+   const [savedFit] = useSetting(settings.video.fit);
+   const fit = opts.fit ?? savedFit;
+   const servers = React.useMemo(
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..d03259b 100644
+index 9be266c..85b40d9 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
-@@ -140,7 +140,7 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
+@@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
  export const SEGMENT_ACTIONS = ['ask', 'skip', 'none'] as const;
  export type SegmentAction = (typeof SEGMENT_ACTIONS)[number];
  
 -export const SUBTITLE_SIZES = ['small', 'normal', 'large', 'huge'] as const;
-+export const SUBTITLE_SIZES = ['smaller', 'small', 'normal', 'large', 'huge'] as const;
++export const SUBTITLE_SIZES = [
++  'smaller',
++  'small',
++  'normal',
++  'large',
++  'huge',
++] as const;
  export type SubtitleSize = (typeof SUBTITLE_SIZES)[number];
  /** `default` keeps the player's own font. */
  export const SUBTITLE_FONTS = [
+@@ -605,6 +611,11 @@ export const settings = {
+       MINI_CORNERS
+     ),
+   },
++  ios: {
++    haptics: device<boolean>('aiostreams-ios-haptics', true),
++    gestures: device<boolean>('aiostreams-ios-gestures', true),
++    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
++  },
+   video: {
+     fit: device<VideoFit>('aiostreams-web-video-fit', 'fit', VIDEO_FITS),
+     hardwareDecoding: device<boolean>(
 diff --git a/packages/web/src/lib/subtitles/style.ts b/packages/web/src/lib/subtitles/style.ts
 index 4623557..6309ce8 100644
 --- a/packages/web/src/lib/subtitles/style.ts
@@ -190,3 +566,51 @@ index 4623557..6309ce8 100644
      small: t`Small`,
      normal: t`Normal`,
      large: t`Large`,
+diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
+index 2014fb0..ef9e766 100644
+--- a/packages/web/src/locales/en-GB.po
++++ b/packages/web/src/locales/en-GB.po
+@@ -5752,3 +5752,43 @@ msgstr "Your rating"
+ #: src/app/settings/cache.tsx
+ msgid "Your watch history and totals."
+ msgstr "Your watch history and totals."
++
++#. iOS host additions
++msgid "Enable brightness and volume swipes, double-tap seeking, hold for speed and pinch to zoom. Buttons and a single tap to show controls still work when off."
++msgstr "Enable brightness and volume swipes, double-tap seeking, hold for speed and pinch to zoom. Buttons and a single tap to show controls still work when off."
++
++#. iOS host additions
++msgid "Fill screen on start"
++msgstr "Fill screen on start"
++
++#. iOS host additions
++msgid "Haptic feedback"
++msgstr "Haptic feedback"
++
++#. iOS host additions
++msgid "Light feedback for play, pause, seeking and brightness or volume adjustments. Available on supported devices."
++msgstr "Light feedback for play, pause, seeking and brightness or volume adjustments. Available on supported devices."
++
++#. iOS host additions
++msgid "Player gestures"
++msgstr "Player gestures"
++
++#. iOS host additions
++msgid "Smaller"
++msgstr "Smaller"
++
++#. iOS host additions
++msgid "Styled subtitles keep their own colours and placement unless this is on, which shows them as plain text in your style. Blu-ray and DVD subtitles keep their look at the size chosen above."
++msgstr "Styled subtitles keep their own colours and placement unless this is on, which shows them as plain text in your style. Blu-ray and DVD subtitles keep their look at the size chosen above."
++
++#. iOS host additions
++msgid "Zoom each new video to fill the screen without stretching. Picture edges may be cropped. You can still change the picture fit in the player. Turning this off restores Fit."
++msgstr "Zoom each new video to fill the screen without stretching. Picture edges may be cropped. You can still change the picture fit in the player. Turning this off restores Fit."
++
++#. iOS host additions
++msgid "iOS app"
++msgstr "iOS app"
++
++#. iOS host additions
++msgid "iPhone and iPad"
++msgstr "iPhone and iPad"

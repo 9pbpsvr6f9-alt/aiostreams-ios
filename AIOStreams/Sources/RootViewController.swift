@@ -12,6 +12,8 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private let thumbnails = ThumbnailStore()
     private let bridge = Bridge()
     private let systemVolume = SystemVolumeControl()
+    private let haptics = PlayerHaptics()
+    private var gesturesEnabled = true
     private var webView: WKWebView!
     private var player: PlayerChannel!
 
@@ -121,6 +123,17 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 "ffmpeg": NSNull(),
                 "player": AppInfo.player,
             ])
+        case "ios-player-settings":
+            if let enabled = JSON.flag(message["haptics"]) { haptics.enabled = enabled }
+            if let enabled = JSON.flag(message["gestures"]) {
+                gesturesEnabled = enabled
+                if !enabled { restoreBrightness() }
+            }
+        case "player-haptic":
+            if player.hasMedia, UIApplication.shared.applicationState == .active,
+               let action = message["action"] as? String, ["toggle", "seek", "track"].contains(action) {
+                haptics.action(selectionChange: action == "track")
+            }
         case "levels":
             readLevels(message)
         case "set-level":
@@ -194,7 +207,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     private func readLevels(_ message: [String: Any]) {
         var volume = systemVolume.value
-        if message["level"] as? String == "volume", player.hasMedia,
+        if gesturesEnabled, message["level"] as? String == "volume", player.hasMedia,
            UIApplication.shared.applicationState == .active,
            let start = SwipeVolume.start(system: volume, player: player.effectivePlaybackVolume),
            systemVolume.set(start) {
@@ -204,6 +217,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             // outputVolume may publish asynchronously; the gesture needs the normalized
             // starting value, not the previous system value, to avoid a first-move jump.
             volume = start
+        }
+        if gesturesEnabled, let level = message["level"] as? String,
+           ["volume", "brightness"].contains(level) {
+            haptics.begin(level, value: level == "volume" ? volume : Double(playerScreen.brightness))
         }
         bridge.send(["type": "levels", "volume": volume,
                      "brightness": Double(playerScreen.brightness)])
@@ -216,11 +233,13 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             restoreBrightness()
             return
         }
-        guard player.hasMedia, UIApplication.shared.applicationState == .active,
+        guard gesturesEnabled, player.hasMedia, UIApplication.shared.applicationState == .active,
               let value = JSON.number(message["value"]) else { return }
         let clamped = min(max(value, 0), 1)
         if level == "volume" {
-            if !systemVolume.set(clamped) {
+            if systemVolume.set(clamped) {
+                haptics.tick(level, value: clamped)
+            } else {
                 AppLog.info("player", "System volume is not adjustable on the current audio route")
             }
         } else if level == "brightness" {
@@ -231,6 +250,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 brightnessBeforeSwipe = screen.brightness
             }
             screen.brightness = CGFloat(clamped)
+            haptics.tick(level, value: clamped)
         }
     }
 
