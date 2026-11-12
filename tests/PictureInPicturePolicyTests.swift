@@ -1,8 +1,6 @@
 var policy = PictureInPicturePolicy(supported: true, hasMedia: true, preview: false,
                                     playing: true, sourceAvailable: true, automaticEnabled: true)
 precondition(policy.automatic && policy.prepares)
-precondition(!policy.shouldStartInBackground(false), "An alert or notification shade alone is not an app switch")
-precondition(policy.shouldStartInBackground(true), "Home or opening another app should start eligible PiP")
 policy.preview = true
 precondition(!policy.prepares && !policy.automatic, "Autoplay artwork must never launch PiP")
 policy.preview = false; policy.playing = false

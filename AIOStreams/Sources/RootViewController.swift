@@ -63,10 +63,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.overrideUserInterfaceStyle = .dark
-        webView.underPageBackgroundColor = .black
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = .clear
+        // Apply after the transparent surface colors: this is the history/overscroll underlay.
+        webView.underPageBackgroundColor = .black
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
         webView.allowsBackForwardNavigationGestures = true

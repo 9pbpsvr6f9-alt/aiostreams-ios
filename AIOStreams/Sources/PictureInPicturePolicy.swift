@@ -9,6 +9,5 @@ struct PictureInPicturePolicy {
 
     var prepares: Bool { supported && hasMedia && !preview && sourceAvailable }
     var automatic: Bool { prepares && playing && automaticEnabled }
-    func shouldStartInBackground(_ backgrounded: Bool) -> Bool { automatic && backgrounded }
     static func pausesWhenStopped(wasActive: Bool, restoring: Bool) -> Bool { wasActive && !restoring }
 }

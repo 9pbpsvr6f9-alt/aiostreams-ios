@@ -15,7 +15,6 @@ final class PictureInPicture: NSObject {
     private var sourceKey: ObjectIdentifier?
     private var softwareSource: SoftwarePiPSource?
     private var retired: [ObjectIdentifier: (AVPictureInPictureController, SoftwarePiPSource?)] = [:]
-    private var possible: NSKeyValueObservation?
     private var bag = Set<AnyCancellable>()
     private var starting = false
     private var restoring = false
@@ -40,7 +39,6 @@ final class PictureInPicture: NSObject {
             .receive(on: DispatchQueue.main).sink { [weak self] _ in
                 guard let self else { return }
                 self.backgrounded = true
-                self.startAutomaticallyIfNeeded()
             }.store(in: &bag)
         NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
             .receive(on: DispatchQueue.main).sink { [weak self] _ in
@@ -73,12 +71,10 @@ final class PictureInPicture: NSObject {
             controller = native.flatMap { AVPictureInPictureController(playerLayer: $0) }
                 ?? software?.makePictureInPictureController()
             controller?.delegate = self
-            possible = controller?.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] _, _ in
-                Task { @MainActor in self?.startAutomaticallyIfNeeded() }
-            }
         }
+        // AVKit owns automatic entry and honors iOS's Start PiP Automatically preference.
+        // Do not emulate a manual button press from didEnterBackground to override that setting.
         controller?.canStartPictureInPictureAutomaticallyFromInline = policy.automatic
-        startAutomaticallyIfNeeded()
     }
 
     func toggle() {
@@ -96,17 +92,7 @@ final class PictureInPicture: NSObject {
         controller?.stopPictureInPicture()
     }
 
-    private func startAutomaticallyIfNeeded() {
-        guard policy.shouldStartInBackground(backgrounded), !starting,
-              let controller, !controller.isPictureInPictureActive,
-              controller.isPictureInPicturePossible else { return }
-        starting = true
-        manualRequest = false
-        controller.startPictureInPicture()
-    }
-
     func clear() {
-        possible = nil
         if let controller {
             controller.canStartPictureInPictureAutomaticallyFromInline = false
             if controller.isPictureInPictureActive || starting {
