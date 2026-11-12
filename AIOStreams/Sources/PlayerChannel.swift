@@ -20,6 +20,9 @@ final class PlayerChannel {
     private var generation = 0
     /// The url the page asked for, exactly as it sent it, which its thumbnails name.
     private var loadedURL: String?
+    private var loadedHeaders: [String: String] = [:]
+    private var indexTask: Task<[SubtitleIndex.Timeline]?, Never>?
+    private var lineWatch: Task<Void, Never>?
     private var wantsPaused = false
     private var volume: Double = 1
     private var muted = false
@@ -242,9 +245,24 @@ final class PlayerChannel {
         case "player-sync": sendAll()
         case "player-thumbnail": thumbnail(message)
         case "player-subtitle-index":
-            // The engine keeps no index of a file's subtitles to read ahead from.
-            send(["type": "player-subtitle-index", "tracks": NSNull()])
-        case "player-subtitle-lines", "player-skips", "player-controls", "player-stats-overlay", "player-frame", "player-unqueue":
+            Task { [weak self] in
+                guard let self else { return }
+                let current = self.generation
+                let tracks = await self.subtitleTimelines()
+                guard current == self.generation else { return }
+                self.send(["type": "player-subtitle-index", "tracks": tracks as Any? ?? NSNull()])
+            }
+        case "player-subtitle-lines":
+            lineWatch?.cancel()
+            guard let track = message["track"] as? String else { break }
+            lineWatch = Task { [weak self] in
+                guard let self else { return }
+                let current = self.generation
+                let tracks = await self.subtitleTimelines()
+                guard !Task.isCancelled, current == self.generation else { return }
+                self.send(["type": "player-subtitle-lines", "track": track, "lines": tracks?[track] ?? []])
+            }
+        case "player-skips", "player-controls", "player-stats-overlay", "player-frame", "player-unqueue":
             break
         case "player-settings":
             if let delay = JSON.number(message["audioDelayMs"]) { engine.setAudioDelay(delay / 1000) }
@@ -285,6 +303,10 @@ final class PlayerChannel {
         generation += 1
         let current = generation
         loadTask?.cancel()
+        indexTask?.cancel()
+        indexTask = nil
+        lineWatch?.cancel()
+        loadedHeaders = headers
         loadedURL = text
         ended = false
         restarted = false
@@ -314,11 +336,46 @@ final class PlayerChannel {
         }
     }
 
+    /// Pair the container's index with embedded engine tracks only; external tracks have no file index.
+    private func subtitleTimelines() async -> [String: [[String: Double]]]? {
+        guard let text = loadedURL, let url = URL(string: text) else { return nil }
+        let current = generation
+        if indexTask == nil {
+            let headers = loadedHeaders
+            indexTask = Task {
+                do { return try await SubtitleIndex.read(url: url, headers: headers) }
+                catch {
+                    AppLog.info("subtitles", "No subtitle index: \(error)")
+                    return nil
+                }
+            }
+        }
+        guard let timelines = await indexTask?.value, !timelines.isEmpty,
+              current == generation else { return nil }
+        var own = engine.subtitleTracks.filter { !$0.isExternal }.sorted { $0.id < $1.id }
+        // The web page can ask before the engine has published its tracks.
+        for _ in 0..<20 where own.isEmpty {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled, current == generation else { return nil }
+            own = engine.subtitleTracks.filter { !$0.isExternal }.sorted { $0.id < $1.id }
+        }
+        let pictureCodecs = ["pgssub", "dvdsub", "dvbsub", "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle"]
+        guard own.count == timelines.count,
+              zip(own, timelines).allSatisfy({ pictureCodecs.contains($0.codec.lowercased()) == $1.isPicture }) else { return nil }
+        return Dictionary(uniqueKeysWithValues: zip(own, timelines).map { track, timeline in
+            (String(track.id), timeline.lines.map { ["startMs": $0.start, "endMs": $0.end] })
+        })
+    }
+
     private func stop() {
         generation += 1
         loadTask?.cancel()
         loadTask = nil
         loadedURL = nil
+        loadedHeaders = [:]
+        indexTask?.cancel()
+        indexTask = nil
+        lineWatch?.cancel()
         engine.stop()
         overlay.clear()
         thumbnails.clear()

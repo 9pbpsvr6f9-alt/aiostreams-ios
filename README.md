@@ -51,11 +51,19 @@ It follows the design of the official Android and desktop apps, which are a web 
 └──────────────────────────────┘
 ```
 
+## Install and update from FlareStore
+
+Add [this source](https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json)
+in FlareStore or a compatible AltStore-format sideloader. Refresh it for new versions;
+your sideloader signs and installs each update. Both iPhone/iPad and Apple TV builds
+are listed. See [updates and FlareStore](docs/updates-and-flarestore.md) for signing,
+automated upstream PRs, release publication and the default-branch activation step.
+
 ## Getting an IPA
 
 You need macOS to build it; this repository has no prebuilt binary. Either:
 
-**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on a `macos-26` runner and uploads `AIOStreams.ipa` as a workflow artifact. Pushing a `v*` tag also attaches it to a release.
+**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on a `macos-26` runner and uploads `AIOStreams.ipa` as a workflow artifact. After this update is merged, successful main-branch builds also publish versioned releases and refresh the sideloading source. Manual builds can publish by enabling `publish_release`.
 
 **Locally on a Mac** with Xcode 27 (26.3 is AetherEngine's best-effort floor), Node 24, pnpm 11 and XcodeGen:
 
@@ -103,8 +111,8 @@ Not in the Apple TV app yet: scrubbing with the touch surface, playing the next 
 - **Downloads and offline playback.** The iOS host has no `downloads`, so the page hides them.
 - **Mini player and picture-in-picture.** The bridge reports `miniPlayer: false`.
 - **Stats overlay.** mpv's stats pages have no AetherEngine equivalent here.
-- **Subtitle line index.** It feeds the page's subtitle sync tools; the app answers that it has none.
-- **YouTube trailers.** `youtube-resolve` answers with no stream.
+- **Subtitle sync fallback.** Indexed Matroska, MP4 and MOV files now feed the page’s sync tools. Files without a usable index still have no decoded-line fallback.
+- **YouTube trailers.** Native resolution follows the reference app’s visionOS and Android clients; availability depends on YouTube.
 - **Desktop-only settings.** Cards such as mpv config, video output and audio devices may still show; the app answers each with an empty list.
 
 ## Updating
