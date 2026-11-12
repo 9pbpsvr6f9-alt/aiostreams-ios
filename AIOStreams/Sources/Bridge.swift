@@ -81,6 +81,7 @@ final class Bridge: NSObject {
             version: \(literal(AppInfo.version)),
             platform: 'ios',
             miniPlayer: true,
+            pip: true,
             device: \(literal(AppInfo.deviceName)),
             deviceId: \(literal(AppInfo.deviceId)),
             send,

@@ -76,3 +76,17 @@ struct VideoPresentation {
         frame = nil
     }
 }
+
+/// A centered cinema-width canvas removes conventional 16:9 trailer letterboxing, then the stage
+/// clips it to the artwork. It is preview-only; full playback keeps the user's own fit setting.
+enum PreviewLayout {
+    static let aspect: CGFloat = 2.39
+
+    static func contentRect(in size: CGSize) -> CGRect {
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else { return .zero }
+        let width = max(size.width, size.height * aspect)
+        let height = width / aspect
+        return CGRect(x: (size.width - width) / 2, y: (size.height - height) / 2,
+                      width: width, height: height)
+    }
+}

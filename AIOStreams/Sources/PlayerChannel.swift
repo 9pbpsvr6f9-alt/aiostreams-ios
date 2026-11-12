@@ -17,6 +17,10 @@ final class PlayerChannel {
 
     /// Used by the iOS host's swipe controls, including while playback is paused.
     var hasMedia: Bool { loadedURL != nil && !ended }
+    var isPreview: Bool { preview }
+    var pipEligibilityChanged: () -> Void = {}
+
+    func pauseFromPictureInPicture() { change(["paused": true]) }
     var effectivePlaybackVolume: Double { muted ? 0 : min(max(volume, 0), 1) }
 
     func prepareForSystemVolumeControl() {
@@ -29,6 +33,20 @@ final class PlayerChannel {
     private var loadTask: Task<Void, Never>?
     private var live = false
     private var trailer = false
+    private var preview = false
+    private var preferredGravity: AVLayerVideoGravity = .resizeAspect
+
+    func setPreviewMode(_ preview: Bool) {
+        self.preview = preview
+        applyVideoGravity()
+        pipEligibilityChanged()
+    }
+
+    private func applyVideoGravity(force: Bool = false) {
+        let gravity: AVLayerVideoGravity = preview ? .resizeAspectFill : preferredGravity
+        if force || engine.videoGravity != gravity { engine.videoGravity = gravity }
+        if overlay.gravity != gravity { overlay.gravity = gravity }
+    }
     private let preloader = NextEpisodePreloader { url, headers in
         await AetherEngine.prewarm(url: url, httpHeaders: headers)
     }
@@ -313,8 +331,10 @@ final class PlayerChannel {
         preloader.cancel()
         live = JSON.flag(message["live"]) ?? false
         trailer = JSON.flag(message["trailer"]) ?? false
+        setPreviewMode(JSON.flag(message["preview"]) ?? false)
         var options = LoadOptions()
         options.httpHeaders = headers
+        options.prepareNativeSubtitles = !trailer
         options.isLive = JSON.flag(message["live"]) ?? false
         options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
         // TrueHD Atmos and DTS:X with their heights, which iOS plays as Spatial Audio (OS 26 and later).
@@ -340,6 +360,7 @@ final class PlayerChannel {
         wantedThumbnail = nil
         overlay.clear()
         showVideo(true)
+        pipEligibilityChanged()
         state(["idle": false])
         AppLog.info("player", "load live=\(options.isLive) start=\(Int(startMs)) url=\(url.host ?? "?")")
 
@@ -349,6 +370,7 @@ final class PlayerChannel {
                 try await self.engine.load(url: url, startPosition: startMs > 0 ? startMs / 1000 : nil, options: options)
                 guard current == self.generation else { return }
                 self.applyTransport()
+                self.applyVideoGravity(force: true)
                 self.event("loaded")
                 if self.wantsPaused { self.engine.pause() } else { self.engine.play() }
             } catch is CancellationError {
@@ -405,6 +427,7 @@ final class PlayerChannel {
         overlay.clear()
         thumbnails.clear()
         showVideo(false)
+        pipEligibilityChanged()
         state(["idle": true])
     }
 
@@ -512,10 +535,8 @@ final class PlayerChannel {
         default: gravity = .resizeAspect
         }
         // The page sends its style every frame while the controls lift the subtitles.
-        if overlay.gravity != gravity {
-            engine.videoGravity = gravity
-            overlay.gravity = gravity
-        }
+        preferredGravity = gravity
+        applyVideoGravity()
         if let look = message["subtitles"] as? [String: Any] {
             overlay.look = SubtitleLook(json: look)
         }

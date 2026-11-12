@@ -57,6 +57,8 @@ jobs:
         run: cat AIOStreams/Sources/PlayerHapticPolicy.swift tests/PlayerHapticPolicyTests.swift | swift -
       - name: Test native trailer placement
         run: cat AIOStreams/Sources/VideoFrame.swift tests/VideoFrameTests.swift | swift -
+      - name: Test Picture in Picture eligibility and restoration
+        run: cat AIOStreams/Sources/PictureInPicturePolicy.swift tests/PictureInPicturePolicyTests.swift | swift -
       - name: Test next episode preloading
         run: cat AIOStreams/Sources/NextEpisodePreloader.swift tests/NextEpisodePreloaderTests.swift | swift -
       - name: Set unique installable version

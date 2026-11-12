@@ -94,7 +94,7 @@ final class VideoStage {
             CGRect(x: $0.rect.minX - $0.visibleRect.minX, y: $0.rect.minY - $0.visibleRect.minY,
                    width: $0.rect.width, height: $0.rect.height)
         } ?? CGRect(origin: .zero, size: target.size)
-        video.frame = content
+        video.frame = presentation.preview ? PreviewLayout.contentRect(in: target.size) : content
         subtitles.frame = content
         cutHole(presentation.visible ? shown : nil, animated: animated)
     }

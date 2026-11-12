@@ -48,3 +48,19 @@ precondition(presentation.visible, "A frame received before load must survive st
 presentation.start(preview: false)
 precondition(presentation.visible && presentation.frame == nil, "A regular movie must fill the player again")
 print("Autoplay preview clipping and presentation regression tests passed")
+
+// The preview fills portrait posters and wide hero artwork without stretching the source.
+for size in [CGSize(width: 390, height: 520), CGSize(width: 844, height: 480), CGSize(width: 1200, height: 300)] {
+    let content = PreviewLayout.contentRect(in: size)
+    precondition(content.minX <= 0.0001 && content.minY <= 0.0001)
+    precondition(content.maxX >= size.width - 0.0001 && content.maxY >= size.height - 0.0001)
+    precondition(abs(content.midX - size.width / 2) < 0.0001)
+    precondition(abs(content.midY - size.height / 2) < 0.0001)
+    // A 2.39:1 trailer letterboxed inside a 16:9 encode: aspect-fill trims the encoded black bands.
+    let encoded = CGSize(width: 1920, height: 1080)
+    let scale = max(content.width / encoded.width, content.height / encoded.height)
+    let pictureHeight = encoded.width / PreviewLayout.aspect * scale
+    precondition(pictureHeight >= size.height - 0.0001, "Letterbox pixels must stay outside the artwork")
+}
+precondition(PreviewLayout.contentRect(in: .zero) == .zero)
+print("Preview artwork cover and letterbox crop tests passed")

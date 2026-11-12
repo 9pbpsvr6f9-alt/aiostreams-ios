@@ -82,7 +82,7 @@ index e41938f..d8ffaba 100644
            ],
            ...(shell.player && !shell.mpv
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
-index 2e7bd37..911ac2b 100644
+index 2e7bd37..b868543 100644
 --- a/packages/web/src/app/settings/playback.tsx
 +++ b/packages/web/src/app/settings/playback.tsx
 @@ -1,4 +1,5 @@
@@ -91,12 +91,13 @@ index 2e7bd37..911ac2b 100644
  import { plural, t } from '@lingui/core/macro';
  import { Trans } from '@lingui/react/macro';
  import { Select } from '@aiostreams/ui/select';
-@@ -102,6 +103,44 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
+@@ -102,6 +103,52 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
    );
  }
 
 +function IosPlayerSettings() {
 +  const [haptics, setHaptics] = useSetting(settings.ios.haptics);
++  const [automaticPip, setAutomaticPip] = useSetting(settings.ios.automaticPip);
 +  const [gestures, setGestures] = useSetting(settings.ios.gestures);
 +  const [fill, setFill] = useSetting(settings.ios.fillOnStart);
 +  return (
@@ -105,6 +106,13 @@ index 2e7bd37..911ac2b 100644
 +      title={t`iPhone and iPad`}
 +      description={onDevice()}
 +    >
++      <Switch
++        side="right"
++        label={t`Automatic Picture in Picture`}
++        help={t`Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS.`}
++        value={automaticPip}
++        onValueChange={setAutomaticPip}
++      />
 +      <Switch
 +        side="right"
 +        label={t`Haptic feedback`}
@@ -136,7 +144,7 @@ index 2e7bd37..911ac2b 100644
  export function PlaybackSection() {
    const { prefs, update } = usePlaybackPrefs();
    const [seekStep, setSeekStep] = useSetting(settings.controls.seekStep);
-@@ -154,6 +193,7 @@ export function PlaybackSection() {
+@@ -154,6 +201,7 @@ export function PlaybackSection() {
 
    return (
      <>
@@ -166,6 +174,88 @@ index 968337d..d6f175e 100644
            value={overrideStyled}
            onValueChange={setOverrideStyled}
          />
+diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
+index 51dba34..beaef18 100644
+--- a/packages/web/src/components/media/hero.tsx
++++ b/packages/web/src/components/media/hero.tsx
+@@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
+ import { useSession } from '@/lib/jellyfin/session';
+ import { settings, useSetting } from '@/lib/settings';
+ import { currentHost } from '@/lib/hosts';
++import { appBridge } from '@/lib/hosts/shell/bridge';
+ import { usePageShown } from '@/lib/page-shown';
+ import { useFetchNextUp, useItem } from '@/lib/jellyfin/queries';
+ import { focusOn, keyboardFocus, useAction } from '@/lib/input';
+@@ -591,7 +592,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
+       onEnded={() => setPlaying(null)}
+     />
+   );
+-  return { box, shown: !!playing && shown };
++  return { box, shown: !!playing && shown, active: !!playing };
+ }
+
+ /**
+@@ -617,7 +618,9 @@ function HeroTrailer({
+       ref={setSpot}
+       data-ui="hero-trailer"
+       // Wide, so a trailer's own bars are cropped away, even where that runs past the hero's start.
+-      className="pointer-events-none absolute end-0 top-0 aspect-[2.39/1] h-full"
++      className={appBridge()?.platform === 'ios'
++        ? 'pointer-events-none absolute inset-0'
++        : 'pointer-events-none absolute end-0 top-0 aspect-[2.39/1] h-full'}
+     >
+       <div className="absolute -inset-px">
+         {fades && (
+@@ -686,12 +689,20 @@ export function Hero({
+     if (el && swipeable) return claimSideSwipes(el);
+   }, [loading, swipeable]);
+
++  const ios = appBridge()?.platform === 'ios';
++  const trailer = useHeroTrailer(
++    (ios ? shown && inSight && !dragging : chosen && (focused || paused))
++      ? (featured[index] ?? null) : null,
++    false
++  );
++
+   React.useEffect(() => setIndex(0), [featured.length]);
+   React.useEffect(() => {
+     if (
+       paused ||
+       focused ||
+       dragging ||
++      (ios && trailer.active) ||
+       !shown ||
+       !inSight ||
+       featured.length < 2
+@@ -707,6 +718,8 @@ export function Hero({
+     paused,
+     focused,
+     dragging,
++    ios,
++    trailer.active,
+     shown,
+     inSight,
+     featured.length,
+@@ -742,10 +755,6 @@ export function Hero({
+     if (to && el) focusOn(el);
+   }, [index]);
+
+-  const trailer = useHeroTrailer(
+-    chosen && (focused || paused) ? (featured[index] ?? null) : null,
+-    false
+-  );
+
+   if (loading) return <HeroSkeleton />;
+   if (!featured[index]) return null;
+@@ -1032,7 +1041,7 @@ export function FollowHero({
+     };
+   }, [scroller]);
+   const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
+-  const trailer = useHeroTrailer(resting, true);
++  const trailer = useHeroTrailer(appBridge()?.platform === 'ios' ? item : resting, true);
+
+   return (
+     <FollowContext.Provider value={follow}>
 diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
 index 87e0d0f..10290a7 100644
 --- a/packages/web/src/features/player/controls.tsx
@@ -608,10 +698,10 @@ index 0000000..aed8da0
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..bf0fef1
+index 0000000..6661f72
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,52 @@
+@@ -0,0 +1,53 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -629,6 +719,7 @@ index 0000000..bf0fef1
 +    appBridge()?.send({
 +      type: 'ios-player-settings',
 +      haptics: settings.ios.haptics.read(),
++      automaticPip: settings.ios.automaticPip.read(),
 +      gestures: settings.ios.gestures.read(),
 +    });
 +  apply();
@@ -828,7 +919,7 @@ index 0a565dd..5f62c48 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..85b40d9 100644
+index 9be266c..9bd5691 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
@@ -846,11 +937,12 @@ index 9be266c..85b40d9 100644
  export type SubtitleSize = (typeof SUBTITLE_SIZES)[number];
  /** `default` keeps the player's own font. */
  export const SUBTITLE_FONTS = [
-@@ -605,6 +611,11 @@ export const settings = {
+@@ -605,6 +611,12 @@ export const settings = {
        MINI_CORNERS
      ),
    },
 +  ios: {
++    automaticPip: device<boolean>('aiostreams-ios-automatic-pip', true),
 +    haptics: device<boolean>('aiostreams-ios-haptics', true),
 +    gestures: device<boolean>('aiostreams-ios-gestures', true),
 +    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
@@ -879,10 +971,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..ef9e766 100644
+index 2014fb0..c768327 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,43 @@ msgstr "Your rating"
+@@ -5752,3 +5752,49 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -926,3 +1018,9 @@ index 2014fb0..ef9e766 100644
 +#. iOS host additions
 +msgid "iPhone and iPad"
 +msgstr "iPhone and iPad"
++
++msgid "Automatic Picture in Picture"
++msgstr "Automatic Picture in Picture"
++
++msgid "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
++msgstr "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."

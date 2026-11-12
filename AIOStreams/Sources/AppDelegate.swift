@@ -48,6 +48,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let root = RootViewController()
         window.rootViewController = root
         window.backgroundColor = .black
+        window.overrideUserInterfaceStyle = .dark
         window.makeKeyAndVisible()
         self.window = window
         self.root = root
