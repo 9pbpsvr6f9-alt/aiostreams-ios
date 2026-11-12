@@ -15,6 +15,26 @@ index e41938f..d8ffaba 100644
              shell.app,
            ],
            ...(shell.player && !shell.mpv
+diff --git a/packages/web/src/app/settings/subtitles.tsx b/packages/web/src/app/settings/subtitles.tsx
+index 968337d..59796db 100644
+--- a/packages/web/src/app/settings/subtitles.tsx
++++ b/packages/web/src/app/settings/subtitles.tsx
+@@ -1,3 +1,4 @@
++import { appBridge } from '@/lib/hosts/shell/bridge';
+ import { t } from '@lingui/core/macro';
+ import { Trans } from '@lingui/react/macro';
+ import { Select } from '@aiostreams/ui/select';
+@@ -253,7 +254,9 @@ export function SubtitlesSection() {
+         <Switch
+           side="right"
+           label={t`Apply to styled subtitles too`}
+-          help={t`Styled subtitles, common in anime, keep their own fonts and colours unless this is on. Blu-ray and DVD subtitles always keep their look and size. Only in the desktop app.`}
++          help={appBridge()?.platform === 'ios'
++            ? t`Styled subtitles keep their own colours and placement unless this is on, which shows them as plain text in your style. Blu-ray and DVD subtitles keep their look at the size chosen above.`
++            : t`Styled subtitles, common in anime, keep their own fonts and colours unless this is on. Blu-ray and DVD subtitles always keep their look and size. Only in the desktop app.`}
+           value={overrideStyled}
+           onValueChange={setOverrideStyled}
+         />
 diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
 index 39f60cb..f18c1eb 100644
 --- a/packages/web/src/lib/hosts/shell/bridge.ts
@@ -104,3 +124,36 @@ index 03c7dde..030e75e 100644
    if (shell.platform !== 'android') return 'AIOStreams Desktop';
    return shell.tv ? 'AIOStreams Android TV' : 'AIOStreams Android';
  }
+diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
+index 9be266c..d03259b 100644
+--- a/packages/web/src/lib/settings/index.ts
++++ b/packages/web/src/lib/settings/index.ts
+@@ -140,7 +140,7 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
+ export const SEGMENT_ACTIONS = ['ask', 'skip', 'none'] as const;
+ export type SegmentAction = (typeof SEGMENT_ACTIONS)[number];
+ 
+-export const SUBTITLE_SIZES = ['small', 'normal', 'large', 'huge'] as const;
++export const SUBTITLE_SIZES = ['smaller', 'small', 'normal', 'large', 'huge'] as const;
+ export type SubtitleSize = (typeof SUBTITLE_SIZES)[number];
+ /** `default` keeps the player's own font. */
+ export const SUBTITLE_FONTS = [
+diff --git a/packages/web/src/lib/subtitles/style.ts b/packages/web/src/lib/subtitles/style.ts
+index 4623557..6309ce8 100644
+--- a/packages/web/src/lib/subtitles/style.ts
++++ b/packages/web/src/lib/subtitles/style.ts
+@@ -11,6 +11,7 @@ import {
+ } from '@/lib/settings';
+ 
+ const SCALE: Record<SubtitleSize, number> = {
++  smaller: 0.64,
+   small: 0.8,
+   normal: 1,
+   large: 1.25,
+@@ -19,6 +20,7 @@ const SCALE: Record<SubtitleSize, number> = {
+ 
+ export const subtitleSizeLabel = (size: SubtitleSize) =>
+   ({
++    smaller: t`Smaller`,
+     small: t`Small`,
+     normal: t`Normal`,
+     large: t`Large`,

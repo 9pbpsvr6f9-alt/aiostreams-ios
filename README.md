@@ -51,6 +51,14 @@ It follows the design of the official Android and desktop apps, which are a web 
 └──────────────────────────────┘
 ```
 
+## Install and update from FlareStore
+
+Add [this source](https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json)
+in FlareStore or a compatible AltStore-format sideloader. Refresh it for new versions;
+your sideloader signs and installs each update. Both iPhone/iPad and Apple TV builds
+are listed. See [updates and FlareStore](docs/updates-and-flarestore.md) for signing,
+automated upstream PRs, release publication and the default-branch activation step.
+
 ## Getting an IPA
 
 You need macOS to build it; this repository has no prebuilt binary. Either:

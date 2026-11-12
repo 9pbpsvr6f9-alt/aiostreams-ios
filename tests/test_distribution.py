@@ -1,0 +1,75 @@
+import importlib.util
+import json
+import plistlib
+import tempfile
+import unittest
+import zipfile
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location('source', Path(__file__).resolve().parents[1] / 'scripts/update-source.py')
+source = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(source)
+
+class SourceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.folder = Path(self.temp.name)
+        for filename, bundle, _ in source.APPS:
+            self.ipa(filename, bundle)
+
+    def ipa(self, filename, bundle, version='0.2.10'):
+        info = dict(CFBundleIdentifier=bundle, CFBundleShortVersionString=version,
+                    CFBundleVersion='10', MinimumOSVersion='18.0',
+                    NSLocalNetworkUsageDescription='Connect to local media servers.')
+        with zipfile.ZipFile(self.folder / filename, 'w') as z:
+            z.writestr('Payload/Test.app/Info.plist', plistlib.dumps(info))
+
+    def test_sizes_identity_permissions_and_version_match_actual_ipas(self):
+        feed = source.generate('v0.2.10', self.folder)
+        self.assertEqual(len(feed['apps']), 2)
+        for app, (filename, bundle, _) in zip(feed['apps'], source.APPS):
+            version = app['versions'][0]
+            self.assertEqual(app['bundleIdentifier'], bundle)
+            self.assertEqual(app['developerName'], '9pbpsvr6f9-alt')
+            self.assertEqual(version['size'], (self.folder / filename).stat().st_size)
+            self.assertEqual(version['buildVersion'], '10')
+            self.assertIn('/v0.2.10/', version['downloadURL'])
+            self.assertIn('NSLocalNetworkUsageDescription', app['appPermissions']['privacy'])
+        self.assertNotIn('@', json.dumps(feed))
+
+    def test_rebuild_deduplicates_history(self):
+        old = source.generate('v0.2.10', self.folder)
+        new = source.generate('v0.2.10', self.folder, old)
+        self.assertEqual(len(new['apps'][0]['versions']), 1)
+
+    def test_retains_old_downloads_when_new_version_is_published(self):
+        old = source.generate('v0.2.10', self.folder)
+        for filename, bundle, _ in source.APPS:
+            self.ipa(filename, bundle, version='0.2.11')
+        new = source.generate('v0.2.11', self.folder, old)
+        self.assertEqual([v['version'] for v in new['apps'][0]['versions']], ['0.2.11', '0.2.10'])
+
+    def test_rejects_feed_downgrade(self):
+        old = source.generate('v0.2.10', self.folder)
+        old['apps'][0]['versions'][0]['version'] = '0.2.12'
+        with self.assertRaises(ValueError):
+            source.generate('v0.2.10', self.folder, old)
+
+    def test_rejects_wrong_bundle_and_tag_version(self):
+        with self.assertRaises(ValueError):
+            source.generate('v0.2.11', self.folder)
+        self.ipa('AIOStreams.ipa', 'wrong.bundle')
+        with self.assertRaises(ValueError):
+            source.generate('v0.2.10', self.folder)
+
+    def test_rejects_missing_plist_and_unsafe_tag(self):
+        with self.assertRaises(ValueError):
+            source.generate('../bad', self.folder)
+        with zipfile.ZipFile(self.folder / 'AIOStreams.ipa', 'w'):
+            pass
+        with self.assertRaises(ValueError):
+            source.generate('v0.2.10', self.folder)
+
+if __name__ == '__main__':
+    unittest.main()

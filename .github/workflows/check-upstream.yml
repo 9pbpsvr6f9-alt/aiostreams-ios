@@ -1,0 +1,38 @@
+name: Check upstream updates
+on:
+  schedule:
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: check-upstream
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - name: Check official web and reference app
+        run: python3 scripts/check-upstream.py
+      - uses: peter-evans/create-pull-request@v7
+        id: pr
+        with:
+          branch: automation/upstream
+          title: Update pinned AIOStreams web code and review reference changes
+          body-path: ${{ runner.temp }}/upstream-pr.md
+          commit-message: Update upstream web pin and reference marker
+          author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          add-paths: |
+            web/AIOSTREAMS_REF
+            web/TVOS_REFERENCE_REF
+      - name: Build candidate explicitly
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-ipa.yml --ref automation/upstream

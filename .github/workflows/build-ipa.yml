@@ -3,21 +3,24 @@ name: Build IPA
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
     inputs:
       aiostreams_ref:
-        description: AIOStreams commit, tag or branch for the web app (blank for web/AIOSTREAMS_REF)
+        description: Web source override (candidate builds only)
         required: false
-        default: ""
+        default: ''
       height_channels:
-        description: Build with TrueHD Atmos and DTS:X height channels (may need patent licences; not for public releases)
+        description: Include optional height channels (candidate builds only)
+        type: boolean
+        default: false
+      publish_release:
+        description: Publish both IPAs and the FlareStore source after successful builds
         type: boolean
         default: false
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,55 +32,102 @@ jobs:
     timeout-minutes: 60
     env:
       AIOSTREAMS_REF: ${{ inputs.aiostreams_ref }}
-      # Only a manual run can turn them on; pushes, tags and releases build without them.
       HEIGHT_CHANNELS: ${{ inputs.height_channels && 'on' || 'off' }}
+      RELEASE_VERSION: 0.2.${{ github.run_number }}
+      BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v5
-
-      # AetherEngine supports Xcode 27; 26.3 is its best-effort floor. Take the newest on the runner.
+      - name: Run distribution tests
+        run: python3 -m unittest discover -s tests -v
+      - name: Set unique installable version
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          p = Path('project.yml')
+          text = re.sub(r'MARKETING_VERSION: "[^"]+"', 'MARKETING_VERSION: "' + os.environ['RELEASE_VERSION'] + '"', p.read_text())
+          text = re.sub(r'CURRENT_PROJECT_VERSION: "[^"]+"', 'CURRENT_PROJECT_VERSION: "' + os.environ['BUILD_NUMBER'] + '"', text)
+          p.write_text(text)
+          PY
       - name: Select Xcode
         run: |
           xcode=$(ls -d /Applications/Xcode_2[6-9]*.app | sort -V | tail -n 1)
           sudo xcode-select -s "$xcode"
           xcodebuild -version
-
       - uses: pnpm/action-setup@v4
         with:
           version: 11
       - uses: actions/setup-node@v5
         with:
           node-version: 24
-
       - name: Build the web app
         run: |
           [ -n "$AIOSTREAMS_REF" ] || unset AIOSTREAMS_REF
           scripts/build-web.sh
-
       - name: Install XcodeGen
         run: brew install xcodegen
-
       - name: Build the iOS IPA
         run: scripts/make-ipa.sh ios
-
       - name: Build the tvOS IPA
         run: scripts/make-ipa.sh tvos
-
       - uses: actions/upload-artifact@v4
         with:
           name: AIOStreams-ipa
           path: build/AIOStreams.ipa
           if-no-files-found: error
-
       - uses: actions/upload-artifact@v4
         with:
           name: AIOStreams-tvOS-ipa
           path: build/AIOStreams-tvOS.ipa
           if-no-files-found: error
 
-      - name: Attach to the release
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
+  release:
+    needs: build
+    # No PR can publish. Experimental engine traits and web overrides are candidates only.
+    if: >-
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.publish_release)) &&
+      !inputs.height_channels && !inputs.aiostreams_ref
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: publish-flarestore
+      cancel-in-progress: false
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.2.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: AIOStreams*-ipa
+          path: build
+          merge-multiple: true
+      - name: Retrieve previous source history
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes "Unsigned IPAs. Sign them when you install them."
-          gh release upload "$GITHUB_REF_NAME" build/AIOStreams.ipa build/AIOStreams-tvOS.ipa --clobber
+          mkdir -p build/previous
+          previous=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -n "$previous" ]; then
+            gh release download "$previous" --pattern source.json --dir build/previous
+          fi
+      - name: Generate verified FlareStore source
+        run: |
+          args=()
+          if [ -f build/previous/source.json ]; then
+            args+=(--previous build/previous/source.json)
+          fi
+          python3 scripts/update-source.py "$RELEASE_TAG" "${args[@]}"
+      - name: Publish IPAs and source together
+        env:
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          cat > build/release-notes.md <<'EOF'
+          Unsigned iPhone/iPad and Apple TV IPAs, built from the commit linked to this release.
+          Sign and install with your sideloading tool. FlareStore source:
+          https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json
+          Updates become available when you refresh this source; installation and signing remain under your control.
+          EOF
+          gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" --draft --title "AIOStreams ${RELEASE_TAG#v}" --notes-file build/release-notes.md
+          gh release upload "$RELEASE_TAG" build/AIOStreams.ipa build/AIOStreams-tvOS.ipa altstore/source.json altstore/icon.png
+          gh release edit "$RELEASE_TAG" --draft=false --latest

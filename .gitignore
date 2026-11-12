@@ -7,3 +7,6 @@ AIOStreams/Resources/web/*
 project.gen.yml
 tools/demo-server/demo.mp4
 tools/demo-server/__pycache__/
+__pycache__/
+# Generated from actual release IPAs and distributed as a GitHub Release asset.
+/altstore/source.json
