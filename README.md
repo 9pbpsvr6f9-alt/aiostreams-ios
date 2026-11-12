@@ -103,8 +103,8 @@ Not in the Apple TV app yet: scrubbing with the touch surface, playing the next 
 - **Downloads and offline playback.** The iOS host has no `downloads`, so the page hides them.
 - **Mini player and picture-in-picture.** The bridge reports `miniPlayer: false`.
 - **Stats overlay.** mpv's stats pages have no AetherEngine equivalent here.
-- **Subtitle line index.** It feeds the page's subtitle sync tools; the app answers that it has none.
-- **YouTube trailers.** `youtube-resolve` answers with no stream.
+- **Subtitle sync fallback.** Indexed Matroska, MP4 and MOV files now feed the page’s sync tools. Files without a usable index still have no decoded-line fallback.
+- **YouTube trailers.** Native resolution follows the reference app’s visionOS and Android clients; availability depends on YouTube.
 - **Desktop-only settings.** Cards such as mpv config, video output and audio devices may still show; the app answers each with an empty list.
 
 ## Updating

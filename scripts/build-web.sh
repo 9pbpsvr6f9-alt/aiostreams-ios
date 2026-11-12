@@ -19,7 +19,9 @@ fi
 git -C "$src" fetch --depth 1 origin "$ref"
 git -C "$src" checkout --force FETCH_HEAD
 git -C "$src" clean -fdq packages/web/src
-git -C "$src" apply --3way "$here/web/ios-host.patch"
+# Fail immediately on drift instead of leaving a three-way merge in the build checkout.
+git -C "$src" apply --check "$here/web/ios-host.patch"
+git -C "$src" apply "$here/web/ios-host.patch"
 
 (
   cd "$src"
@@ -30,4 +32,6 @@ git -C "$src" apply --3way "$here/web/ios-host.patch"
 rm -rf "$out"
 mkdir -p "$out"
 cp -R "$src/packages/web/dist-standalone/." "$out/"
+git -C "$src" rev-parse HEAD > "$out/aiostreams-commit.txt"
+echo "patched: ios-host.patch" >> "$out/aiostreams-commit.txt"
 echo "web app $(git -C "$src" rev-parse --short HEAD) -> $out"

@@ -121,7 +121,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         case "audio-devices":
             bridge.send(["type": "audio-devices", "devices": NSNull()])
         case "youtube-resolve":
-            bridge.send(["type": "youtube-resolved", "request": message["request"] ?? "", "url": NSNull()])
+            let request = message["request"] ?? ""
+            YouTube.resolve(message["id"] as? String ?? "") { [weak self] url in
+                self?.bridge.send(["type": "youtube-resolved", "request": request, "url": JSON.orNull(url)])
+            }
         case "licenses":
             bridge.send(AppInfo.licenses)
         case "diagnostics":
