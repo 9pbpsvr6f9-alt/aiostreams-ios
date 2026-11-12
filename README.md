@@ -63,7 +63,7 @@ automated upstream PRs, release publication and the default-branch activation st
 
 You need macOS to build it; this repository has no prebuilt binary. Either:
 
-**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on a `macos-26` runner and uploads `AIOStreams.ipa` as a workflow artifact. Pushing a `v*` tag also attaches it to a release.
+**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on a `macos-26` runner and uploads `AIOStreams.ipa` as a workflow artifact. After this update is merged, successful main-branch builds also publish versioned releases and refresh the sideloading source. Manual builds can publish by enabling `publish_release`.
 
 **Locally on a Mac** with Xcode 27 (26.3 is AetherEngine's best-effort floor), Node 24, pnpm 11 and XcodeGen:
 
