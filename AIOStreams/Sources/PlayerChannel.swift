@@ -21,6 +21,30 @@ final class PlayerChannel {
     var pipEligibilityChanged: () -> Void = {}
 
     func pauseFromPictureInPicture() { change(["paused": true]) }
+
+    /// The engine deliberately releases a paused decoder across long background suspension.
+    /// Its public reload preserves position, headers and track selection; a live session is untouched.
+    func restoreAfterBackground() {
+        guard PictureInPicturePolicy.needsForegroundReload(hasMedia: hasMedia,
+              ready: engine.isSessionReady, paused: engine.state == .paused),
+              backgroundRecoveryTask == nil else { return }
+        let current = generation
+        backgroundRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if current == self.generation { self.backgroundRecoveryTask = nil } }
+            do {
+                try await self.engine.reloadAtCurrentPosition()
+                guard current == self.generation, !Task.isCancelled else { return }
+                self.applyTransport()
+                self.applyVideoGravity(force: true)
+                if self.wantsPaused { self.engine.pause() } else { self.engine.play() }
+            } catch is CancellationError {
+            } catch {
+                guard current == self.generation else { return }
+                self.end("error", error: "Could not restore playback after returning to the app.")
+            }
+        }
+    }
     var effectivePlaybackVolume: Double { muted ? 0 : min(max(volume, 0), 1) }
 
     func prepareForSystemVolumeControl() {
@@ -31,6 +55,7 @@ final class PlayerChannel {
 
     private var bag = Set<AnyCancellable>()
     private var loadTask: Task<Void, Never>?
+    private var backgroundRecoveryTask: Task<Void, Never>?
     private var live = false
     private var trailer = false
     private var preview = false
@@ -346,6 +371,8 @@ final class PlayerChannel {
 
         generation += 1
         let current = generation
+        backgroundRecoveryTask?.cancel()
+        backgroundRecoveryTask = nil
         loadTask?.cancel()
         indexTask?.cancel()
         indexTask = nil
@@ -416,6 +443,8 @@ final class PlayerChannel {
     private func stop() {
         preloader.cancel()
         generation += 1
+        backgroundRecoveryTask?.cancel()
+        backgroundRecoveryTask = nil
         loadTask?.cancel()
         loadTask = nil
         loadedURL = nil

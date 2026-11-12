@@ -15,3 +15,9 @@ precondition(PictureInPicturePolicy.pausesWhenStopped(wasActive: true, restoring
 precondition(!PictureInPicturePolicy.pausesWhenStopped(wasActive: true, restoring: true))
 precondition(!PictureInPicturePolicy.pausesWhenStopped(wasActive: false, restoring: false))
 print("Picture in Picture automatic-start and restore policy tests passed")
+
+precondition(PictureInPicturePolicy.needsForegroundReload(hasMedia: true, ready: false, paused: true))
+precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: true, ready: true, paused: true), "A still-ready paused session must not restart")
+precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: false, ready: false, paused: true), "Leaving the video must not resurrect it")
+precondition(!PictureInPicturePolicy.needsForegroundReload(hasMedia: true, ready: false, paused: false), "An in-flight load must not be replaced")
+print("Paused background decoder recovery policy tests passed")

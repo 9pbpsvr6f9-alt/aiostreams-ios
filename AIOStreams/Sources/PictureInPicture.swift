@@ -46,6 +46,7 @@ final class PictureInPicture: NSObject {
                 let returned = self.backgrounded
                 self.backgrounded = false
                 if returned && self.active { self.stopForRestore() }
+                if returned { self.channel.restoreAfterBackground() }
                 self.refresh()
             }.store(in: &bag)
     }

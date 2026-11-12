@@ -9,5 +9,8 @@ struct PictureInPicturePolicy {
 
     var prepares: Bool { supported && hasMedia && !preview && sourceAvailable }
     var automatic: Bool { prepares && playing && automaticEnabled }
+    static func needsForegroundReload(hasMedia: Bool, ready: Bool, paused: Bool) -> Bool {
+        hasMedia && !ready && paused
+    }
     static func pausesWhenStopped(wasActive: Bool, restoring: Bool) -> Bool { wasActive && !restoring }
 }
