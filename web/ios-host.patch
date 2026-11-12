@@ -1,3 +1,69 @@
+diff --git a/packages/web/src/app/item/_components/backdrop.tsx b/packages/web/src/app/item/_components/backdrop.tsx
+index dba75cf..6ea3092 100644
+--- a/packages/web/src/app/item/_components/backdrop.tsx
++++ b/packages/web/src/app/item/_components/backdrop.tsx
+@@ -3,6 +3,9 @@ import { cn } from '@aiostreams/ui/core/styling';
+ import { BackdropFrame } from '@/components/media/hero';
+ import { CachedImage } from '@/components/cached-image';
+
++/** Shared by the artwork and the iOS inline trailer, so previews never fill the page. */
++export const ITEM_BACKDROP_BOX = 'pointer-events-none absolute inset-x-0 top-[calc(var(--top-bar,0px)*-1)] h-[calc(55vh+var(--top-bar,0px))] overflow-hidden transition-opacity duration-500 [mask-image:linear-gradient(to_top,transparent,black_2px)] landscape:h-[calc(85vh+var(--top-bar,0px))] lg:h-[calc(85vh+var(--top-bar,0px))]';
++
+ /** Art that arrives within this was never seen missing, so it just appears. */
+ const UNSEEN_MS = 250;
+
+@@ -79,7 +82,7 @@ export function Backdrop({
+       data-ui="item-backdrop"
+       // Fades out at its edge, where some GPUs draw the art's last row past the shade.
+       className={cn(
+-        'pointer-events-none absolute inset-x-0 top-[calc(var(--top-bar,0px)*-1)] h-[calc(55vh+var(--top-bar,0px))] overflow-hidden transition-opacity duration-500 [mask-image:linear-gradient(to_top,transparent,black_2px)] landscape:h-[calc(85vh+var(--top-bar,0px))] lg:h-[calc(85vh+var(--top-bar,0px))]',
++        ITEM_BACKDROP_BOX,
+         trailer && 'opacity-0'
+       )}
+     >
+diff --git a/packages/web/src/app/item/_components/trailer.tsx b/packages/web/src/app/item/_components/trailer.tsx
+index c239d4d..46879c3 100644
+--- a/packages/web/src/app/item/_components/trailer.tsx
++++ b/packages/web/src/app/item/_components/trailer.tsx
+@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
+ import { LuChevronUp } from 'react-icons/lu';
+ import { cn } from '@aiostreams/ui/core/styling';
+ import { currentHost } from '@/lib/hosts';
++import { appBridge } from '@/lib/hosts/shell/bridge';
++import { ITEM_BACKDROP_BOX } from './backdrop';
+ import { focusOn, keyboardFocus, useAction, usingKeys } from '@/lib/input';
+ import { trailersOf } from '@/lib/playback/trailers';
+ import type { BaseItemDto } from '@/lib/jellyfin/types';
+@@ -156,14 +158,17 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+     () => ({ shown, openFull }),
+     [shown, openFull]
+   );
++  const inline = appBridge()?.platform === 'ios';
++  const mountPreview = (node: React.ReactNode) =>
++    inline ? node : createPortal(node, document.body);
+   const preview = playing && item && (
+     <>
+-      {createPortal(
++      {mountPreview(
+         <div
+           ref={setSpot}
+           data-ui="item-trailer"
+           aria-hidden
+-          className="pointer-events-none fixed inset-0 -z-[4]"
++          className={inline ? ITEM_BACKDROP_BOX : 'pointer-events-none fixed inset-0 -z-[4]'}
+         >
+           <div
+             className={cn(
+@@ -175,8 +180,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent" />
+           </div>
+           <TrailerVeil shown={shown} />
+-        </div>,
+-        document.body
++        </div>
+       )}
+       {spot && (
+         <TrailerPreview
 diff --git a/packages/web/src/app/settings/about.tsx b/packages/web/src/app/settings/about.tsx
 index e41938f..d8ffaba 100644
 --- a/packages/web/src/app/settings/about.tsx
