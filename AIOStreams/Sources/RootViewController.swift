@@ -74,7 +74,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
         videoStage = VideoStage(video: videoView, subtitles: overlay)
         videoStage.web = webView
-        for view in [videoStage.view, webView] as [UIView] {
+        videoStage.view.frame = root.bounds
+        videoStage.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        root.addSubview(videoStage.view)
+        for view in [webView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
             NSLayoutConstraint.activate([
