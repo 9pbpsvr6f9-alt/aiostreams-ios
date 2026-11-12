@@ -9,7 +9,6 @@ private let heroMax = 10
 
 struct HomeView: View {
     @EnvironmentObject private var session: Session
-    @Environment(\.openPlace) private var openPlace
     @State private var hero: [Item] = []
     @State private var resume: [Item] = []
     @State private var nextUp: [Item] = []
@@ -29,12 +28,8 @@ struct HomeView: View {
                     Color.clear.frame(height: Theme.px(16))
                 }
                 if !resume.isEmpty {
-                    WideRow(title: "Continue watching", items: resume, play: play) {
-                        Button { openPlace(.activity) } label: {
-                            Label("Activity", systemImage: "clock.arrow.circlepath")
-                        }
-                        .buttonStyle(SoftPillStyle())
-                    }
+                    // Activity is in the rail, so the row needs no button of its own.
+                    WideRow(title: "Continue watching", items: resume, play: play) { EmptyView() }
                 }
                 if !nextUp.isEmpty {
                     WideRow(title: "Next up", items: nextUp, play: play) { EmptyView() }

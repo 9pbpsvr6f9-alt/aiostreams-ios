@@ -67,6 +67,38 @@ private struct PlayerChrome: View {
         return height > 0 ? Double(1 - (controlsTop - Theme.px(8)) / height) : 0
     }
     @FocusState private var focus: PlayerFocus?
+    /// A hold the press watcher reported, which only its letting go ends.
+    @State private var pressHeld = false
+    /// The last few left or right moves, which come quickly over and over while a direction is held.
+    @State private var lastMove: (direction: Int, at: Date, count: Int)?
+    @State private var moveHoldEnd: Task<Void, Never>?
+
+    private var canScrub: Bool {
+        panel == nil && model.failure == nil && (!shown || focus == .bar || focus == .surface)
+    }
+
+    /// A move left or right, which reads as a hold once it repeats quickly, for remotes and
+    /// directions that repeat their move while held. Returns whether it went to a scrub.
+    private func moved(_ direction: Int) -> Bool {
+        if pressHeld { return true }
+        let now = Date()
+        var count = 1
+        if let last = lastMove, last.direction == direction, now.timeIntervalSince(last.at) < 0.4 {
+            count = last.count + 1
+        }
+        lastMove = (direction, now, count)
+        guard model.scrubbing || count >= 3, canScrub else { return false }
+        model.startScrub(direction)
+        moveHoldEnd?.cancel()
+        moveHoldEnd = Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !Task.isCancelled, !pressHeld else { return }
+            model.endScrub()
+            lastMove = nil
+            wake()
+        }
+        return true
+    }
 
     var body: some View {
         ZStack {
@@ -75,12 +107,15 @@ private struct PlayerChrome: View {
             // Holding left or right scrubs, while the controls are hidden or the bar has focus.
             PressHold(
                 begin: { direction in
-                    guard panel == nil, model.failure == nil, !shown || focus == .bar || focus == .surface else { return false }
+                    guard canScrub else { return false }
+                    pressHeld = true
+                    moveHoldEnd?.cancel()
                     model.startScrub(direction)
                     reveal(.bar)
                     return true
                 },
                 end: {
+                    pressHeld = false
                     model.endScrub()
                     wake()
                 }
@@ -94,8 +129,8 @@ private struct PlayerChrome: View {
                 .focused($focus, equals: .surface)
                 .onMoveCommand { direction in
                     switch direction {
-                    case .left: model.skip(-10); reveal(.bar)
-                    case .right: model.skip(10); reveal(.bar)
+                    case .left: if !moved(-1) { model.skip(-10) }; reveal(.bar)
+                    case .right: if !moved(1) { model.skip(10) }; reveal(.bar)
                     default: reveal(.play)
                     }
                 }
@@ -176,8 +211,8 @@ private struct PlayerChrome: View {
                 .focused($focus, equals: .bar)
                 .onMoveCommand { direction in
                     switch direction {
-                    case .left: model.skip(-10)
-                    case .right: model.skip(10)
+                    case .left: if !moved(-1) { model.skip(-10) }
+                    case .right: if !moved(1) { model.skip(10) }
                     case .down: focus = .play
                     default: break
                     }

@@ -195,12 +195,17 @@ final class PlayerModel: ObservableObject {
     /// How many times faster than playback the scrub moves, for its badge; negative backwards.
     @Published private(set) var scrubSpeed = 0
     private var scrubTask: Task<Void, Never>?
+    private var scrubDirection = 0
+    var scrubbing: Bool { scrubTask != nil }
 
     /// Scrubs while left or right is held, faster the longer it's held: 10x, then 30x after
     /// 1.5 s, 60x after 3 s and 120x from 5 s. Letting go seeks there once.
+    /// Asking again in the same direction carries on; the other way turns round from where it got to.
     func startScrub(_ direction: Int) {
+        if scrubTask != nil && scrubDirection == direction { return }
         scrubTask?.cancel()
-        scrubTarget = position
+        scrubDirection = direction
+        scrubTarget = scrubTarget ?? position
         let tick = 0.2
         scrubTask = Task { [weak self] in
             var held = 0.0
@@ -219,6 +224,7 @@ final class PlayerModel: ObservableObject {
     func endScrub() {
         scrubTask?.cancel()
         scrubTask = nil
+        scrubDirection = 0
         if let target = scrubTarget { seek(to: target) }
         scrubTarget = nil
         scrubSpeed = 0

@@ -50,8 +50,9 @@ struct MainView: View {
     /// The whole screen, rail and page, which focus is re-picked within after a rail choice.
     @Namespace private var shellScope
     @Environment(\.resetFocus) private var resetFocus
-    /// Briefly true after a rail choice, so focus leaves the rail for the page.
-    @State private var railLocked = false
+    /// Briefly true after a rail choice, so focus leaves the rail for the page; and at launch,
+    /// so the app opens with the rail shut and focus on Home.
+    @State private var railLocked = true
     /// A first Back on Home, which a second within a couple of seconds follows to leave.
     @State private var exitArmed = false
     @State private var exitHint: Task<Void, Never>?
@@ -117,6 +118,7 @@ struct MainView: View {
         .animation(.easeOut(duration: 0.2), value: open)
         .playFlow($choice) { NotificationCenter.default.post(name: .watchStateChanged, object: nil) }
         .task {
+            await startOnPage()
             guard let client = session.client, let userId = session.userId else { return }
             await prefs.load(client: client, userId: userId)
             await openDemoScreen()
@@ -169,6 +171,16 @@ struct MainView: View {
         default:
             break
         }
+    }
+
+    /// Keeps the rail shut while Home loads its first rows, then lets it take focus again. Should
+    /// focus have landed on the rail before the page had anything to focus, it's moved over.
+    private func startOnPage() async {
+        for wait in [300, 700, 1000] {
+            try? await Task.sleep(for: .milliseconds(wait))
+            if railFocus != nil { resetFocus(in: shellScope) }
+        }
+        railLocked = false
     }
 
     /// Moves focus from the rail to the page just chosen, so the rail closes without a press right.
