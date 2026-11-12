@@ -18,8 +18,10 @@ struct SubtitleLook: Equatable {
     /// Percent of the height from the top where the bottom line sits.
     var position: Double = 100
 
-    /// mpv's `sub-font-size` default, at 720 lines.
-    static let baseFontSize = 55.0
+    /// Text at scale 1, in 720-line units, as the mickey2266 Apple TV app draws it.
+    static let baseFontSize = 36.0 * 0.9
+    /// Disc pictures at Normal: 20% under the disc's size, as on the Apple TV app.
+    static let pictureScale = 0.8
 
     init() {}
 
@@ -62,6 +64,9 @@ final class SubtitleOverlayView: UIView {
     private var cues: [SubtitleCue] = []
     private var time: Double = 0
     private var visible: [Int] = []
+
+    /// One unit of a 720-line screen, from the short side, so portrait doesn't blow it up.
+    private var unit: CGFloat { min(bounds.width, bounds.height) / 720 }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -198,7 +203,7 @@ final class SubtitleOverlayView: UIView {
         if let family = look.fontFamily {
             descriptor = UIFontDescriptor(fontAttributes: [.family: family])
         } else {
-            descriptor = UIFont.systemFont(ofSize: size, weight: .semibold).fontDescriptor
+            descriptor = UIFont.systemFont(ofSize: size, weight: .medium).fontDescriptor
         }
         var traits: UIFontDescriptor.SymbolicTraits = []
         if bold || look.bold { traits.insert(.traitBold) }
@@ -208,7 +213,7 @@ final class SubtitleOverlayView: UIView {
     }
 
     private func attributed(runs: [SubtitleTextRun]?, text: String?, height: CGFloat) -> NSAttributedString {
-        let size = CGFloat(SubtitleLook.baseFontSize * look.scale) * height / 720
+        let size = max(12, CGFloat(SubtitleLook.baseFontSize * look.scale) * unit)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineBreakMode = .byWordWrapping
@@ -247,7 +252,7 @@ final class SubtitleOverlayView: UIView {
     }
 
     private func outlineWidth(for string: NSAttributedString) -> CGFloat {
-        CGFloat(look.outlineSize) * bounds.height / 720
+        CGFloat(look.outlineSize) * unit
     }
 
     private func drawText(_ string: NSAttributedString, at rect: CGRect, context: CGContext) {
@@ -259,7 +264,7 @@ final class SubtitleOverlayView: UIView {
         }
         context.saveGState()
         if look.shadowSize > 0 {
-            let offset = CGFloat(look.shadowSize) * bounds.height / 720
+            let offset = CGFloat(look.shadowSize) * unit
             context.setShadow(offset: CGSize(width: offset, height: offset), blur: offset, color: UIColor.black.withAlphaComponent(0.8).cgColor)
         }
         if outline > 0, !look.box {
@@ -289,6 +294,10 @@ final class SubtitleOverlayView: UIView {
             width: image.position.width * video.width,
             height: image.position.height * video.height
         )
+        // 20% under the disc's size, scaled by the page's size, about the edge it sits on.
+        let factor = CGFloat(SubtitleLook.pictureScale * look.scale)
+        let w = frame.width * factor, h = frame.height * factor
+        frame = CGRect(x: frame.midX - w / 2, y: frame.midY > video.midY ? frame.maxY - h : frame.minY, width: w, height: h)
         // A picture in the lower half rises with the line, as the Android app lifts it, no higher than the top.
         if frame.midY > video.midY, frame.maxY > line {
             frame.origin.y = max(min(frame.minY, video.minY), frame.minY - (frame.maxY - line))
