@@ -11,8 +11,15 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private let overlay = SubtitleOverlayView()
     private let thumbnails = ThumbnailStore()
     private let bridge = Bridge()
+    private let systemVolume = SystemVolumeControl()
+    private let haptics = PlayerHaptics()
+    private var gesturesEnabled = true
     private var webView: WKWebView!
     private var player: PlayerChannel!
+
+    private var brightnessBeforeSwipe: CGFloat?
+    private weak var brightnessScreen: UIScreen?
+    private var backgroundObserver: NSObjectProtocol?
 
     private var fullscreen = false
     private var linksReady = false
@@ -74,6 +81,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 view.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
         }
+        systemVolume.attach(to: root)
         view = root
     }
 
@@ -85,8 +93,14 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         player.showVideo = { [weak self] shown in
             self?.videoView.isHidden = !shown
             self?.overlay.isHidden = !shown
+            if !shown { self?.restoreBrightness() }
         }
         bridge.onMessage = { [weak self] type, message in self?.handle(type, message) }
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.restoreBrightness() }
+        }
         webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
     }
 
@@ -109,6 +123,21 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 "ffmpeg": NSNull(),
                 "player": AppInfo.player,
             ])
+        case "ios-player-settings":
+            if let enabled = JSON.flag(message["haptics"]) { haptics.enabled = enabled }
+            if let enabled = JSON.flag(message["gestures"]) {
+                gesturesEnabled = enabled
+                if !enabled { restoreBrightness() }
+            }
+        case "player-haptic":
+            if player.hasMedia, UIApplication.shared.applicationState == .active,
+               let action = message["action"] as? String, ["toggle", "seek", "track"].contains(action) {
+                haptics.action(selectionChange: action == "track")
+            }
+        case "levels":
+            readLevels(message)
+        case "set-level":
+            setLevel(message)
         case "fullscreen":
             setFullscreen(JSON.flag(message["value"]) ?? !fullscreen)
         case "update-check":
@@ -156,7 +185,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             AppLog.warn("web", message["message"] as? String ?? "")
         case "exit", "open-logs", "player-key", "window-buttons", "discord-check", "external-choose",
              "external-open", "external-close", "watch-next", "keyboard-completions", "player-engine",
-             "player-retry", "crash-seen", "set-level", "levels", "voice-search", "voice-cancel":
+             "player-retry", "crash-seen", "voice-search", "voice-cancel":
             break
         default:
             AppLog.info("bridge", "unhandled \(type)")
@@ -170,6 +199,71 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         } else {
             pendingLinks.append(url.absoluteString)
         }
+    }
+
+    private var playerScreen: UIScreen {
+        view.window?.windowScene?.screen ?? UIScreen.main
+    }
+
+    private func readLevels(_ message: [String: Any]) {
+        var volume = systemVolume.value
+        if gesturesEnabled, message["level"] as? String == "volume", player.hasMedia,
+           UIApplication.shared.applicationState == .active,
+           let start = SwipeVolume.start(system: volume, player: player.effectivePlaybackVolume),
+           systemVolume.set(start) {
+            // Lower system volume BEFORE removing player attenuation. This happens once,
+            // on the initial read for a volume swipe, never for a brightness swipe.
+            player.prepareForSystemVolumeControl()
+            // outputVolume may publish asynchronously; the gesture needs the normalized
+            // starting value, not the previous system value, to avoid a first-move jump.
+            volume = start
+        }
+        if gesturesEnabled, let level = message["level"] as? String,
+           ["volume", "brightness"].contains(level) {
+            haptics.begin(level, value: level == "volume" ? volume : Double(playerScreen.brightness))
+        }
+        bridge.send(["type": "levels", "volume": volume,
+                     "brightness": Double(playerScreen.brightness)])
+    }
+
+    private func setLevel(_ message: [String: Any]) {
+        guard let level = message["level"] as? String else { return }
+        // The web player releases its temporary brightness when its gesture layer unmounts.
+        if level == "brightness", message["value"] is NSNull {
+            restoreBrightness()
+            return
+        }
+        guard gesturesEnabled, player.hasMedia, UIApplication.shared.applicationState == .active,
+              let value = JSON.number(message["value"]) else { return }
+        let clamped = min(max(value, 0), 1)
+        if level == "volume" {
+            if systemVolume.set(clamped) {
+                haptics.tick(level, value: clamped)
+            } else {
+                AppLog.info("player", "System volume is not adjustable on the current audio route")
+            }
+        } else if level == "brightness" {
+            let screen = playerScreen
+            if brightnessScreen !== screen {
+                restoreBrightness()
+                brightnessScreen = screen
+                brightnessBeforeSwipe = screen.brightness
+            }
+            screen.brightness = CGFloat(clamped)
+            haptics.tick(level, value: clamped)
+        }
+    }
+
+    private func restoreBrightness() {
+        if let screen = brightnessScreen, let original = brightnessBeforeSwipe {
+            screen.brightness = original
+        }
+        brightnessBeforeSwipe = nil
+        brightnessScreen = nil
+    }
+
+    deinit {
+        if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
     }
 
     private func setFullscreen(_ on: Bool) {
@@ -223,6 +317,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        restoreBrightness()
         bridge.pageLoading()
         linksReady = false
         player?.pageLoading()
@@ -230,6 +325,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        restoreBrightness()
         AppLog.warn("app", "the page's process ended; loading it again")
         player?.pageLoading()
         webView.reload()

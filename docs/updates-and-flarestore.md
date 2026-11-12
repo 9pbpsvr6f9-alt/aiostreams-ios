@@ -54,3 +54,7 @@ Run `python3 -m unittest discover -s tests -v`, `bash -n scripts/*.sh`, and the
 privacy checks before publishing. Native builds run in the Mac workflow. On an
 iPhone, verify Settings → Subtitles offers Smaller below Small, that your existing
 subtitle styling is retained, and that the feed's version matches the installed app.
+
+If hosted macOS ARM capacity prevents a candidate from starting, manually dispatch
+Build IPA with `runner: macos-15-intel`. This fallback validates candidates only;
+it cannot publish a release. Release builds retain the standard macos-26 runner.

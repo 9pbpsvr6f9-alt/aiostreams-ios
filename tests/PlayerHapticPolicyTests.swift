@@ -1,0 +1,16 @@
+var feedback = PlayerHapticPolicy()
+feedback.begin("volume", value: 0.5)
+precondition(!feedback.tick("volume", value: 0.51, now: 1))
+precondition(feedback.tick("volume", value: 0.55, now: 1))
+precondition(!feedback.tick("volume", value: 0.6, now: 1.01))
+precondition(feedback.tick("volume", value: 0.6, now: 1.1))
+precondition(feedback.tick("volume", value: 0.55, now: 1.2)) // Reversing direction ticks too.
+feedback.begin("volume", value: 1)
+precondition(!feedback.tick("volume", value: 1.2, now: 1.3)) // No buzzing at the limit.
+feedback.begin("brightness", value: 0.3)
+precondition(feedback.tick("brightness", value: 0.35, now: 1.4))
+precondition(!feedback.action(now: 1.41))
+precondition(feedback.action(now: 1.6))
+precondition(!feedback.tick("volume", value: .nan, now: 2))
+precondition(!feedback.action(now: .infinity))
+print("Haptic detent and rate-limit tests passed")

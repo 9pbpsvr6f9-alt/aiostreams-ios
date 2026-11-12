@@ -79,6 +79,26 @@ The IPA is unsigned. Sign it when you install it with AltStore, SideStore, Sidel
 
 To run it from Xcode instead, run `scripts/build-web.sh`, then `xcodegen generate`, open `AIOStreams.xcodeproj`, choose your team under Signing, and run it on a device.
 
+## Player swipes on iPhone and iPad
+
+Swipe vertically on the video: the left half adjusts screen brightness and the
+right half adjusts the iPhone/iPad system media volume. Swipe up to increase, down to decrease; the
+player shows a percentage. Brightness returns to its original value when leaving
+the player or backgrounding the app. The volume percentage follows the current audio route and hardware buttons. At the start of a volume
+swipe, system volume is multiplied by the current player gain (zero when muted),
+then player gain is reset to full. This avoids a jump when the page slider was lower. System volume remains where
+you set it when leaving the player; fixed-volume routes may require their own controls. Buttons, the seek bar and system edge gestures retain
+their normal behavior. Swipe on the video away from the top/bottom screen edges.
+
+Under **Settings → Playback → iPhone and iPad**, you can switch off haptic feedback
+or advanced player gestures. A single tap still shows controls when gestures are off.
+Haptics use light action pulses and spaced five-percent ticks during level changes,
+on supported hardware. Player notices appear near the top safe area.
+
+Enable **Fill screen on start** to crop each new video to fill the screen without
+stretching it. The in-player Fit/Crop control still works for the current video;
+the next video starts filled again. Turning the option off restores Fit.
+
 ## What maps to what
 
 | Page message | iOS app |
