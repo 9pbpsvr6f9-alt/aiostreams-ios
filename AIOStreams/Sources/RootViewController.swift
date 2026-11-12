@@ -102,7 +102,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             self?.overlay.isHidden = !shown
             if !shown {
                 self?.restoreBrightness()
-                self?.videoStage.place(nil)
+                self?.videoStage.stop()
             }
         }
         bridge.onMessage = { [weak self] type, message in self?.handle(type, message) }
@@ -127,6 +127,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     // MARK: - Messages
 
     private func handle(_ type: String, _ message: [String: Any]) {
+        if type == "player-load" {
+            videoStage.start(preview: JSON.flag(message["preview"]) ?? false)
+            if videoStage.isPreview && fullscreen { setFullscreen(false) }
+        }
         if player.handle(type, message) { return }
         switch type {
         case "app-info":
@@ -154,7 +158,9 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         case "set-level":
             setLevel(message)
         case "player-frame":
-            videoStage.place(VideoFrame.from(message, webWidth: webView.bounds.width))
+            videoStage.place(VideoFrame.from(message, webWidth: webView.bounds.width),
+                             preview: JSON.flag(message["preview"]))
+            if videoStage.isPreview && fullscreen { setFullscreen(false) }
         case "fullscreen":
             setFullscreen(JSON.flag(message["value"]) ?? !fullscreen)
         case "update-check":
@@ -284,6 +290,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     private func setFullscreen(_ on: Bool) {
+        guard !on || !videoStage.isPreview else { return }
         fullscreen = on
         AppDelegate.orientations = on ? .landscape : .allButUpsideDown
         setNeedsUpdateOfSupportedInterfaceOrientations()

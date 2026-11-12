@@ -17,9 +17,12 @@ final class VideoStage {
         didSet { refresh(animated: false) }
     }
 
+    private let video: UIView
     private let subtitles: UIView
     private let hole = CAShapeLayer()
-    private var frame: VideoFrame?
+    private var presentation = VideoPresentation()
+    private var frame: VideoFrame? { presentation.frame }
+    var isPreview: Bool { presentation.preview }
     private var animator: UIViewPropertyAnimator?
 
     /// As the page's card moves (`MINI_MOVE_MS`, `MINI_MOVE_EASE`).
@@ -27,6 +30,7 @@ final class VideoStage {
     private static let moveCurve = (CGPoint(x: 0.2, y: 0.8), CGPoint(x: 0.2, y: 1))
 
     init(video: UIView, subtitles: UIView) {
+        self.video = video
         self.subtitles = subtitles
         view.isUserInteractionEnabled = false
         view.backgroundColor = .clear
@@ -39,10 +43,19 @@ final class VideoStage {
         hole.fillColor = UIColor.black.cgColor
     }
 
-    /// The page's `player-frame`; nil fills the screen again.
-    func place(_ next: VideoFrame?) {
-        guard next != frame else { return }
-        frame = next
+    func start(preview: Bool) {
+        presentation.start(preview: preview)
+        refresh()
+    }
+
+    func stop() {
+        presentation.stop()
+        refresh()
+    }
+
+    /// Only an explicit presentation change may expand an automatic preview.
+    func place(_ next: VideoFrame?, preview: Bool?) {
+        presentation.place(next, preview: preview)
         refresh(animated: next?.animate == true)
     }
 
@@ -51,10 +64,11 @@ final class VideoStage {
         guard let container = view.superview else { return }
         animator?.stopAnimation(true)
         animator = nil
-        let shown = frame
+        view.isHidden = !presentation.visible
+        let shown = frame.flatMap { $0.visibleRect.isEmpty || $0.visibleRect.isNull ? nil : $0 }
         let target: CGRect
         if let shown, let web {
-            target = container.convert(shown.rect, from: web)
+            target = container.convert(shown.visibleRect, from: web)
         } else {
             target = container.bounds
         }
@@ -76,7 +90,13 @@ final class VideoStage {
         } else {
             view.frame = target
         }
-        cutHole(shown, animated: animated)
+        let content = shown.map {
+            CGRect(x: $0.rect.minX - $0.visibleRect.minX, y: $0.rect.minY - $0.visibleRect.minY,
+                   width: $0.rect.width, height: $0.rect.height)
+        } ?? CGRect(origin: .zero, size: target.size)
+        video.frame = content
+        subtitles.frame = content
+        cutHole(presentation.visible ? shown : nil, animated: animated)
     }
 
     /// The corners the radius applies to: the bar's video has a bottom radius of its own, a docked
@@ -92,7 +112,7 @@ final class VideoStage {
     /// Cuts the frame's box out of the page, or puts the page back whole.
     private func cutHole(_ frame: VideoFrame?, animated: Bool) {
         guard let web else { return }
-        guard let frame, !frame.hidden, frame.rect.width > 0, frame.rect.height > 0 else {
+        guard let frame, !frame.hidden, !frame.visibleRect.isEmpty, !frame.visibleRect.isNull else {
             if web.layer.mask === hole { web.layer.mask = nil }
             return
         }
@@ -102,7 +122,7 @@ final class VideoStage {
         if frame.bottomRadius > 0 { corners.formUnion([.bottomLeft, .bottomRight]) }
         let radius = max(frame.radius, frame.bottomRadius)
         path.append(UIBezierPath(
-            roundedRect: frame.rect,
+            roundedRect: frame.visibleRect,
             byRoundingCorners: corners,
             cornerRadii: CGSize(width: radius, height: radius)
         ))

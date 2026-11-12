@@ -5,11 +5,15 @@ import CoreGraphics
 /// Native placement of a page's trailer or mini player. Coordinates include the viewport zoom.
 struct VideoFrame: Equatable {
     let rect: CGRect
+    let clip: CGRect?
     let hidden: Bool
     let animate: Bool
     let radius: CGFloat
     let bottomRadius: CGFloat
     let subtitles: Bool
+
+    /// The cover picture can be much bigger than its poster. Only this part may be drawn.
+    var visibleRect: CGRect { clip.map { rect.intersection($0) } ?? rect }
 
     static func from(_ message: [String: Any], webWidth: CGFloat) -> VideoFrame? {
         guard let frame = message["frame"] as? [String: Any] else { return nil }
@@ -18,20 +22,57 @@ struct VideoFrame: Equatable {
             return n.doubleValue
         }
         guard let pageWidth = number(message["pageWidth"]), pageWidth > 0,
-              webWidth.isFinite, webWidth > 0,
-              let x = number(frame["x"]), let y = number(frame["y"]),
-              let width = number(frame["width"]), let height = number(frame["height"]),
-              width >= 0, height >= 0 else { return nil }
+              webWidth.isFinite, webWidth > 0 else { return nil }
         let scale = webWidth / CGFloat(pageWidth)
         guard scale.isFinite, scale >= 0.01, scale <= 100 else { return nil }
         func points(_ n: Double) -> CGFloat { CGFloat(min(max(n, -100_000), 100_000)) * scale }
+        func rectangle(_ object: [String: Any]) -> CGRect? {
+            guard let x = number(object["x"]), let y = number(object["y"]),
+                  let width = number(object["width"]), let height = number(object["height"]),
+                  width >= 0, height >= 0 else { return nil }
+            return CGRect(x: points(x), y: points(y), width: points(width), height: points(height))
+        }
+        guard let rect = rectangle(frame) else { return nil }
+        var clip: CGRect?
+        if let value = frame["clip"] {
+            guard let object = value as? [String: Any], let valid = rectangle(object) else { return nil }
+            clip = valid
+        }
         return VideoFrame(
-            rect: CGRect(x: points(x), y: points(y), width: points(width), height: points(height)),
+            rect: rect, clip: clip,
             hidden: frame["hidden"] as? Bool ?? false,
             animate: frame["animate"] as? Bool ?? false,
             radius: max(0, points(number(frame["radius"]) ?? 0)),
             bottomRadius: max(0, points(number(frame["bottomRadius"]) ?? 0)),
             subtitles: frame["subtitles"] as? Bool ?? true
         )
+    }
+}
+
+/// A missing/cleared frame must never promote an automatic preview to full-window playback.
+struct VideoPresentation {
+    private(set) var active = false
+    private(set) var preview = false
+    private(set) var frame: VideoFrame?
+
+    var visible: Bool {
+        active && (!preview || (frame.map { !$0.visibleRect.isEmpty && !$0.visibleRect.isNull } ?? false))
+    }
+
+    mutating func start(preview: Bool) {
+        if !preview || !self.preview { frame = nil }
+        self.preview = preview
+        active = true
+    }
+
+    mutating func place(_ frame: VideoFrame?, preview: Bool?) {
+        if let preview { self.preview = preview }
+        self.frame = frame
+    }
+
+    mutating func stop() {
+        active = false
+        preview = false
+        frame = nil
     }
 }

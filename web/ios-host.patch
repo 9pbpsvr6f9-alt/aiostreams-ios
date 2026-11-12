@@ -407,7 +407,7 @@ index 8cc128d..1207b12 100644
            action={
              player.subtitleFiles && {
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21..e2f8c7f 100644
+index 4daab21..37a3643 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
 @@ -261,7 +261,8 @@ export interface TrailerPreviewProps {
@@ -420,6 +420,48 @@ index 4daab21..e2f8c7f 100644
    const trailers = React.useMemo(
      () => (known ? trailersOf(known) : []),
      [known]
+@@ -409,6 +410,7 @@ function PlayedPreview({
+     fit: full ? undefined : 'crop',
+     muted,
+     thumbnails: full,
++    preview: !full,
+   });
+   const { started, error } = player.state;
+   const flowing = usePlayhead(
+@@ -428,6 +430,7 @@ function PlayedPreview({
+       full
+         ? null
+         : {
++            clip: hole,
+             x: frame.x - 1,
+             y: frame.y - 1,
+             width: frame.width + 2,
+@@ -436,19 +439,19 @@ function PlayedPreview({
+             // Over the page only once it plays, as it shows black until then.
+             hidden: !over || !shown,
+             animate: false,
+-            radius: over ? radius : 0,
+-            bottomRadius: over ? radius : 0,
++            radius,
++            bottomRadius: radius,
+             subtitles: false,
+           },
+-    [full, frame, over, shown, radius]
++    [full, frame, hole, over, shown, radius]
+   );
+   const setFrame = useLatest(player.setFrame);
+   React.useEffect(() => {
+-    if (host) setFrame.current?.(placed);
+-  }, [host, placed, setFrame]);
++    if (host) setFrame.current?.(placed, !full);
++  }, [host, placed, setFrame, full]);
+   React.useEffect(
+     () => () => {
+-      if (host) setFrame.current?.(null);
++      if (host) setFrame.current?.(null, true);
+     },
+     [host, setFrame]
+   );
 diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
 index f7a92d4..77125c6 100644
 --- a/packages/web/src/lib/hosts/index.ts
@@ -557,18 +599,47 @@ index 0000000..bf0fef1
 +    appBridge()?.send({ type: 'save-file', name, mime: type, text }),
 +};
 diff --git a/packages/web/src/lib/hosts/shell/player.ts b/packages/web/src/lib/hosts/shell/player.ts
-index 5112efd..db4a8b1 100644
+index 5112efd..77d703a 100644
 --- a/packages/web/src/lib/hosts/shell/player.ts
 +++ b/packages/web/src/lib/hosts/shell/player.ts
-@@ -127,6 +127,7 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -97,6 +97,10 @@ function unzoomed(frame: VideoFrame): VideoFrame {
+     height: frame.height * zoom,
+     radius: frame.radius * zoom,
+     bottomRadius: frame.bottomRadius * zoom,
++    ...(frame.clip && { clip: {
++      x: frame.clip.x * zoom, y: frame.clip.y * zoom,
++      width: frame.clip.width * zoom, height: frame.clip.height * zoom,
++    } }),
+   };
+ }
+
+@@ -127,6 +131,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
        headers: played.headers,
        startMs: played.startMs,
        live: !!played.source.IsInfiniteStream,
 +      trailer: played.source.Id?.startsWith('trailer:') ?? false,
++      ...(shell.platform === 'ios' && { preview: !!file?.preview }),
        append,
        audioLanguages: audioCodes(prefs, played.source),
        subtitleLanguages: subtitleLanguages(prefs),
-@@ -451,7 +452,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -343,11 +349,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+     setFrame:
+       external || !shell.miniPlayer
+         ? undefined
+-        : (frame) =>
++        : (frame, preview) => {
++            if (file && preview !== undefined) file.preview = preview;
+             shell.send({
+               type: 'player-frame',
++              ...(shell.platform === 'ios' && preview !== undefined && { preview }),
+               frame: frame && unzoomed(frame),
+-            }),
++            });
++          },
+     // The user's own player keeps its own look.
+     setStyle({ subtitleStyle, fit, height }) {
+       if (external || !subtitleStyle) return;
+@@ -451,7 +460,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
            if (next) load(next, true);
            else send('player-unqueue');
          }
@@ -597,8 +668,60 @@ index 03c7dde..030e75e 100644
    if (shell.platform !== 'android') return 'AIOStreams Desktop';
    return shell.tv ? 'AIOStreams Android TV' : 'AIOStreams Android';
  }
+diff --git a/packages/web/src/lib/playback/controller.ts b/packages/web/src/lib/playback/controller.ts
+index 29cb2ae..93e2267 100644
+--- a/packages/web/src/lib/playback/controller.ts
++++ b/packages/web/src/lib/playback/controller.ts
+@@ -118,7 +118,7 @@ export interface PlayerController {
+   /** Missing where the page always fills the screen. */
+   toggleFullscreen?: () => void;
+   togglePictureInPicture?: () => void;
+-  setFrame?: (frame: VideoFrame | null) => void;
++  setFrame?: (frame: VideoFrame | null, preview?: boolean) => void;
+   /** The file's chapters, where the player reads them. */
+   chapters?: Chapter[];
+   /** `rows` are the shown page's, for a player that doesn't draw its own. */
+@@ -162,6 +162,7 @@ export interface QueuedItem {
+ }
+
+ export interface PlayerOptions {
++  preview?: boolean;
+   client: JellyfinClient;
+   item: BaseItemDto;
+   source: SourceInfo;
+diff --git a/packages/web/src/lib/playback/engine.ts b/packages/web/src/lib/playback/engine.ts
+index 7064fc8..df4ed7f 100644
+--- a/packages/web/src/lib/playback/engine.ts
++++ b/packages/web/src/lib/playback/engine.ts
+@@ -34,6 +34,8 @@ export interface EngineTrack extends Track {
+ }
+
+ export interface EngineFile {
++  /** Automatic trailer preview; never takes over the screen. */
++  preview?: boolean;
+   url: string;
+   headers?: Record<string, string>;
+   startMs: number;
+@@ -118,6 +120,8 @@ export interface Thumbnail {
+
+ /** Where the video shows in the mini player, in the page's pixels. */
+ export interface VideoFrame {
++  /** Visible poster/backdrop area when the cover picture extends beyond it. */
++  clip?: { x: number; y: number; width: number; height: number };
+   x: number;
+   y: number;
+   width: number;
+@@ -161,7 +165,7 @@ export interface PlayerEngine {
+   /** The page's controls showing over the video, or hidden again. */
+   showControls?(shown: boolean): void;
+   /** Draws the video in `frame` over the page, or back behind it filling the window. */
+-  setFrame?(frame: VideoFrame | null): void;
++  setFrame?(frame: VideoFrame | null, preview?: boolean): void;
+   toggleFullscreen?(): void;
+   togglePictureInPicture?(): void;
+   /** The text of a subtitle file it was given, null for one it can't read; server ones are read from their address. */
 diff --git a/packages/web/src/lib/playback/use-player.ts b/packages/web/src/lib/playback/use-player.ts
-index 0a565dd..a730fc3 100644
+index 0a565dd..5f62c48 100644
 --- a/packages/web/src/lib/playback/use-player.ts
 +++ b/packages/web/src/lib/playback/use-player.ts
 @@ -1,3 +1,4 @@
@@ -621,6 +744,23 @@ index 0a565dd..a730fc3 100644
    const [savedFit] = useSetting(settings.video.fit);
    const fit = opts.fit ?? savedFit;
    const servers = React.useMemo(
+@@ -175,6 +184,7 @@ export function usePlayer(
+   );
+   const latestServers = useLatest(servers);
+   const fileFor = (from: number): EngineFile => ({
++    preview: opts.preview,
+     url,
+     headers: opts.headers,
+     startMs: from,
+@@ -553,7 +563,7 @@ export function usePlayer(
+       engine.toggleFullscreen && (() => engine.toggleFullscreen!()),
+     togglePictureInPicture:
+       engine.togglePictureInPicture && (() => engine.togglePictureInPicture!()),
+-    setFrame: engine.setFrame && ((frame) => engine.setFrame!(frame)),
++    setFrame: engine.setFrame && ((frame, preview) => engine.setFrame!(frame, preview)),
+     chapters,
+     stats: stats && {
+       pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
 index 9be266c..85b40d9 100644
 --- a/packages/web/src/lib/settings/index.ts

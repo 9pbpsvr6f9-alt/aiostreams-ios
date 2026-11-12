@@ -21,6 +21,11 @@ on:
           - macos-26
           - macos-15-intel
         default: macos-26
+      platform:
+        description: Platforms to build (single-platform candidates cannot publish)
+        type: choice
+        options: [both, ios, tvos]
+        default: both
       publish_release:
         description: Publish both IPAs and the FlareStore source after successful builds
         type: boolean
@@ -82,15 +87,19 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Build the iOS IPA
+        if: inputs.platform != 'tvos'
         run: scripts/make-ipa.sh ios
       - name: Build the tvOS IPA
+        if: inputs.platform != 'ios'
         run: scripts/make-ipa.sh tvos
       - uses: actions/upload-artifact@v4
+        if: inputs.platform != 'tvos'
         with:
           name: AIOStreams-ipa
           path: build/AIOStreams.ipa
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: inputs.platform != 'ios'
         with:
           name: AIOStreams-tvOS-ipa
           path: build/AIOStreams-tvOS.ipa
@@ -103,7 +112,8 @@ jobs:
       (github.event_name == 'push' ||
        (github.event_name == 'workflow_dispatch' && inputs.publish_release)) &&
       !inputs.height_channels && !inputs.aiostreams_ref &&
-      (!inputs.runner || inputs.runner == 'macos-26')
+      (!inputs.runner || inputs.runner == 'macos-26') &&
+      (!inputs.platform || inputs.platform == 'both')
     runs-on: ubuntu-latest
     permissions:
       contents: write
