@@ -1,0 +1,140 @@
+# tv-m: the upstream Apple TV app (tv-m/UPSTREAM at tv-m/UPSTREAM_REF) with tv-m/patches applied,
+# built unsigned for personal use. The IPA is a run artifact only: no release, no sideloading source.
+name: Build tv-m
+
+on:
+  pull_request:
+    paths:
+      - 'tv-m/**'
+      - '.github/workflows/build-tv-m.yml'
+  workflow_dispatch:
+    inputs:
+      aiostreams_ref:
+        description: AIOStreams commit, branch or tag for the web app (empty takes tv-m/AIOSTREAMS_REF)
+        default: ''
+      runner:
+        description: Runner (his CI uses xcode-27; macos-26 if that label is unavailable)
+        type: choice
+        options: [xcode-27, macos-26]
+        default: xcode-27
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner || 'xcode-27' }}
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the upstream app at the pinned commit
+        working-directory: .
+        run: |
+          ref="$(tr -d '[:space:]' < tv-m/UPSTREAM_REF)"
+          git init -q app
+          git -C app fetch -q --depth 1 "$(tr -d '[:space:]' < tv-m/UPSTREAM)" "$ref"
+          git -C app checkout -q --detach FETCH_HEAD
+          echo "Building the upstream app at $ref"
+
+      - name: Apply our patches
+        working-directory: .
+        run: |
+          shopt -s nullglob
+          for patch in tv-m/patches/*.patch; do
+            echo "Applying $patch"
+            git -C app apply --whitespace=nowarn "$PWD/$patch" || { echo "::error::$patch no longer applies"; exit 1; }
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the bridge script compiles
+        run: node scripts/check-bridge.mjs
+
+      # Pinned, as the upstream web patches only fit some AIOStreams commits. Its script clones a branch or tag
+      # but fetches any commit into a checkout that exists, so the checkout is made here first.
+      - name: Build the web app
+        run: |
+          ref="${{ inputs.aiostreams_ref }}"
+          [ -n "$ref" ] || ref="$(tr -d '[:space:]' < ../tv-m/AIOSTREAMS_REF)"
+          echo "AIOStreams web app at $ref"
+          mkdir -p .build/AIOStreams
+          git -C .build/AIOStreams init -q
+          git -C .build/AIOStreams remote add origin https://github.com/Viren070/AIOStreams.git
+          corepack enable
+          AIOSTREAMS_REF="$ref" bash scripts/fetch-web.sh
+
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - uses: actions/cache@v4
+        with:
+          path: app/build/SourcePackages
+          key: tv-m-spm-${{ hashFiles('app/Packages/AetherHost/Package.swift', 'app/project.yml') }}
+
+      # Above upstream's run numbers, so tvOS installs this over the upstream app as an update.
+      - name: Build for Apple TV
+        run: |
+          echo "BUILD_NUMBER=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          xcodebuild build \
+            -project AIOStreamsTV.xcodeproj \
+            -scheme AIOStreamsTV \
+            -configuration Release \
+            -destination 'generic/platform=tvOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="$((100000 + GITHUB_RUN_NUMBER))" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      # As the upstream workflow packs it: frameworks take the app's minimum tvOS, ad-hoc signatures with the
+      # shared App Group entitlements, inside out.
+      - name: Pack the .ipa
+        run: |
+          app="build/Build/Products/Release-appletvos/AIOStreams.app"
+          test -d "$app" || { echo "No app at $app"; ls -R build/Build/Products; exit 1; }
+          shelf="$app/PlugIns/AIOStreamsTopShelf.appex"
+          test -d "$shelf" || { echo "No Top Shelf extension at $shelf"; exit 1; }
+          plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist"; }
+          echo "App $(plist "$app" CFBundleShortVersionString) ($(plist "$app" CFBundleVersion))"
+          test "$(plist "$app" CFBundleVersion)" = "$BUILD_NUMBER" || { echo "Unexpected CFBundleVersion"; exit 1; }
+          test "$(plist "$shelf" CFBundleVersion)" = "$BUILD_NUMBER" || { echo "Top Shelf version differs"; exit 1; }
+          ls "$app/Frameworks" | grep -q '^AetherLibavcodec.framework$' || { echo "No FFmpeg frameworks"; exit 1; }
+          min="$(plist "$app" MinimumOSVersion)"
+          for framework in "$app"/Frameworks/*.framework; do
+            /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion $min" "$framework/Info.plist" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string $min" "$framework/Info.plist"
+          done
+          for framework in "$app"/Frameworks/*; do
+            codesign --force --sign - --timestamp=none "$framework"
+          done
+          codesign --force --sign - --timestamp=none --entitlements TopShelf/TopShelf.entitlements "$shelf"
+          codesign --force --sign - --timestamp=none --entitlements App/AIOStreamsTV.entitlements "$app"
+          rm -rf Payload tv-m.ipa
+          mkdir Payload
+          cp -R "$app" Payload/
+          zip -qry tv-m.ipa Payload
+          ls -lh tv-m.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-m-ipa
+          path: app/tv-m.ipa
+          if-no-files-found: error
+          retention-days: 30
