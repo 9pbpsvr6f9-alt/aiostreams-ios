@@ -23,6 +23,8 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     /// When the player's own swipe last set the volume; the change it causes needs no toast.
     private var ownVolumeChangeAt: TimeInterval = -.infinity
     private var webView: WKWebView!
+    /// The web app's logo, covering the page until its own splash has drawn.
+    private var launchLogo: LaunchLogo?
     private var player: PlayerChannel!
     private var pictureInPicture: PictureInPicture!
     private let pipBackdrop = UIView()
@@ -117,6 +119,12 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             ])
         }
         videoStage.refresh()
+        if LaunchLogo.enabled {
+            let cover = LaunchLogo(frame: root.bounds)
+            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            root.addSubview(cover)
+            launchLogo = cover
+        }
         view = root
     }
 
@@ -223,7 +231,14 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         case "pip":
             if JSON.flag(message["value"]) == false { pictureInPicture.stopForRestore() }
             else { pictureInPicture.toggle() }
+        case "splash-shown":
+            // The page's splash shows the same logo now.
+            launchLogo?.lift()
+            launchLogo = nil
         case "ios-player-settings":
+            if let on = JSON.flag(message["launchLogo"]) {
+                UserDefaults.standard.set(on, forKey: LaunchLogo.enabledKey)
+            }
             if let enabled = JSON.flag(message["automaticPip"]) { pictureInPicture.automaticEnabled = enabled }
             if let enabled = JSON.flag(message["haptics"]) { haptics.enabled = enabled }
             if let enabled = JSON.flag(message["gestures"]) {
