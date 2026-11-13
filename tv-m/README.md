@@ -10,7 +10,8 @@ are for personal use. So this folder holds none of its code, only:
   after them by name: `0100` the skip countdown, `0101` the spoiler blur, `0102` Liquid Glass, `0103` the launch
   logo's place for the app (with `patches/0001`, which draws it from the first frame), `0104` the
   countdown's setting, Back to keep watching, a larger skip button, glass focus on text, the
-  glass floating rail and its Hide the rail while browsing switch.
+  glass floating rail and its Hide the rail while browsing switch. `0105` sends a poster with each
+  Top Shelf item, which `patches/0002` shows in the shelf's poster shape.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no

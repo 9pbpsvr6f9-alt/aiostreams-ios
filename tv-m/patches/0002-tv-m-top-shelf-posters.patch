@@ -1,0 +1,61 @@
+diff --git a/App/Support/TopShelf.swift b/App/Support/TopShelf.swift
+index e44584d..db63375 100644
+--- a/App/Support/TopShelf.swift
++++ b/App/Support/TopShelf.swift
+@@ -31,7 +31,8 @@ enum TopShelf {
+             episodeTitle: entry.text("episodeTitle"),
+             season: entry.number("season").map { Int($0) },
+             number: entry.number("episode").map { Int($0) },
+-            image: entry.text("image").map(TopShelfStore.sized),
++            image: entry.text("image").map { TopShelfStore.sized($0) },
++            poster: entry.text("poster").map { TopShelfStore.sized($0, width: TopShelfStore.posterWidth) },
+             positionMs: entry.number("positionMs") ?? 0,
+             durationMs: entry.number("durationMs"),
+             link: link
+diff --git a/Shared/TopShelfStore.swift b/Shared/TopShelfStore.swift
+index 31420ef..4aab3a9 100644
+--- a/Shared/TopShelfStore.swift
++++ b/Shared/TopShelfStore.swift
+@@ -11,6 +11,8 @@ struct TopShelfItem: Codable, Equatable {
+     var number: Int?
+     /// The page's landscape artwork, at the size the Top Shelf draws.
+     var image: String?
++    /// tv-m: the page's portrait poster (an episode's is its show's), which the shelf shows.
++    var poster: String?
+     var positionMs: Double
+     var durationMs: Double?
+     /// `aiostreams://play/<id>?server=…&start=…`
+@@ -161,11 +163,14 @@ enum TopShelfStore {
+     }
+ 
+     /// The page asks Jellyfin for artwork 400 wide, for its own row; the Top Shelf draws it wider.
+-    static func sized(_ url: String) -> String {
++    /// tv-m: a poster's width for the shelf's poster shape, sharp at the 4K screen's 2x.
++    static let posterWidth = 808
++
++    static func sized(_ url: String, width: Int = imageWidth) -> String {
+         guard var parts = URLComponents(string: url) else { return url }
+         // The rest as the page encoded it.
+         var query = (parts.percentEncodedQueryItems ?? []).filter { $0.name.lowercased() != "maxwidth" }
+-        query.append(URLQueryItem(name: "maxWidth", value: String(imageWidth)))
++        query.append(URLQueryItem(name: "maxWidth", value: String(width)))
+         parts.percentEncodedQueryItems = query
+         return parts.string ?? url
+     }
+diff --git a/TopShelf/ContentProvider.swift b/TopShelf/ContentProvider.swift
+index 4dc8937..ac27511 100644
+--- a/TopShelf/ContentProvider.swift
++++ b/TopShelf/ContentProvider.swift
+@@ -55,8 +55,10 @@ final class ContentProvider: TVTopShelfContentProvider {
+         guard let play = item.playURL else { return nil }
+         let shelf = TVTopShelfSectionedItem(identifier: item.id)
+         shelf.title = item.label
+-        shelf.imageShape = .hdtv
+-        if let image = item.image.flatMap(URL.init(string:)) {
++        // tv-m: posters, as the Apple TV's own shelves show them; the landscape picture without one.
++        let poster = item.poster.flatMap(URL.init(string:))
++        shelf.imageShape = poster != nil ? .poster : .hdtv
++        if let image = poster ?? item.image.flatMap(URL.init(string:)) {
+             shelf.setImageURL(image, for: .screenScale1x)
+             shelf.setImageURL(image, for: .screenScale2x)
+         }
