@@ -21,6 +21,11 @@ on:
           - macos-26
           - macos-15-intel
         default: macos-26
+      platform:
+        description: Platforms to build (single-platform candidates cannot publish)
+        type: choice
+        options: [both, ios, tvos]
+        default: both
       publish_release:
         description: Publish both IPAs and the FlareStore source after successful builds
         type: boolean
@@ -50,6 +55,12 @@ jobs:
         run: cat AIOStreams/Sources/SwipeVolume.swift tests/SwipeVolumeTests.swift | swift -
       - name: Test player haptic gating
         run: cat AIOStreams/Sources/PlayerHapticPolicy.swift tests/PlayerHapticPolicyTests.swift | swift -
+      - name: Test native trailer placement
+        run: cat AIOStreams/Sources/VideoFrame.swift tests/VideoFrameTests.swift | swift -
+      - name: Test Picture in Picture eligibility and restoration
+        run: cat AIOStreams/Sources/PictureInPicturePolicy.swift tests/PictureInPicturePolicyTests.swift | swift -
+      - name: Test next episode preloading
+        run: cat AIOStreams/Sources/NextEpisodePreloader.swift tests/NextEpisodePreloaderTests.swift | swift -
       - name: Set unique installable version
         run: |
           python3 - <<'PY'
@@ -78,15 +89,19 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Build the iOS IPA
+        if: inputs.platform != 'tvos'
         run: scripts/make-ipa.sh ios
       - name: Build the tvOS IPA
+        if: inputs.platform != 'ios'
         run: scripts/make-ipa.sh tvos
       - uses: actions/upload-artifact@v4
+        if: inputs.platform != 'tvos'
         with:
           name: AIOStreams-ipa
           path: build/AIOStreams.ipa
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: inputs.platform != 'ios'
         with:
           name: AIOStreams-tvOS-ipa
           path: build/AIOStreams-tvOS.ipa
@@ -99,7 +114,8 @@ jobs:
       (github.event_name == 'push' ||
        (github.event_name == 'workflow_dispatch' && inputs.publish_release)) &&
       !inputs.height_channels && !inputs.aiostreams_ref &&
-      (!inputs.runner || inputs.runner == 'macos-26')
+      (!inputs.runner || inputs.runner == 'macos-26') &&
+      (!inputs.platform || inputs.platform == 'both')
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -10,12 +10,15 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private let videoView = AetherPlayerView()
     private let overlay = SubtitleOverlayView()
     private let thumbnails = ThumbnailStore()
+    private var videoStage: VideoStage!
     private let bridge = Bridge()
     private let systemVolume = SystemVolumeControl()
     private let haptics = PlayerHaptics()
     private var gesturesEnabled = true
     private var webView: WKWebView!
     private var player: PlayerChannel!
+    private var pictureInPicture: PictureInPicture!
+    private let pipBackdrop = UIView()
 
     private var brightnessBeforeSwipe: CGFloat?
     private weak var brightnessScreen: UIScreen?
@@ -39,6 +42,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     override func loadView() {
         let root = UIView()
         root.backgroundColor = .black
+        root.overrideUserInterfaceStyle = .dark
 
         videoView.isHidden = true
         engine.bind(view: videoView)
@@ -58,9 +62,12 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         }
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
+        webView.overrideUserInterfaceStyle = .dark
+        webView.isOpaque = true
+        webView.backgroundColor = .black
+        webView.scrollView.backgroundColor = .black
+        // Browsing snapshots need a painted surface, not just a dark under-page color.
+        webView.underPageBackgroundColor = .black
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
         webView.allowsBackForwardNavigationGestures = true
@@ -71,7 +78,24 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         self.webView = webView
         bridge.webView = webView
 
-        for view in [videoView, overlay, webView] as [UIView] {
+        videoStage = VideoStage(video: videoView, subtitles: overlay)
+        videoStage.needsTransparentPage = { [weak webView] transparent in
+            // Refresh runs on every layout pass; only a real change repaints the page.
+            guard let webView, webView.isOpaque == transparent else { return }
+            webView.isOpaque = !transparent
+            let color: UIColor = transparent ? .clear : .black
+            webView.backgroundColor = color
+            webView.scrollView.backgroundColor = color
+            webView.underPageBackgroundColor = color
+        }
+        videoStage.web = webView
+        videoStage.view.frame = root.bounds
+        videoStage.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        root.addSubview(videoStage.view)
+        pipBackdrop.backgroundColor = .black
+        pipBackdrop.isHidden = true
+        pipBackdrop.isUserInteractionEnabled = false
+        for view in [pipBackdrop, webView] as [UIView] {
             view.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(view)
             NSLayoutConstraint.activate([
@@ -81,6 +105,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 view.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             ])
         }
+        videoStage.refresh()
         systemVolume.attach(to: root)
         view = root
     }
@@ -93,7 +118,28 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         player.showVideo = { [weak self] shown in
             self?.videoView.isHidden = !shown
             self?.overlay.isHidden = !shown
-            if !shown { self?.restoreBrightness() }
+            if !shown {
+                self?.restoreBrightness()
+                self?.videoStage.stop()
+            }
+        }
+        pictureInPicture = PictureInPicture(engine: engine, channel: player) { [weak self] message in
+            self?.bridge.send(message)
+        }
+        player.pipEligibilityChanged = { [weak self] in self?.pictureInPicture?.refresh() }
+        pictureInPicture.changed = { [weak self] active in
+            guard let self else { return }
+            self.pipBackdrop.isHidden = !active
+            self.overlay.isHidden = active || !self.player.hasMedia
+            self.videoStage.refresh()
+        }
+        pictureInPicture.restore = { [weak self] in self?.view.window?.makeKeyAndVisible() }
+        pictureInPicture.failed = { [weak self] in
+            guard let self, self.presentedViewController == nil,
+                  UIApplication.shared.applicationState == .active else { return }
+            let alert = UIAlertController(title: "Picture in Picture", message: "Picture in Picture isn't available for this video right now.", preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.present(alert, animated: true)
         }
         bridge.onMessage = { [weak self] type, message in self?.handle(type, message) }
         backgroundObserver = NotificationCenter.default.addObserver(
@@ -104,6 +150,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        videoStage?.refresh()
+    }
+
     override var prefersStatusBarHidden: Bool { fullscreen }
     override var prefersHomeIndicatorAutoHidden: Bool { fullscreen }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
@@ -112,6 +163,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     // MARK: - Messages
 
     private func handle(_ type: String, _ message: [String: Any]) {
+        if type == "player-load" {
+            videoStage.start(preview: JSON.flag(message["preview"]) ?? false)
+            if videoStage.isPreview && fullscreen { setFullscreen(false) }
+        }
         if player.handle(type, message) { return }
         switch type {
         case "app-info":
@@ -123,11 +178,23 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 "ffmpeg": NSNull(),
                 "player": AppInfo.player,
             ])
+        case "pip":
+            if JSON.flag(message["value"]) == false { pictureInPicture.stopForRestore() }
+            else { pictureInPicture.toggle() }
         case "ios-player-settings":
+            if let enabled = JSON.flag(message["automaticPip"]) { pictureInPicture.automaticEnabled = enabled }
             if let enabled = JSON.flag(message["haptics"]) { haptics.enabled = enabled }
             if let enabled = JSON.flag(message["gestures"]) {
                 gesturesEnabled = enabled
                 if !enabled { restoreBrightness() }
+            }
+        case "ui-haptic":
+            // Browsing, so no media is needed, unlike the player's own feedback.
+            guard UIApplication.shared.applicationState == .active else { break }
+            switch message["action"] as? String {
+            case "menu": haptics.menu()
+            case "select": haptics.select()
+            default: break
             }
         case "player-haptic":
             if player.hasMedia, UIApplication.shared.applicationState == .active,
@@ -138,6 +205,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             readLevels(message)
         case "set-level":
             setLevel(message)
+        case "player-frame":
+            if let preview = JSON.flag(message["preview"]) { player.setPreviewMode(preview) }
+            videoStage.place(VideoFrame.from(message, webWidth: webView.bounds.width),
+                             preview: JSON.flag(message["preview"]))
+            if videoStage.isPreview && fullscreen { setFullscreen(false) }
         case "fullscreen":
             setFullscreen(JSON.flag(message["value"]) ?? !fullscreen)
         case "update-check":
@@ -267,6 +339,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     private func setFullscreen(_ on: Bool) {
+        guard !on || !videoStage.isPreview else { return }
         fullscreen = on
         AppDelegate.orientations = on ? .landscape : .allButUpsideDown
         setNeedsUpdateOfSupportedInterfaceOrientations()

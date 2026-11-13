@@ -100,6 +100,13 @@ enum AppInfo {
 
     @MainActor static var deviceName: String { UIDevice.current.name }
 
+    /// The system's clock is 24-hour: the hour the region (and Settings' 24-Hour Time over it) writes
+    /// has no AM/PM marker. Read when the page's bridge is installed, as the Apple TV reference app does.
+    static var hours24: Bool {
+        let format = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: .current) ?? ""
+        return !format.contains("a")
+    }
+
     /// Kept until the app is removed, so the server can tell this device's sessions apart.
     @MainActor static var deviceId: String {
         let key = "aiostreams.deviceId"

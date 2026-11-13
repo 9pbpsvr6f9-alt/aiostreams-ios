@@ -17,6 +17,35 @@ final class PlayerChannel {
 
     /// Used by the iOS host's swipe controls, including while playback is paused.
     var hasMedia: Bool { loadedURL != nil && !ended }
+    var isPreview: Bool { preview }
+    var pipEligibilityChanged: () -> Void = {}
+
+    func pauseFromPictureInPicture() { change(["paused": true]) }
+
+    /// The engine deliberately releases a paused decoder across long background suspension.
+    /// Its public reload preserves position, headers and track selection; a live session is untouched.
+    func restoreAfterBackground() {
+        guard PictureInPicturePolicy.needsForegroundReload(hasMedia: hasMedia,
+              ready: engine.isSessionReady, paused: engine.state == .paused, loading: loadTask != nil),
+              backgroundRecoveryTask == nil else { return }
+        let current = generation
+        backgroundRecoveryTask = Task { [weak self] in
+            guard let self else { return }
+            defer { if current == self.generation { self.backgroundRecoveryTask = nil } }
+            guard current == self.generation, !Task.isCancelled, self.hasMedia else { return }
+            do {
+                try await self.engine.reloadAtCurrentPosition()
+                guard current == self.generation, !Task.isCancelled, self.hasMedia else { return }
+                self.applyTransport()
+                self.applyVideoGravity(force: true)
+                if self.wantsPaused { self.engine.pause() } else { self.engine.play() }
+            } catch is CancellationError {
+            } catch {
+                guard current == self.generation else { return }
+                self.end("error", error: "Could not restore playback after returning to the app.")
+            }
+        }
+    }
     var effectivePlaybackVolume: Double { muted ? 0 : min(max(volume, 0), 1) }
 
     func prepareForSystemVolumeControl() {
@@ -27,6 +56,42 @@ final class PlayerChannel {
 
     private var bag = Set<AnyCancellable>()
     private var loadTask: Task<Void, Never>?
+    private var backgroundRecoveryTask: Task<Void, Never>?
+    private var live = false
+    private var trailer = false
+    private var preview = false
+    private var preferredGravity: AVLayerVideoGravity = .resizeAspect
+
+    func setPreviewMode(_ preview: Bool) {
+        self.preview = preview
+        applyVideoGravity()
+        configureAudioSession()
+        pipEligibilityChanged()
+    }
+
+    /// Volume zero alone still claims exclusive audio on iOS. Silent artwork previews
+    /// mix with other apps; ordinary playback and audible trailers retain movie audio.
+    private func configureAudioSession() {
+        let mixes = loadedURL == nil || (preview && effectivePlaybackVolume == 0)
+        let options: AVAudioSession.CategoryOptions = mixes ? [.mixWithOthers] : []
+        let session = AVAudioSession.sharedInstance()
+        guard session.category != .playback || session.mode != .moviePlayback ||
+              session.categoryOptions != options else { return }
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, options: options)
+        } catch {
+            AppLog.warn("audio", "Could not configure playback mixing: \(error.localizedDescription)")
+        }
+    }
+
+    private func applyVideoGravity(force: Bool = false) {
+        let gravity: AVLayerVideoGravity = preview ? .resizeAspectFill : preferredGravity
+        if force || engine.videoGravity != gravity { engine.videoGravity = gravity }
+        if overlay.gravity != gravity { overlay.gravity = gravity }
+    }
+    private let preloader = NextEpisodePreloader { url, headers in
+        await AetherEngine.prewarm(url: url, httpHeaders: headers)
+    }
     private var generation = 0
     /// The url the page asked for, exactly as it sent it, which its thumbnails name.
     private var loadedURL: String?
@@ -243,6 +308,10 @@ final class PlayerChannel {
     func handle(_ type: String, _ message: [String: Any]) -> Bool {
         switch type {
         case "player-load": load(message)
+        case "player-warm":
+            let headers = (message["headers"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+            preloader.prepare(message["url"] as? String, headers: headers,
+                              allowed: hasMedia && !live && !trailer)
         case "player-stop": stop()
         case "player-set": change(message)
         case "player-seek":
@@ -272,7 +341,7 @@ final class PlayerChannel {
                 guard !Task.isCancelled, current == self.generation else { return }
                 self.send(["type": "player-subtitle-lines", "track": track, "lines": tracks?[track] ?? []])
             }
-        case "player-skips", "player-controls", "player-stats-overlay", "player-frame", "player-unqueue":
+        case "player-skips", "player-controls", "player-stats-overlay", "player-unqueue":
             break
         case "player-settings":
             if let delay = JSON.number(message["audioDelayMs"]) { engine.setAudioDelay(delay / 1000) }
@@ -286,6 +355,8 @@ final class PlayerChannel {
 
     /// A page that loads again never owns the video the last one started.
     func pageLoading() {
+        preloader.cancel()
+        AetherEngine.discardPrewarmedSources()
         if loadedURL != nil { stop() }
         nowPlaying.setItem(nil)
     }
@@ -299,9 +370,21 @@ final class PlayerChannel {
         let startMs = JSON.number(message["startMs"]) ?? 0
         let mode = message["subtitleMode"] as? String ?? "default"
 
+        preloader.cancel()
+        live = JSON.flag(message["live"]) ?? false
+        trailer = JSON.flag(message["trailer"]) ?? false
+        setPreviewMode(JSON.flag(message["preview"]) ?? false)
         var options = LoadOptions()
         options.httpHeaders = headers
+        options.prepareNativeSubtitles = !trailer
         options.isLive = JSON.flag(message["live"]) ?? false
+        // Faster starts. A segment is served while it is written, so the picture starts on its first
+        // fragments rather than after the whole segment (engine changelog: 0.9 s against 2.2 s to the
+        // first frame over a 6 Mbit/s link); VOD only, the engine ignores it for live and its other routes.
+        options.progressiveSegmentDelivery = true
+        // A Matroska file's attached fonts (tens of MB on anime) are read before the first packet. The
+        // overlay draws subtitles with system fonts and never reads `fontAttachments`, so they're skipped.
+        options.skipsContainerAttachments = true
         options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
         // TrueHD Atmos and DTS:X with their heights, which iOS plays as Spatial Audio (OS 26 and later).
         options.objectAudioRendering = .render(.l714)
@@ -312,12 +395,15 @@ final class PlayerChannel {
 
         generation += 1
         let current = generation
+        backgroundRecoveryTask?.cancel()
+        backgroundRecoveryTask = nil
         loadTask?.cancel()
         indexTask?.cancel()
         indexTask = nil
         lineWatch?.cancel()
         loadedHeaders = headers
         loadedURL = text
+        configureAudioSession()
         ended = false
         restarted = false
         lastStatus = nil
@@ -326,15 +412,19 @@ final class PlayerChannel {
         wantedThumbnail = nil
         overlay.clear()
         showVideo(true)
+        pipEligibilityChanged()
         state(["idle": false])
         AppLog.info("player", "load live=\(options.isLive) start=\(Int(startMs)) url=\(url.host ?? "?")")
 
         loadTask = Task { [weak self] in
             guard let self else { return }
+            defer { if current == self.generation { self.loadTask = nil } }
+            guard current == self.generation, !Task.isCancelled else { return }
             do {
                 try await self.engine.load(url: url, startPosition: startMs > 0 ? startMs / 1000 : nil, options: options)
                 guard current == self.generation else { return }
                 self.applyTransport()
+                self.applyVideoGravity(force: true)
                 self.event("loaded")
                 if self.wantsPaused { self.engine.pause() } else { self.engine.play() }
             } catch is CancellationError {
@@ -378,7 +468,10 @@ final class PlayerChannel {
     }
 
     private func stop() {
+        preloader.cancel()
         generation += 1
+        backgroundRecoveryTask?.cancel()
+        backgroundRecoveryTask = nil
         loadTask?.cancel()
         loadTask = nil
         loadedURL = nil
@@ -387,9 +480,11 @@ final class PlayerChannel {
         indexTask = nil
         lineWatch?.cancel()
         engine.stop()
+        configureAudioSession()
         overlay.clear()
         thumbnails.clear()
         showVideo(false)
+        pipEligibilityChanged()
         state(["idle": true])
     }
 
@@ -417,6 +512,7 @@ final class PlayerChannel {
             echo["muted"] = value
         }
         if message["volume"] != nil || message["muted"] != nil {
+            configureAudioSession()
             engine.volume = muted ? 0 : Float(min(max(volume, 0), 1))
         }
         if let value = JSON.number(message["speed"]), value > 0 {
@@ -497,10 +593,8 @@ final class PlayerChannel {
         default: gravity = .resizeAspect
         }
         // The page sends its style every frame while the controls lift the subtitles.
-        if overlay.gravity != gravity {
-            engine.videoGravity = gravity
-            overlay.gravity = gravity
-        }
+        preferredGravity = gravity
+        applyVideoGravity()
         if let look = message["subtitles"] as? [String: Any] {
             overlay.look = SubtitleLook(json: look)
         }

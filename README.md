@@ -165,3 +165,24 @@ AetherEngine notes that these components may be subject to third-party patent li
 AGPL-3.0, like AIOStreams (`LICENSE`). AetherEngine is LGPL-3.0 with an App Store exception, and is linked statically from its tagged release. FFmpeg is LGPL-2.1+ and is embedded as dynamic frameworks. The app's licences screen lists both.
 
 This is an unofficial port, not affiliated with AIOStreams or AetherEngine.
+
+## Experimental iOS features
+
+Unreleased work lives on `experimental` until explicitly approved for main. Candidate builds do not publish to the stable FlareStore feed.
+
+- Trailer previews can play automatically in cards, the home hero and title pages, using the existing **Settings → Interface → Trailers** options. The player follows the preview's box beneath the page; Reduce Motion, background pages, data-saving mode and active playback keep the upstream autoplay restrictions. Empty trailer lists in row summaries wait for the title's details.
+- With next-episode autoplay enabled, the countdown warms the next video's first bytes through AetherEngine. It preserves the exact URL and required headers, excludes live video and trailers, and cancels unfinished work when dismissed, replaced or stopped. The page still controls when the next episode starts. Finished warm data is bounded by the engine's cache and cleared on page reload.
+
+Automatic iOS hero trailers do not require hover or keyboard focus; rotating banners stay on their
+trailer until it ends. Inline previews use a centered cinema-width crop to fill the artwork and trim
+conventional letterboxed trailers. Full playback keeps the selected fit mode.
+
+Native iOS Picture in Picture is prepared for supported native and software playback routes. It can
+start automatically on a Home Screen/app switch while a normal video is playing, with a toggle under
+Settings → Playback → iPhone and iPad. Preview trailers and paused videos never start it automatically.
+The player's PiP button also starts it manually. Returning restores the in-app player; closing the
+floating window pauses it. iOS's own PiP settings and route support still apply. Native text subtitles
+are prepared for PiP; the custom subtitle renderer remains in use inside the app.
+
+Swipe-back keeps WebKit's page-history transition, with a dark native underlay rather than the light
+system background. The web surface remains transparent while native video is playing.

@@ -10,8 +10,9 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        // Sound plays with the ringer switch on silent, and on in the background.
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        // Idle browsing and silent previews must not interrupt another app’s music.
+        // PlayerChannel takes exclusive playback only when audible playback needs it.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
         AppLog.info("app", "started \(AppInfo.version) on \(AppInfo.deviceModel) iOS \(UIDevice.current.systemVersion)")
         return true
     }
@@ -48,6 +49,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let root = RootViewController()
         window.rootViewController = root
         window.backgroundColor = .black
+        window.overrideUserInterfaceStyle = .dark
         window.makeKeyAndVisible()
         self.window = window
         self.root = root
