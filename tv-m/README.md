@@ -7,7 +7,8 @@ are for personal use. So this folder holds none of its code, only:
 - `AIOSTREAMS_REF`: the AIOStreams commit for its web app, as the upstream web patches only fit some.
 - `patches/*.patch`: our own changes to the app, applied in name order.
 - `web/*.patch`: our own changes to its web app, added to the upstream web patches and applied
-  after them by name: `0100` the skip countdown, `0101` the spoiler blur, `0102` Liquid Glass.
+  after them by name: `0100` the skip countdown, `0101` the spoiler blur, `0102` Liquid Glass, `0103` the launch
+  logo's size for the app (with `patches/0001`, which draws it from the first frame).
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no

@@ -1,0 +1,113 @@
+diff --git a/App/MainViewController.swift b/App/MainViewController.swift
+index b686351..9092bdf 100644
+--- a/App/MainViewController.swift
++++ b/App/MainViewController.swift
+@@ -15,6 +15,8 @@ final class MainViewController: UIViewController, RemoteReceiver {
+     private lazy var stage = VideoStage(video: videoView, subtitles: subtitleView)
+     private var web: AIOWebView?
+     private let status = UILabel()
++    /// tv-m: the logo over everything until the page's splash shows it.
++    private var launchLogo: LaunchLogo?
+     private var engine: AetherPlayer?
+     private var player: PlayerChannel?
+     private var pip: PictureInPicture?
+@@ -59,6 +61,10 @@ final class MainViewController: UIViewController, RemoteReceiver {
+         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+         view.addSubview(web)
+         view.addSubview(status)
++        let logo = LaunchLogo(frame: view.bounds)
++        logo.autoresizingMask = [.flexibleWidth, .flexibleHeight]
++        view.addSubview(logo)
++        launchLogo = logo
+         self.web = web
+         stage.web = web
+         guard web.available else {
+@@ -502,6 +508,9 @@ final class MainViewController: UIViewController, RemoteReceiver {
+             web?.focusPage()
+             pipButtonShown = false
+             updatePipButton()
++        case "splash-shown":
++            launchLogo?.lift(widthShare: message.number("logoWidth"))
++            launchLogo = nil
+         case "tvos-pip":
+             // The player's picture-in-picture button, which the bridge script adds.
+             pip?.start()
+diff --git a/App/Support/LaunchLogo.swift b/App/Support/LaunchLogo.swift
+new file mode 100644
+index 0000000..7315b8a
+--- /dev/null
++++ b/App/Support/LaunchLogo.swift
+@@ -0,0 +1,73 @@
++import UIKit
++
++/**
++ * tv-m: the web app's launch logo, drawn natively from the app's first frame until the page's own
++ * splash shows it, so the app opens on the logo, not on black. The page says `splash-shown`, with its
++ * logo's width as a share of its own (patches/web 0103), and the cover eases to that size as it fades
++ * into the identical logo beneath. A timeout lifts it if the page never says.
++ */
++@MainActor
++final class LaunchLogo: UIView {
++    private let logo = CAShapeLayer()
++    private var lifted = false
++    /// Before the page reports, the share a 1280-wide page scaled to the screen draws its logo at:
++    /// 288 of 1280 page pixels.
++    private var widthShare: CGFloat = 288.0 / 1280.0
++    private static let timeout: TimeInterval = 4
++
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        backgroundColor = .black
++        isUserInteractionEnabled = false
++        accessibilityElementsHidden = true
++        logo.fillColor = UIColor.white.cgColor
++        layer.addSublayer(logo)
++        Task { @MainActor [weak self] in
++            try? await Task.sleep(nanoseconds: UInt64(Self.timeout * 1_000_000_000))
++            self?.lift()
++        }
++    }
++
++    required init?(coder: NSCoder) { fatalError("not used") }
++
++    override func layoutSubviews() {
++        super.layoutSubviews()
++        place()
++    }
++
++    private func place() {
++        let side = bounds.width * widthShare
++        logo.frame = CGRect(x: bounds.midX - side / 2, y: bounds.midY - side / 2, width: side, height: side)
++        logo.path = Self.path(scale: side / 1080)
++    }
++
++    /// Fades out over the page's identical logo, meeting its size on the way; once only.
++    func lift(widthShare share: Double? = nil) {
++        guard !lifted, superview != nil else { return }
++        lifted = true
++        if let share, share > 0.02, share < 0.9 {
++            widthShare = CGFloat(share)
++            CATransaction.begin()
++            CATransaction.setAnimationDuration(0.25)
++            place()
++            CATransaction.commit()
++        }
++        UIView.animate(withDuration: 0.25, animations: { self.alpha = 0 }, completion: { _ in self.removeFromSuperview() })
++    }
++
++    /// The splash SVG's two shapes (viewBox 0 0 1080 1080), its relative path commands made absolute.
++    private static func path(scale: CGFloat) -> CGPath {
++        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * scale, y: y * scale) }
++        let path = UIBezierPath()
++        path.move(to: p(508.34, 338.5))
++        path.addLine(to: p(511.48, 338.5))
++        path.addCurve(to: p(584.87, 465.62), controlPoint1: p(576.72, 338.5), controlPoint2: p(617.49, 409.12))
++        path.addLine(to: p(424.43, 743.5))
++        path.addCurve(to: p(349.47, 613.67), controlPoint1: p(357.80, 743.5), controlPoint2: p(316.16, 671.37))
++        path.addLine(to: p(508.34, 338.5))
++        path.close()
++        path.append(UIBezierPath(ovalIn: CGRect(x: 547.53 * scale, y: 545.5 * scale,
++                                                width: 194.72 * scale, height: 198 * scale)))
++        return path.cgPath
++    }
++}

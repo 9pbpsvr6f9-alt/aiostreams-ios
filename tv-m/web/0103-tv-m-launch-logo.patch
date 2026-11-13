@@ -1,0 +1,24 @@
+diff --git a/packages/web/index.html b/packages/web/index.html
+index 1132cc26..b53b43e2 100644
+--- a/packages/web/index.html
++++ b/packages/web/index.html
+@@ -130,12 +130,17 @@
+           document
+             .getElementById('splash')
+             .style.setProperty('--splash-size', 28800 / side + 'vmin');
+-        // The Android app covers the page until this shows.
++        // The Android app covers the page until this shows. tv-m: with the logo's width as a share of
++        // the page's, so the app's own logo can meet it at the same size, whatever the page's zoom.
+         var app = window.aiostreamsApp;
+         if (app && app.platform === 'android')
+           requestAnimationFrame(function () {
+             requestAnimationFrame(function () {
+-              app.send({ type: 'splash-shown' });
++              var logo = document.querySelector('#splash .splash-logo');
++              app.send({
++                type: 'splash-shown',
++                logoWidth: logo && innerWidth ? logo.offsetWidth / innerWidth : 0,
++              });
+             });
+           });
+       })();
