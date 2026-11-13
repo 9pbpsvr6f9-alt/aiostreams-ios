@@ -8,7 +8,9 @@ are for personal use. So this folder holds none of its code, only:
 - `patches/*.patch`: our own changes to the app, applied in name order.
 - `web/*.patch`: our own changes to its web app, added to the upstream web patches and applied
   after them by name: `0100` the skip countdown, `0101` the spoiler blur, `0102` Liquid Glass, `0103` the launch
-  logo's size for the app (with `patches/0001`, which draws it from the first frame).
+  logo's place for the app (with `patches/0001`, which draws it from the first frame), `0104` the
+  countdown's setting, Back to keep watching, a larger skip button, glass focus on text, the
+  glass floating rail and its Hide the rail while browsing switch.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
