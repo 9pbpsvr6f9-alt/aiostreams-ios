@@ -1,0 +1,29 @@
+diff --git a/packages/web/src/lib/jellyfin/session.tsx b/packages/web/src/lib/jellyfin/session.tsx
+index f4ddb8d8..9791919a 100644
+--- a/packages/web/src/lib/jellyfin/session.tsx
++++ b/packages/web/src/lib/jellyfin/session.tsx
+@@ -354,7 +354,23 @@ export function useSessionPhase(base: string) {
+   React.useEffect(() => {
+     let hiddenAt = 0;
+     const onVisibility = () => {
+-      if (document.hidden) return void (hiddenAt = Date.now());
++      if (document.hidden) {
++        hiddenAt = Date.now();
++        // tv-m: with Ask every time you come back, the picker takes over while the app goes away
++        // (the Apple TV app keeps the page awake a few seconds after it's hidden), so a return
++        // opens on it rather than on the page, with the picker following once the users load.
++        const { phase, pick, askWho } = latest.current;
++        if (
++          settings.tvm.askWhoOnReturn.read() &&
++          phase.kind === 'ready' &&
++          !location.hash.startsWith('#/play/')
++        )
++          void askWho(phase.client, false).then((users) => {
++            if (users && document.hidden && latest.current.phase === phase)
++              void pick(phase.client, users, phase.user);
++          });
++        return;
++      }
+       // tv-m: Ask every time you come back counts any time away.
+       const away =
+         hiddenAt > 0 &&
