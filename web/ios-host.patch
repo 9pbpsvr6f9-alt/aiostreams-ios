@@ -120,7 +120,7 @@ index e41938f..d8ffaba 100644
            ],
            ...(shell.player && !shell.mpv
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
-index 2e7bd37..905726a 100644
+index 2e7bd37..a0371d4 100644
 --- a/packages/web/src/app/settings/playback.tsx
 +++ b/packages/web/src/app/settings/playback.tsx
 @@ -1,4 +1,5 @@
@@ -163,7 +163,7 @@ index 2e7bd37..905726a 100644
 +      <Switch
 +        side="right"
 +        label={t`Haptic feedback`}
-+        help={t`Light feedback for play, pause, seeking and brightness or volume adjustments. Available on supported devices.`}
++        help={t`Light feedback for play, pause, seeking, brightness or volume adjustments, and when you hold a title for its menu. Available on supported devices.`}
 +        value={haptics}
 +        onValueChange={setHaptics}
 +      />
@@ -313,6 +313,26 @@ index 51dba34..beaef18 100644
 
    return (
      <FollowContext.Provider value={follow}>
+diff --git a/packages/web/src/components/media/item-menu.tsx b/packages/web/src/components/media/item-menu.tsx
+index f7db07b..4a8139e 100644
+--- a/packages/web/src/components/media/item-menu.tsx
++++ b/packages/web/src/components/media/item-menu.tsx
+@@ -54,6 +54,7 @@ import { openAddToPlaylist } from '@/features/playlists/playlists';
+ import { playable as canPlay } from '@/lib/playlists';
+ import { usingKeys } from '@/lib/input';
+ import type { BaseItemDto } from '@/lib/jellyfin/types';
++import { iosMenuFeedback } from '@/lib/hosts/shell/ios-feedback';
+ 
+ function PlayEntries({ item }: { item: BaseItemDto }) {
+   const picker = useVersionPicker();
+@@ -161,6 +162,7 @@ export function ItemMenuHost({ children }: { children: React.ReactNode }) {
+   }, []);
+   const open = React.useCallback(
+     (next: MenuTarget, at: Point, card?: Element) => {
++      iosMenuFeedback();
+       flushSync(() => setTarget(next));
+       own(card);
+       // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
 index 87e0d0f..a85c853 100644
 --- a/packages/web/src/features/player/controls.tsx
@@ -928,10 +948,10 @@ index 0c2fe1b..6de9d17 100644
  }
 diff --git a/packages/web/src/lib/hosts/shell/ios-feedback.ts b/packages/web/src/lib/hosts/shell/ios-feedback.ts
 new file mode 100644
-index 0000000..aed8da0
+index 0000000..63c99c9
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios-feedback.ts
-@@ -0,0 +1,11 @@
+@@ -0,0 +1,18 @@
 +import { settings } from '@/lib/settings';
 +import { appBridge } from './bridge';
 +
@@ -939,6 +959,13 @@ index 0000000..aed8da0
 +  const bridge = appBridge();
 +  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
 +    bridge.send({ type: 'player-haptic', action });
++}
++
++/** A light tap as an item's menu opens, from a long press, a right click or its button. */
++export function iosMenuFeedback(): void {
++  const bridge = appBridge();
++  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
++    bridge.send({ type: 'ui-haptic', action: 'menu' });
 +}
 +
 +export const iosGesturesEnabled = () =>
@@ -1238,7 +1265,7 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..cb26f31 100644
+index 2014fb0..76ba91f 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
 @@ -5752,3 +5752,61 @@ msgstr "Your rating"
@@ -1259,8 +1286,8 @@ index 2014fb0..cb26f31 100644
 +msgstr "Haptic feedback"
 +
 +#. iOS host additions
-+msgid "Light feedback for play, pause, seeking and brightness or volume adjustments. Available on supported devices."
-+msgstr "Light feedback for play, pause, seeking and brightness or volume adjustments. Available on supported devices."
++msgid "Light feedback for play, pause, seeking, brightness or volume adjustments, and when you hold a title for its menu. Available on supported devices."
++msgstr "Light feedback for play, pause, seeking, brightness or volume adjustments, and when you hold a title for its menu. Available on supported devices."
 +
 +#. iOS host additions
 +msgid "Player gestures"
@@ -1304,10 +1331,10 @@ index 2014fb0..cb26f31 100644
 +msgid "Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip."
 +msgstr "Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99ee..f06d87e 100644
+index 96e99ee..628b910 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
-@@ -152,6 +152,24 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
+@@ -152,6 +152,33 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
    background-color: var(--background) !important;
  }
  
@@ -1317,6 +1344,15 @@ index 96e99ee..f06d87e 100644
 +html.see-through[data-host='ios-app']:not(.playing):not([data-video-hole]) {
 +  background-color: var(--background, #000) !important;
 +  color-scheme: dark;
++}
++
++/* On iOS, spoilers blur on a title's own episodes, not on Home's rows. Those rows (Next up,
++   Upcoming, Continue watching) exist only on Home; the upstream rule is more specific. */
++html[data-host='ios-app'][data-blur-spoilers]
++  :is([data-row='next-up'], [data-row='upcoming'], [data-row='resume'])
++  [data-ui='wide-card']
++  :is([data-ui='artwork'], [data-ui='wide-card-subtitle']) {
++  filter: none !important;
 +}
 +
 +/* The iOS skip button's countdown, filling across it. */

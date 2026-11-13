@@ -188,6 +188,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
                 gesturesEnabled = enabled
                 if !enabled { restoreBrightness() }
             }
+        case "ui-haptic":
+            // Browsing, so no media is needed, unlike the player's own feedback.
+            if UIApplication.shared.applicationState == .active, message["action"] as? String == "menu" {
+                haptics.menu()
+            }
         case "player-haptic":
             if player.hasMedia, UIApplication.shared.applicationState == .active,
                let action = message["action"] as? String, ["toggle", "seek", "track"].contains(action) {
