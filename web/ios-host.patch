@@ -119,6 +119,56 @@ index e41938f..d8ffaba 100644
              shell.app,
            ],
            ...(shell.player && !shell.mpv
+diff --git a/packages/web/src/app/settings/downloads.tsx b/packages/web/src/app/settings/downloads.tsx
+index d2ad407..48e4d7f 100644
+--- a/packages/web/src/app/settings/downloads.tsx
++++ b/packages/web/src/app/settings/downloads.tsx
+@@ -9,6 +9,7 @@ import {
+   useSetting,
+   DOWNLOAD_SEARCHES,
+   DOWNLOADS_AT_ONCE,
++  type IosSmartCellular,
+ } from '@/lib/settings';
+ import { downloadsHost, useDownloadFolder } from '@/lib/downloads';
+ import { SettingsCard, SettingsRow } from './_components/settings-card';
+@@ -21,6 +22,8 @@ export function DownloadsSection() {
+   const [searches, setSearches] = useSetting(settings.downloads.searches);
+   const [subtitles, setSubtitles] = useSetting(settings.downloads.subtitles);
+   const [wifiOnly, setWifiOnly] = useSetting(settings.downloads.wifiOnly);
++  const [smartCellular, setSmartCellular] = useSetting(settings.ios.smartCellular);
++  const ios = currentHost().name === 'ios-app';
+   const button = 'w-full rounded-full sm:w-auto';
+   return (
+     <SettingsCard description={onDevice()}>
+@@ -101,7 +104,7 @@ export function DownloadsSection() {
+           onValueChange={setSubtitles}
+         />
+       )}
+-      {currentHost().name === 'android-app' && (
++      {(currentHost().name === 'android-app' || ios) && (
+         <Switch
+           side="right"
+           label={t`Only on Wi-Fi`}
+@@ -110,6 +113,19 @@ export function DownloadsSection() {
+           onValueChange={setWifiOnly}
+         />
+       )}
++      {ios && wifiOnly && (
++        <Select
++          label={t`Smart downloads on cellular`}
++          help={t`What smart downloads may fetch over cellular data while other downloads wait for Wi-Fi.`}
++          options={[
++            { value: 'off', label: t`Wait for Wi-Fi` },
++            { value: 'next', label: t`Next episode only` },
++            { value: 'all', label: t`All smart downloads` },
++          ]}
++          value={smartCellular}
++          onValueChange={(v) => setSmartCellular(v as IosSmartCellular)}
++        />
++      )}
+     </SettingsCard>
+   );
+ }
 diff --git a/packages/web/src/app/settings/interface.tsx b/packages/web/src/app/settings/interface.tsx
 index 3ca1664..24dc4ae 100644
 --- a/packages/web/src/app/settings/interface.tsx
@@ -380,6 +430,115 @@ index f7db07b..4a8139e 100644
        flushSync(() => setTarget(next));
        own(card);
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
+diff --git a/packages/web/src/components/shell/layout.tsx b/packages/web/src/components/shell/layout.tsx
+index f9fd24f..5bbd825 100644
+--- a/packages/web/src/components/shell/layout.tsx
++++ b/packages/web/src/components/shell/layout.tsx
+@@ -39,6 +39,7 @@ import { shellHost } from '@/lib/hosts/shell';
+ import { useDiscordBrowsing } from '@/lib/discord';
+ import { useServerEvents } from '@/features/remote/server-events';
+ import { downloadsHost, useDownloadRunner } from '@/lib/downloads';
++import { useSmartDownloads } from '@/lib/downloads/smart';
+ import { usePendingStops } from '@/lib/playback/reporter';
+ import {
+   closePlayback,
+@@ -525,6 +526,7 @@ function PagesWork({
+   return (
+     <>
+       <DownloadRunner paused={playing} />
++      {currentHost().name === 'ios-app' && <SmartDownloads paused={playing} />}
+       {shellHost() && <UpdatePrompt />}
+       {usageStatsOffered() && <UsageStats />}
+     </>
+@@ -536,6 +538,12 @@ function DownloadRunner({ paused }: { paused: boolean }) {
+   return null;
+ }
+ 
++/** iOS: keeps the smart shows' next episodes downloaded, and deletes them once watched. */
++function SmartDownloads({ paused }: { paused: boolean }) {
++  useSmartDownloads(paused);
++  return null;
++}
++
+ /** How much of the page's left a floating rail keeps clear. */
+ const FLOAT_GUTTER = {
+   touch: {
+diff --git a/packages/web/src/features/downloads/download-button.tsx b/packages/web/src/features/downloads/download-button.tsx
+index ebaa516..649d6a1 100644
+--- a/packages/web/src/features/downloads/download-button.tsx
++++ b/packages/web/src/features/downloads/download-button.tsx
+@@ -1,7 +1,20 @@
+ import { t } from '@lingui/core/macro';
+ import { Trans } from '@lingui/react/macro';
+ import { BiDownload, BiErrorCircle, BiSolidDownload } from 'react-icons/bi';
+-import { DropdownMenu, DropdownMenuItem } from '@aiostreams/ui/dropdown-menu';
++import {
++  DropdownMenu,
++  DropdownMenuItem,
++  DropdownMenuLabel,
++  DropdownMenuSeparator,
++} from '@aiostreams/ui/dropdown-menu';
++import { LuCheck } from 'react-icons/lu';
++import { currentHost } from '@/lib/hosts';
++import {
++  SMART_COUNTS,
++  useSetSmartShow,
++  useSmartShow,
++  type SmartCount,
++} from '@/lib/downloads/smart';
+ import { IconButton } from '@aiostreams/ui/button';
+ import { Tooltip } from '@aiostreams/ui/tooltip';
+ import { cn } from '@aiostreams/ui/core/styling';
+@@ -137,8 +150,31 @@ export function ShowDownloadMenu({
+ }) {
+   const picker = useVersionPicker();
+   const episodes = useEpisodesToDownload();
++  const smart = useSmartShow(series.Id);
++  const setSmart = useSetSmartShow();
+   const seasonName = season?.Name;
+   if (!downloadsHost()) return null;
++  const smartLabel = (count: SmartCount | null) =>
++    count === null
++      ? t`Off`
++      : count === 'season'
++        ? t`Rest of the season`
++        : count === 1
++          ? t`Next episode`
++          : t`Next ${count} episodes`;
++  const smartItem = (count: SmartCount | null) => (
++    <DropdownMenuItem
++      key={String(count)}
++      data-name="smart-download"
++      onClick={() => setSmart(series, count)}
++    >
++      <LuCheck
++        aria-hidden
++        className={cn('flex-none', smart === count ? 'opacity-100' : 'opacity-0')}
++      />
++      {smartLabel(count)}
++    </DropdownMenuItem>
++  );
+   const run = (opts: { seasonId?: string; unwatched?: boolean }) =>
+     void episodes(series.Id!, opts).then(
+       (items) =>
+@@ -181,6 +217,17 @@ export function ShowDownloadMenu({
+       <DropdownMenuItem onClick={() => run({ unwatched: true })}>
+         <Trans>Everything unwatched</Trans>
+       </DropdownMenuItem>
++      {currentHost().name === 'ios-app' && (
++        <>
++          <DropdownMenuSeparator />
++          {/* Keeps the next unwatched episodes on this device and deletes them once watched. */}
++          <DropdownMenuLabel>
++            <Trans>Smart download</Trans>
++          </DropdownMenuLabel>
++          {smartItem(null)}
++          {SMART_COUNTS.map(smartItem)}
++        </>
++      )}
+     </DropdownMenu>
+   );
+   return (
 diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
 index 87e0d0f..a85c853 100644
 --- a/packages/web/src/features/player/controls.tsx
@@ -951,6 +1110,300 @@ index 4daab21..37a3643 100644
      },
      [host, setFrame]
    );
+diff --git a/packages/web/src/lib/downloads/index.ts b/packages/web/src/lib/downloads/index.ts
+index 000b3b2..189d966 100644
+--- a/packages/web/src/lib/downloads/index.ts
++++ b/packages/web/src/lib/downloads/index.ts
+@@ -216,6 +216,40 @@ export function useAddDownloads() {
+   );
+ }
+ 
++/**
++ * Adds downloads with no toast, for smart downloads (iOS). Each finds its version as the runner
++ * does; with the show's binge group known, each follows it, else the first picks and the rest
++ * follow the first.
++ */
++export function addDownloadsQuietly(
++  base: string,
++  userId: string,
++  items: BaseItemDto[],
++  group?: string
++): Download[] {
++  const taken = new Set(
++    allDownloads()
++      .filter((d) => d.base === base && d.userId === userId)
++      .map((d) => d.item.Id)
++  );
++  const fresh = items.filter((item) => !taken.has(item.Id));
++  const batch = !group && fresh.length > 1 ? newId() : undefined;
++  const added: Download[] = fresh.map((item, i) => ({
++    id: newId(),
++    base,
++    userId,
++    item,
++    batch,
++    leader: (batch && i === 0) || undefined,
++    group: group ?? (batch && i > 0 ? undefined : null),
++    state: 'finding',
++    bytes: 0,
++    addedAt: Date.now() + i,
++  }));
++  if (added.length) addDownloads(added);
++  return added;
++}
++
+ export function pauseDownload(download: Download): void {
+   downloadsHost()?.control(download.id, 'pause');
+ }
+diff --git a/packages/web/src/lib/downloads/smart.ts b/packages/web/src/lib/downloads/smart.ts
+new file mode 100644
+index 0000000..1a52593
+--- /dev/null
++++ b/packages/web/src/lib/downloads/smart.ts
+@@ -0,0 +1,243 @@
++import React from 'react';
++import { appBridge } from '@/lib/hosts/shell/bridge';
++import { useSession } from '@/lib/jellyfin/session';
++import { pickable } from '@/lib/format';
++import { storage } from '@/lib/storage';
++import { onSettingsChange, settings } from '@/lib/settings';
++import { playbackNow } from '@/lib/playback/session';
++import type {
++  BaseItemDto,
++  BaseItemDtoQueryResult,
++} from '@/lib/jellyfin/types';
++import { addDownloadsQuietly, downloadsHost, removeDownloads } from '.';
++import { allDownloads, useDownloadList } from './store';
++
++/**
++ * Smart downloads (iOS): a show keeps its next unwatched episodes on the device, topping up as
++ * they are watched and deleting the ones that are. Jellyfin's watched state is the truth, so an
++ * episode watched on another device moves the queue on too, and a download watched offline is
++ * deleted only once the server has its played state.
++ */
++
++/** How many episodes a show keeps ahead; `season` is the rest of the season. */
++export type SmartCount = 1 | 2 | 3 | 4 | 5 | 'season';
++export const SMART_COUNTS: readonly SmartCount[] = [1, 2, 3, 4, 5, 'season'];
++
++interface SmartShow {
++  base: string;
++  userId: string;
++  count: SmartCount;
++}
++
++const SHOWS_KEY = 'aiostreams-ios-smart-shows';
++/** Item ids the smart runner added, the only downloads it ever deletes. */
++const OWNED_KEY = 'aiostreams-ios-smart-items';
++/** A top-up while the app stays open, beside the ones a finished video and a return bring. */
++const EVERY_MS = 15 * 60_000;
++
++type Shows = Record<string, SmartShow>;
++
++const listeners = new Set<() => void>();
++const readShows = (): Shows => storage.get<Shows>(SHOWS_KEY) ?? {};
++const readOwned = (): string[] => storage.get<string[]>(OWNED_KEY) ?? [];
++let snapshot = readShows();
++
++function writeShows(next: Shows) {
++  storage.set(SHOWS_KEY, next);
++  snapshot = next;
++  for (const listener of listeners) listener();
++}
++
++const showKey = (base: string, userId: string, seriesId: string) =>
++  `${base}|${userId}|${seriesId}`;
++
++/** A show's smart count on this device, or null when it is off. */
++export function useSmartShow(seriesId: string | undefined): SmartCount | null {
++  const { client, user } = useSession();
++  const shows = React.useSyncExternalStore(
++    (listener) => {
++      listeners.add(listener);
++      return () => listeners.delete(listener);
++    },
++    () => snapshot
++  );
++  if (!seriesId) return null;
++  return shows[showKey(client.base, user.Id!, seriesId)]?.count ?? null;
++}
++
++/** Turns a show's smart downloads on with `count`, or off with null. Off keeps what it saved. */
++export function useSetSmartShow() {
++  const { client, user } = useSession();
++  return React.useCallback(
++    (series: BaseItemDto, count: SmartCount | null) => {
++      const key = showKey(client.base, user.Id!, series.Id!);
++      const { [key]: _, ...rest } = readShows();
++      if (count === null) {
++        // What it downloaded stays, and is no longer deleted once watched.
++        const episodes = new Set(
++          allDownloads()
++            .filter((d) => d.item.SeriesId === series.Id)
++            .map((d) => d.item.Id)
++        );
++        storage.set(
++          OWNED_KEY,
++          readOwned().filter((id) => !episodes.has(id))
++        );
++        writeShows(rest);
++      } else {
++        writeShows({
++          ...rest,
++          [key]: { base: client.base, userId: user.Id!, count },
++        });
++      }
++    },
++    [client.base, user.Id]
++  );
++}
++
++/** The episodes a show should have on the device now, in order. */
++function wanted(
++  episodes: BaseItemDto[],
++  next: BaseItemDto | undefined,
++  count: SmartCount
++): BaseItemDto[] {
++  const playable = episodes.filter(pickable);
++  let from = next ? playable.findIndex((e) => e.Id === next.Id) : -1;
++  if (from < 0) from = playable.findIndex((e) => !e.UserData?.Played);
++  if (from < 0) return [];
++  const ahead = playable.slice(from).filter((e) => !e.UserData?.Played);
++  if (count === 'season') {
++    const season = playable[from].SeasonId;
++    return ahead.filter((e) => e.SeasonId === season);
++  }
++  return ahead.slice(0, count);
++}
++
++/**
++ * Keeps the smart shows' downloads in step: adds the episodes each show should have, deletes
++ * the ones it added that the server now marks watched, and tells the app which may use
++ * cellular data. Runs on start, on return to the app, when playback ends, when a show's count
++ * changes and every quarter hour; `paused` (playing) waits.
++ */
++export function useSmartDownloads(paused: boolean): void {
++  const { client, user } = useSession();
++  const list = useDownloadList();
++  const host = downloadsHost();
++  const running = React.useRef(false);
++  const [tick, setTick] = React.useState(0);
++
++  React.useEffect(() => {
++    const wake = () => setTick((n) => n + 1);
++    listeners.add(wake);
++    const visible = () => document.visibilityState === 'visible' && wake();
++    document.addEventListener('visibilitychange', visible);
++    const timer = setInterval(wake, EVERY_MS);
++    return () => {
++      listeners.delete(wake);
++      document.removeEventListener('visibilitychange', visible);
++      clearInterval(timer);
++    };
++  }, []);
++
++  // Which smart downloads may use cellular data, by the device's setting.
++  React.useEffect(() => {
++    const send = () => {
++      const policy = settings.ios.smartCellular.read();
++      const shows = readShows();
++      const owned = new Set(readOwned());
++      const ours = allDownloads().filter(
++        (d) =>
++          owned.has(d.item.Id!) &&
++          d.state !== 'done' &&
++          !!shows[showKey(d.base, d.userId, d.item.SeriesId ?? '')]
++      );
++      let ids: string[] = [];
++      if (policy === 'all') ids = ours.map((d) => d.id);
++      else if (policy === 'next') {
++        // Each show's earliest waiting episode, by its place in the show.
++        const first = new Map<string, (typeof ours)[number]>();
++        for (const d of ours) {
++          const key = d.item.SeriesId ?? '';
++          const was = first.get(key);
++          const order = (x: BaseItemDto) =>
++            (x.ParentIndexNumber ?? 0) * 10_000 + (x.IndexNumber ?? 0);
++          if (!was || order(d.item) < order(was.item)) first.set(key, d);
++        }
++        ids = [...first.values()].map((d) => d.id);
++      }
++      appBridge()?.send({ type: 'download-cellular', ids });
++    };
++    send();
++    return onSettingsChange(send);
++  }, [list]);
++
++  React.useEffect(() => {
++    if (!host || paused || running.current) return;
++    const shows = Object.entries(readShows()).filter(
++      ([, s]) => s.base === client.base && s.userId === user.Id
++    );
++    if (!shows.length) return;
++    running.current = true;
++    void (async () => {
++      for (const [key, show] of shows) {
++        const seriesId = key.slice(key.lastIndexOf('|') + 1);
++        try {
++          const [{ Items: episodes = [] }, nextUp] = await Promise.all([
++            client.get<BaseItemDtoQueryResult>(`/Shows/${seriesId}/Episodes`, {
++              userId: user.Id,
++              Fields: 'MediaSources',
++            }),
++            client.get<BaseItemDtoQueryResult>('/Shows/NextUp', {
++              userId: user.Id,
++              seriesId,
++              Limit: 1,
++            }),
++          ]);
++          const owned = new Set(readOwned());
++          const played = new Set(
++            episodes.filter((e) => e.UserData?.Played).map((e) => e.Id)
++          );
++          // Watched on any device, as the server says: its smart download goes.
++          const now = playbackNow();
++          const done = allDownloads().filter(
++            (d) =>
++              d.base === client.base &&
++              d.userId === user.Id &&
++              d.item.SeriesId === seriesId &&
++              owned.has(d.item.Id!) &&
++              played.has(d.item.Id) &&
++              d.item.Id !== now?.itemId
++          );
++          if (done.length) {
++            removeDownloads(done, true);
++            const gone = new Set(done.map((d) => d.item.Id));
++            storage.set(
++              OWNED_KEY,
++              readOwned().filter((id) => !gone.has(id))
++            );
++          }
++          // The next ones, following the release the show's downloads already use.
++          const want = wanted(episodes, nextUp.Items?.[0], show.count);
++          const have = allDownloads().filter(
++            (d) =>
++              d.base === client.base &&
++              d.userId === user.Id &&
++              d.item.SeriesId === seriesId
++          );
++          const group = have.find((d) => d.source?.aiostreams?.bingeGroup)
++            ?.source?.aiostreams?.bingeGroup;
++          const added = addDownloadsQuietly(client.base, user.Id!, want, group);
++          if (added.length)
++            storage.set(OWNED_KEY, [
++              ...readOwned(),
++              ...added.map((d) => d.item.Id!),
++            ]);
++        } catch {
++          // Offline or the server is away: the next run tries again.
++        }
++      }
++    })().finally(() => {
++      running.current = false;
++    });
++  }, [host, paused, tick, client, user.Id]);
++}
 diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
 index f7a92d4..77125c6 100644
 --- a/packages/web/src/lib/hosts/index.ts
@@ -1047,15 +1500,16 @@ index 0000000..63c99c9
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..2e1ee1c
+index 0000000..8cda26e
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,120 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
 +import { appEngine } from './player';
 +import { resolveYouTube } from './youtube';
++import { shellDownloads } from './downloads';
 +
 +let fullscreen = false;
 +
@@ -1150,6 +1604,8 @@ index 0000000..2e1ee1c
 +  player: appEngine,
 +  playerFeatures: ['audio', 'chapters', 'headers'],
 +  resolveYouTube,
++  // The app's queue, as the Android app's: background transfers that go on with the app closed.
++  downloads: shellDownloads,
 +  levels: {
 +    read: (level) => ask({ type: 'levels', level }, 'levels'),
 +    set: (level, value) =>
@@ -1332,7 +1788,7 @@ index 0a565dd..5f62c48 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..68c1134 100644
+index 9be266c..d136c2c 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
@@ -1350,16 +1806,19 @@ index 9be266c..68c1134 100644
  export type SubtitleSize = (typeof SUBTITLE_SIZES)[number];
  /** `default` keeps the player's own font. */
  export const SUBTITLE_FONTS = [
-@@ -247,6 +253,8 @@ export const NEXT_PROMPTS = ['credits', 'end', 'off'] as const;
+@@ -247,6 +253,11 @@ export const NEXT_PROMPTS = ['credits', 'end', 'off'] as const;
  export type NextPrompt = (typeof NEXT_PROMPTS)[number];
  export const NEXT_LEADS = [15, 30, 45, 60, 90, 120] as const;
  export const NEXT_COUNTDOWNS = [5, 10, 15, 30] as const;
++/** Which smart downloads may use cellular data on iOS while downloads wait for Wi-Fi. */
++export const IOS_SMART_CELLULAR = ['off', 'next', 'all'] as const;
++export type IosSmartCellular = (typeof IOS_SMART_CELLULAR)[number];
 +/** Seconds an offered skip counts down on iOS before it skips by itself; 0 never does. */
 +export const IOS_SKIP_COUNTDOWNS = [0, 3, 5, 10] as const;
  /** Episodes in a row with no input before asking; 0 never asks. */
  export const STILL_WATCHING_AFTER = [0, 2, 3, 4, 5, 8] as const;
  
-@@ -605,6 +613,19 @@ export const settings = {
+@@ -605,6 +616,24 @@ export const settings = {
        MINI_CORNERS
      ),
    },
@@ -1372,6 +1831,11 @@ index 9be266c..68c1134 100644
 +    spoilerPictures: device<boolean>('aiostreams-ios-spoiler-pictures', true),
 +    spoilerTitles: device<boolean>('aiostreams-ios-spoiler-titles', true),
 +    spoilerDescriptions: device<boolean>('aiostreams-ios-spoiler-descriptions', true),
++    smartCellular: device<IosSmartCellular>(
++      'aiostreams-ios-smart-cellular',
++      'off',
++      IOS_SMART_CELLULAR
++    ),
 +    skipCountdown: device<number>('aiostreams-ios-skip-countdown', 5, (n) =>
 +      (IOS_SKIP_COUNTDOWNS as readonly number[]).includes(n)
 +    ),
@@ -1400,10 +1864,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..dffe2a8 100644
+index 2014fb0..e72bfda 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,77 @@ msgstr "Your rating"
+@@ -5752,3 +5752,109 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -1481,6 +1945,38 @@ index 2014fb0..dffe2a8 100644
 +#. iOS host additions
 +msgid "On this iPhone or iPad, choose which parts of an episode you haven't started are blurred. Home's rows stay clear."
 +msgstr "On this iPhone or iPad, choose which parts of an episode you haven't started are blurred. Home's rows stay clear."
++
++#. iOS host additions
++msgid "Smart download"
++msgstr "Smart download"
++
++#. iOS host additions
++msgid "Rest of the season"
++msgstr "Rest of the season"
++
++#. iOS host additions
++msgid "Next {count} episodes"
++msgstr "Next {count} episodes"
++
++#. iOS host additions
++msgid "Smart downloads on cellular"
++msgstr "Smart downloads on cellular"
++
++#. iOS host additions
++msgid "What smart downloads may fetch over cellular data while other downloads wait for Wi-Fi."
++msgstr "What smart downloads may fetch over cellular data while other downloads wait for Wi-Fi."
++
++#. iOS host additions
++msgid "Wait for Wi-Fi"
++msgstr "Wait for Wi-Fi"
++
++#. iOS host additions
++msgid "Next episode only"
++msgstr "Next episode only"
++
++#. iOS host additions
++msgid "All smart downloads"
++msgstr "All smart downloads"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
 index 96e99ee..5744a0d 100644
 --- a/packages/web/src/styles.css

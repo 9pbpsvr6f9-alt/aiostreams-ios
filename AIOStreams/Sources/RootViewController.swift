@@ -152,6 +152,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     override func viewDidLoad() {
         super.viewDidLoad()
         updateVolumeIndicator()
+        DownloadQueue.shared.send = { [weak self] message in self?.bridge.send(message) }
         player = PlayerChannel(engine: engine, overlay: overlay, thumbnails: thumbnails) { [weak self] message in
             self?.bridge.send(message)
         }
@@ -208,6 +209,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             if videoStage.isPreview && fullscreen { setFullscreen(false) }
         }
         if player.handle(type, message) { return }
+        if DownloadQueue.shared.handle(type, message) { return }
         switch type {
         case "app-info":
             bridge.send([
