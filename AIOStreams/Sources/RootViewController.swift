@@ -18,6 +18,8 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var gesturesEnabled = true { didSet { updateVolumeIndicator() } }
     /// The full-window player is showing, where volume swipes replace iOS's volume indicator.
     private var playerFillsWindow = false { didSet { updateVolumeIndicator() } }
+    /// Picture in Picture shows the video, and the page is browsed beside it with iOS's indicator.
+    private var pipActive = false { didSet { updateVolumeIndicator() } }
     /// The system volume, watched while the full player hides iOS's indicator, for the volume buttons' toast.
     private var volumeObservation: NSKeyValueObservation?
     /// When the player's own swipe last set the volume; the change it causes needs no toast.
@@ -133,7 +135,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     /// with gestures on; browsing, previews and the mini player keep iOS's indicator.
     private func updateVolumeIndicator() {
         guard let root = viewIfLoaded else { return }
-        if playerFillsWindow && gesturesEnabled {
+        if playerFillsWindow && gesturesEnabled && !pipActive {
             systemVolume.attach(to: root)
             if volumeObservation == nil {
                 volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) {
@@ -152,7 +154,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     /// The volume buttons moved the system volume: the page shows the swipe's toast, as iOS's own
     /// indicator is hidden in the player. A change the swipe itself made shows its own toast already.
     private func systemVolumeChanged(_ volume: Double) {
-        guard playerFillsWindow, gesturesEnabled, volume.isFinite,
+        guard playerFillsWindow, gesturesEnabled, !pipActive, volume.isFinite,
               ProcessInfo.processInfo.systemUptime - ownVolumeChangeAt > 0.5 else { return }
         bridge.send(["type": "system-volume", "volume": volume])
     }
@@ -179,6 +181,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         pictureInPicture.changed = { [weak self] active in
             guard let self else { return }
             self.pipBackdrop.isHidden = !active
+            self.pipActive = active
             self.overlay.isHidden = active || !self.player.hasMedia
             self.videoStage.refresh()
         }

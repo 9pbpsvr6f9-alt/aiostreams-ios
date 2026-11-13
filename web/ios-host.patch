@@ -141,6 +141,65 @@ index c239d4d..88c7e1b 100644
      <div
        data-ui="item-trailer-hint"
        aria-hidden={!shown || full}
+diff --git a/packages/web/src/app/player/page.tsx b/packages/web/src/app/player/page.tsx
+index 95372614..44fb8625 100644
+--- a/packages/web/src/app/player/page.tsx
++++ b/packages/web/src/app/player/page.tsx
+@@ -37,7 +37,7 @@ import {
+ } from '@/lib/playback/stream';
+ import { PlaybackReporter } from '@/lib/playback/reporter';
+ import { currentHost } from '@/lib/hosts';
+-import { appLog } from '@/lib/hosts/shell/bridge';
++import { appBridge, appLog } from '@/lib/hosts/shell/bridge';
+ import { useFeature } from '@/lib/jellyfin/server-info';
+ import {
+   leaveFullscreen,
+@@ -82,6 +82,7 @@ import { navigate, to, versionsPath } from '@/lib/paths';
+ import {
+   canMinimise,
+   closePlayback,
++  expandPlayback,
+   minimisePlayback,
+   playbackNow,
+   playOn,
+@@ -894,6 +895,28 @@ function Player({
+   const launchedName = launched?.name ?? '';
+   const failure = player.state.error ?? '';
+   const pip = useAppPip();
++  // iOS: Picture in Picture with the app open goes back to the page the player came from, so the
++  // app is browsed beside the window rather than showing an empty player behind it. Its restore
++  // button opens the player again; closing it leaves the paused video in the mini player.
++  const ios = appBridge()?.platform === 'ios';
++  const latestMini = React.useRef(mini);
++  latestMini.current = mini;
++  React.useEffect(() => {
++    if (!ios || !pip || mini || !minimise) return;
++    const leave = () => {
++      if (document.visibilityState === 'visible') minimise();
++    };
++    leave();
++    document.addEventListener('visibilitychange', leave);
++    return () => document.removeEventListener('visibilitychange', leave);
++  }, [ios, pip, mini, minimise]);
++  React.useEffect(() => {
++    if (!ios) return;
++    return appBridge()?.subscribe((m) => {
++      if (m.type === 'pip' && !m.value && m.restore && latestMini.current)
++        expandPlayback();
++    });
++  }, [ios]);
+   useFullWindowFor(!!failure || next.asking || !!launched);
+   const covered = !pip && (!player.state.started || !!launched);
+   React.useLayoutEffect(() => onCovered(covered), [covered, onCovered]);
+@@ -902,6 +925,8 @@ function Player({
+     if (mini) leaveFullscreen();
+   }, [mini]);
+ 
++  // The window is the video: the mini player's card waits until it closes.
++  if (pip && ios && mini) return null;
+   if (pip)
+     return (
+       <div data-page="player" className="fixed inset-0">
 diff --git a/packages/web/src/app/settings/about.tsx b/packages/web/src/app/settings/about.tsx
 index e41938f..d8ffaba 100644
 --- a/packages/web/src/app/settings/about.tsx
@@ -1615,19 +1674,22 @@ index f7a92d4..77125c6 100644
      /** Hands the brightness back to the system. */
      release(): void;
 diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
-index 39f60cb..a9c1015 100644
+index 39f60cb8..72c75529 100644
 --- a/packages/web/src/lib/hosts/shell/bridge.ts
 +++ b/packages/web/src/lib/hosts/shell/bridge.ts
-@@ -92,6 +92,8 @@ export type ShellMessage =
+@@ -92,7 +92,10 @@ export type ShellMessage =
        devices: { name: string; description: string }[] | null;
      }
    | { type: 'fullscreen'; value: boolean }
+-  | { type: 'pip'; value: boolean }
 +  /** iOS: the volume buttons changed the system volume while the full player hides iOS's indicator. */
 +  | { type: 'system-volume'; volume: number }
-   | { type: 'pip'; value: boolean }
++  /** `restore`: iOS's window asked for the full player back, rather than closing. */
++  | { type: 'pip'; value: boolean; restore?: boolean }
    /** A tap on the small video, a drag of it starting, where it is as it drags, or where it let go, in the page's pixels. */
    | { type: 'player-frame'; event: 'tap' | 'grabbed' }
-@@ -188,7 +190,7 @@ export type MediaKey =
+   | { type: 'player-frame'; event: 'moving' | 'moved'; x: number; y: number }
+@@ -188,7 +191,7 @@ export type MediaKey =
  interface ShellBridge {
    protocol: number;
    version: string;

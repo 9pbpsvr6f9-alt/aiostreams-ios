@@ -167,7 +167,8 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
         restoring = true
         restore()
         changed(false)
-        send(["type": "pip", "value": false])
+        // `restore`: the page opens the full player again, where it had gone back to browse.
+        send(["type": "pip", "value": false, "restore": true])
         completionHandler(true)
     }
 }
