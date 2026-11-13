@@ -11,7 +11,7 @@ are for personal use. So this folder holds none of its code, only:
   logo's place for the app (with `patches/0001`, which draws it from the first frame), `0104` the
   countdown's setting, Back to keep watching, a larger skip button, glass focus on text, the
   glass floating rail and its Hide the rail while browsing switch. `0105` sends a poster with each
-  Top Shelf item, which `patches/0002` shows in the shelf's poster shape.
+  Top Shelf item, which `patches/0002` shows in the shelf's poster shape. `0106` puts Who's watching in glass.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
