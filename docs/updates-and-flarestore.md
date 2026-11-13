@@ -4,6 +4,14 @@ Add this source URL in FlareStore (or a compatible AltStore-format client):
 
 https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json
 
+Add it as a **source** (the URL above), not as a GitHub repository: a repository
+entry lists every IPA of every release as its own app, while the source shows each
+app once, at its latest version, with older versions under its version history.
+
+Each version lists what changed (the commit titles since the previous release),
+each release adds a News item, and the apps carry screenshots from
+`docs/screenshots` and a description. Up to 50 older versions stay installable.
+
 It includes separate iPhone/iPad and Apple TV apps. Your sideloader must support
 the selected platform. IPAs are unsigned; the sideloader signs them at install time.
 Refresh the source to see new versions, then choose the update in your sideloader.

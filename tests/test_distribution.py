@@ -71,5 +71,38 @@ class SourceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             source.generate('v0.2.10', self.folder)
 
+    def test_release_notes_news_and_screenshots(self):
+        notes = 'Add downloads on iOS\n\n- Show the volume toast\nCo-Authored-By: Someone <x@example.com>\nAdd downloads on iOS\n'
+        feed = source.generate('v0.2.10', self.folder, notes=notes)
+        text = feed['apps'][0]['versions'][0]['localizedDescription']
+        self.assertIn('• Add downloads on iOS', text)
+        self.assertIn('• Show the volume toast', text)
+        self.assertEqual(text.count('Add downloads on iOS'), 1)
+        self.assertNotIn('@', json.dumps(feed))
+        self.assertEqual(feed['news'][0]['identifier'], 'release-v0.2.10')
+        self.assertEqual(feed['news'][0]['caption'], 'Add downloads on iOS')
+        repo = Path(__file__).resolve().parents[1]
+        for app in feed['apps']:
+            self.assertTrue(app['screenshotURLs'])
+            for url in app['screenshotURLs'] + app.get('screenshots', {}).get('ipad', []):
+                name = url.rsplit('/docs/', 1)[1]
+                self.assertTrue((repo / 'docs' / name).is_file(), url)
+
+    def test_news_and_history_carry_over(self):
+        feed = source.generate('v0.2.10', self.folder)
+        for n in range(11, 70):
+            for filename, bundle, _ in source.APPS:
+                self.ipa(filename, bundle, version=f'0.2.{n}')
+            feed = source.generate(f'v0.2.{n}', self.folder, feed)
+        self.assertEqual(feed['news'][0]['identifier'], 'release-v0.2.69')
+        self.assertEqual(len(feed['news']), source.NEWS)
+        versions = [v['version'] for v in feed['apps'][0]['versions']]
+        self.assertEqual(len(versions), source.HISTORY)
+        self.assertEqual(versions[0], '0.2.69')
+
+    def test_without_notes_still_reads_well(self):
+        feed = source.generate('v0.2.10', self.folder)
+        self.assertIn('Fixes and improvements.', feed['apps'][0]['versions'][0]['localizedDescription'])
+
 if __name__ == '__main__':
     unittest.main()

@@ -128,7 +128,10 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: v0.2.${{ github.run_number }}
     steps:
+      # Full history and tags, for the release notes since the previous release.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: AIOStreams*-ipa
@@ -147,12 +150,25 @@ jobs:
           if [ -f build/previous/source.json ]; then
             args+=(--previous build/previous/source.json)
           fi
+          # What changed: the titles of the commits since the previous release, merges left out.
+          previous=$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // empty')
+          if [ -n "$previous" ] && git rev-parse -q --verify "refs/tags/$previous" >/dev/null; then
+            # -n, not a pipe to head: the runner's pipefail would fail on head closing early.
+            git log --no-merges -n 12 --format='%s' "$previous..HEAD" > build/notes.txt
+          fi
+          [ -s build/notes.txt ] || git log -1 --format='%s' > build/notes.txt
+          args+=(--notes build/notes.txt)
           python3 scripts/update-source.py "$RELEASE_TAG" "${args[@]}"
       - name: Publish IPAs and source together
         env:
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
-          cat > build/release-notes.md <<'EOF'
+          {
+            echo "## What's new"
+            sed 's/^/- /' build/notes.txt
+            echo
+          } > build/release-notes.md
+          cat >> build/release-notes.md <<'EOF'
           Unsigned iPhone/iPad and Apple TV IPAs, built from the commit linked to this release.
           Sign and install with your sideloading tool. FlareStore source:
           https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json
