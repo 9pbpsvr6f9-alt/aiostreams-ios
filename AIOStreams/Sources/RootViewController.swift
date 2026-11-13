@@ -40,6 +40,9 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var backgroundObserver: NSObjectProtocol?
 
     private var fullscreen = false
+    /// When the page asked for full screen while a trailer still held the stage; the player's load
+    /// applies it if it comes soon after, so a stale request never turns a later video full screen.
+    private var fullscreenOwedAt: Date?
     private var linksReady = false
     private var pendingLinks: [String] = []
 
@@ -236,6 +239,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         if type == "player-load" {
             videoStage.start(preview: JSON.flag(message["preview"]) ?? false)
             if videoStage.isPreview && fullscreen { setFullscreen(false) }
+            if !videoStage.isPreview, let asked = fullscreenOwedAt, Date().timeIntervalSince(asked) < 15 {
+                AppLog.info("app", "full screen, asked for before the video loaded")
+                setFullscreen(true)
+            }
         }
         if player.handle(type, message) { return }
         if DownloadQueue.shared.handle(type, message) { return }
@@ -427,13 +434,20 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     }
 
     private func setFullscreen(_ on: Bool) {
-        guard !on || !videoStage.isPreview else { return }
+        // Opening the player can ask before its video replaces a trailer's: keep the request for the load.
+        guard !on || !videoStage.isPreview else {
+            fullscreenOwedAt = Date()
+            AppLog.info("app", "full screen waits: a trailer still holds the video")
+            return
+        }
+        fullscreenOwedAt = nil
+        if on != fullscreen { AppLog.info("app", "full screen \(on ? "on" : "off")") }
         fullscreen = on
         AppDelegate.orientations = on ? .landscape : .allButUpsideDown
         setNeedsUpdateOfSupportedInterfaceOrientations()
         if let scene = view.window?.windowScene {
             scene.requestGeometryUpdate(.iOS(interfaceOrientations: on ? .landscape : .allButUpsideDown)) { error in
-                AppLog.info("app", "orientation: \(error.localizedDescription)")
+                AppLog.warn("app", "orientation: \(error.localizedDescription)")
             }
         }
         setNeedsStatusBarAppearanceUpdate()
@@ -482,6 +496,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         bridge.pageLoading()
         linksReady = false
         player?.pageLoading()
+        fullscreenOwedAt = nil
         if fullscreen { setFullscreen(false) }
     }
 
