@@ -5,7 +5,8 @@ are for personal use. So this folder holds none of its code, only:
 
 - `UPSTREAM` and `UPSTREAM_REF`: where the app comes from and the commit to build.
 - `AIOSTREAMS_REF`: the AIOStreams commit for its web app, as the upstream web patches only fit some.
-- `patches/*.patch`: our own changes to the app, applied in name order.
+- `patches/*.patch`: our own changes to the app, applied in name order. `0001` the launch logo, `0002` Top
+  Shelf posters in one row, `0003` frosted glass behind the search keyboard in place of black.
 - `web/*.patch`: our own changes to its web app, added to the upstream web patches and applied
   after them by name: `0100` the skip countdown, `0101` the spoiler blur, `0102` Liquid Glass, `0103` the launch
   logo's place for the app (with `patches/0001`, which draws it from the first frame), `0104` the
