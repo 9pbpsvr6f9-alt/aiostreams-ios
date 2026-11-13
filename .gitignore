@@ -8,5 +8,5 @@ project.gen.yml
 tools/demo-server/demo.mp4
 tools/demo-server/__pycache__/
 __pycache__/
-# Generated from actual release IPAs and distributed as a GitHub Release asset.
-/altstore/source.json
+# altstore/source.json is generated from the release IPAs, published as a release asset, and
+# committed to main by the release job, where FlareStore reads it without a redirect.

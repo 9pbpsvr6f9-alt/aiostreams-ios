@@ -10,6 +10,9 @@ from pathlib import Path
 
 REPO = '9pbpsvr6f9-alt/aiostreams-ios'
 RAW = f'https://raw.githubusercontent.com/{REPO}/main'
+# The address to add, served without a redirect: FlareStore keeps the address a redirect ends on,
+# and the release asset's address ends on that one release, which never changes again.
+SOURCE_URL = f'{RAW}/altstore/source.json'
 TINT = '#6152DF'
 # Older versions stay installable from the source for this many releases.
 HISTORY = 50
@@ -92,7 +95,8 @@ def generate(tag, folder, previous=None, notes=None):
                               'installable from the version history. Your sideloading tool signs each app '
                               'at installation.'),
               'website': f'https://github.com/{REPO}',
-              'iconURL': f'https://github.com/{REPO}/releases/latest/download/icon.png',
+              'sourceURL': SOURCE_URL,
+              'iconURL': f'{RAW}/altstore/icon.png',
               'headerURL': shot('tv-home'),
               'tintColor': TINT, 'featuredApps': [b for _, b, _ in APPS], 'apps': [], 'news': []}
     for filename, bundle, name in APPS:

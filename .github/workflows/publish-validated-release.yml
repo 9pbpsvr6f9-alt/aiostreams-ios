@@ -94,7 +94,7 @@ jobs:
 
           Unsigned iPhone/iPad and Apple TV IPAs. Your sideloading tool signs them at installation.
           Refresh this FlareStore/AltStore-format source for the update:
-          https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json
+          https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json
 
           Publishes the exact checksum-verified artifacts from a passing Build IPA run, whose source tree matches the main-branch tag. Web/browser checks, Swift volume/haptic tests and both device builds passed on the Intel fallback after hosted ARM capacity failures. Physical haptic strength and audio-route behavior still require device testing.
           EOF
@@ -110,3 +110,21 @@ jobs:
           gh release edit "$RELEASE_TAG" --notes-file build/release-notes.md
           gh release upload "$RELEASE_TAG" build/AIOStreams.ipa build/AIOStreams-tvOS.ipa altstore/source.json altstore/icon.png --clobber
           gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+      - name: Update the source on main
+        run: |
+          cp altstore/source.json build/source.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch -q origin main
+            git checkout -q -B source-update origin/main
+            cp build/source.json altstore/source.json
+            git add altstore/source.json
+            if git diff --cached --quiet; then echo "Source on main already current"; exit 0; fi
+            git commit -q -m "FlareStore source: $RELEASE_TAG"
+            if git push -q origin source-update:main; then echo "Source on main updated"; exit 0; fi
+            echo "main moved; trying again"
+            sleep 5
+          done
+          echo "::error::Could not update altstore/source.json on main"
+          exit 1

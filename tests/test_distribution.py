@@ -38,6 +38,14 @@ class SourceTests(unittest.TestCase):
             self.assertIn('NSLocalNetworkUsageDescription', app['appPermissions']['privacy'])
         self.assertNotIn('@', json.dumps(feed))
 
+    def test_source_address_is_fixed_and_unredirected(self):
+        feed = source.generate('v0.2.10', self.folder)
+        raw = 'https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/'
+        # FlareStore keeps the address a redirect ends on, so nothing here may be a release's.
+        self.assertEqual(feed['sourceURL'], raw + 'altstore/source.json')
+        self.assertEqual(feed['iconURL'], raw + 'altstore/icon.png')
+        self.assertNotIn('latest/download', json.dumps(feed))
+
     def test_rebuild_deduplicates_history(self):
         old = source.generate('v0.2.10', self.folder)
         new = source.generate('v0.2.10', self.folder, old)

@@ -1,0 +1,219 @@
+{
+  "name": "AIOStreams",
+  "identifier": "io.github.9pbpsvr6f9-alt.aiostreams",
+  "subtitle": "Jellyfin on iPhone, iPad and Apple TV",
+  "description": "Unofficial AIOStreams builds for iPhone, iPad and Apple TV, playing through AetherEngine. Each update lists what changed, and older versions stay installable from the version history. Your sideloading tool signs each app at installation.",
+  "website": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios",
+  "sourceURL": "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json",
+  "iconURL": "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/icon.png",
+  "headerURL": "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/tv-home.jpg",
+  "tintColor": "#6152DF",
+  "featuredApps": [
+    "io.github.aiostreams-ios.app",
+    "io.github.aiostreams-ios.tv"
+  ],
+  "apps": [
+    {
+      "name": "AIOStreams",
+      "bundleIdentifier": "io.github.aiostreams-ios.app",
+      "developerName": "9pbpsvr6f9-alt",
+      "subtitle": "Your Jellyfin library on iPhone and iPad",
+      "localizedDescription": "AIOStreams' web app on iPhone and iPad, playing through AetherEngine: HDR10, Dolby Vision, Atmos and FFmpeg decoding where AVPlayer stops.\n\n\u2022 Smart downloads keep the next episodes of a show on your device and delete them once watched\n\u2022 Downloads that continue in the background and play offline; progress syncs to Jellyfin later\n\u2022 Trailers in the hero and on title pages, Picture in Picture, and a skip-intro countdown\n\u2022 Swipe gestures for volume and brightness, light haptics, and styled subtitles\n\nUnofficial and unsigned: your sideloading tool signs it when you install.",
+      "iconURL": "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/icon.png",
+      "tintColor": "#6152DF",
+      "category": "entertainment",
+      "screenshotURLs": [
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-home.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-show.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-movie.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-versions.jpg"
+      ],
+      "versions": [
+        {
+          "version": "0.2.87",
+          "buildVersion": "87",
+          "date": "2026-11-13T19:04:37.393079+00:00",
+          "localizedDescription": "What's new\n\u2022 Skip the iPhone build for changes to tv-m only\n\u2022 Build on the xcode-27 runner by default\n\u2022 Keep the player's full screen request when a trailer held the video\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.87",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.87/AIOStreams.ipa",
+          "size": 17407738,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.74",
+          "buildVersion": "74",
+          "date": "2026-11-13T09:22:04.955314+00:00",
+          "localizedDescription": "What's new\n\u2022 Launch logo, anime upscaling, and PiP with the mini player (#9)\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.74",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.74/AIOStreams.ipa",
+          "size": 17446953,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.64",
+          "buildVersion": "64",
+          "date": "2026-11-13T06:54:03.880760+00:00",
+          "localizedDescription": "What's new\n\u2022 Name smart shows in Settings, drop the iOS download tooltip, dress up the source\n\u2022 Put Download beside Favourite on iOS and list smart shows in Settings\n\u2022 Add downloads on iOS, with smart downloads that keep a show's next episodes\n\u2022 Show the volume toast for the volume buttons in the player\n\u2022 Show iOS's volume indicator everywhere but the full-window player\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.64",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.64/AIOStreams.ipa",
+          "size": 17430348,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.58",
+          "buildVersion": "58",
+          "date": "2026-11-13T04:22:56.428556+00:00",
+          "localizedDescription": "Release notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.58",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.58/AIOStreams.ipa",
+          "size": 17358723,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.16",
+          "buildVersion": "16",
+          "date": "2026-11-12T18:03:48.367299+00:00",
+          "localizedDescription": "Release notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.16",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.16/AIOStreams.ipa",
+          "size": 17254950,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.5",
+          "buildVersion": "5",
+          "date": "2026-11-12T08:49:33.640860+00:00",
+          "localizedDescription": "Release notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.5",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.5/AIOStreams.ipa",
+          "size": 17210478,
+          "minOSVersion": "18.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "AIOStreams connects to your server and streams on your local network.",
+          "NSMicrophoneUsageDescription": "Voice search in the page's search field uses the microphone."
+        }
+      },
+      "screenshots": {
+        "iphone": [
+          "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-home.jpg",
+          "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-show.jpg",
+          "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-movie.jpg",
+          "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/iphone-versions.jpg"
+        ],
+        "ipad": [
+          "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/ipad-home.jpg",
+          "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/ipad-show.jpg"
+        ]
+      }
+    },
+    {
+      "name": "AIOStreams for Apple TV",
+      "bundleIdentifier": "io.github.aiostreams-ios.tv",
+      "developerName": "9pbpsvr6f9-alt",
+      "subtitle": "Your Jellyfin library on the big screen",
+      "localizedDescription": "A native Apple TV app over your server, playing through AetherEngine with HDR10, Dolby Vision and Atmos.\n\n\u2022 Home with a rotating hero and Continue watching\n\u2022 Show and movie pages, a version picker and synced settings\n\nUnofficial and unsigned: your sideloading tool signs it when you install.",
+      "iconURL": "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/icon.png",
+      "tintColor": "#6152DF",
+      "category": "entertainment",
+      "screenshotURLs": [
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/tv-home.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/tv-show.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/tv-movie.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/tv-versions.jpg",
+        "https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/docs/screenshots/tv-player.jpg"
+      ],
+      "versions": [
+        {
+          "version": "0.2.87",
+          "buildVersion": "87",
+          "date": "2026-11-13T19:04:37.393079+00:00",
+          "localizedDescription": "What's new\n\u2022 Skip the iPhone build for changes to tv-m only\n\u2022 Build on the xcode-27 runner by default\n\u2022 Keep the player's full screen request when a trailer held the video\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.87",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.87/AIOStreams-tvOS.ipa",
+          "size": 10646185,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.74",
+          "buildVersion": "74",
+          "date": "2026-11-13T09:22:04.955314+00:00",
+          "localizedDescription": "What's new\n\u2022 Launch logo, anime upscaling, and PiP with the mini player (#9)\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.74",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.74/AIOStreams-tvOS.ipa",
+          "size": 10704276,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.64",
+          "buildVersion": "64",
+          "date": "2026-11-13T06:54:03.880760+00:00",
+          "localizedDescription": "What's new\n\u2022 Name smart shows in Settings, drop the iOS download tooltip, dress up the source\n\u2022 Put Download beside Favourite on iOS and list smart shows in Settings\n\u2022 Add downloads on iOS, with smart downloads that keep a show's next episodes\n\u2022 Show the volume toast for the volume buttons in the player\n\u2022 Show iOS's volume indicator everywhere but the full-window player\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.64",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.64/AIOStreams-tvOS.ipa",
+          "size": 10704276,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.58",
+          "buildVersion": "58",
+          "date": "2026-11-13T04:22:56.428923+00:00",
+          "localizedDescription": "Release notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.58",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.58/AIOStreams-tvOS.ipa",
+          "size": 10704276,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.16",
+          "buildVersion": "16",
+          "date": "2026-11-12T18:03:48.367688+00:00",
+          "localizedDescription": "Release notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.16",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.16/AIOStreams-tvOS.ipa",
+          "size": 10623609,
+          "minOSVersion": "18.0"
+        },
+        {
+          "version": "0.2.5",
+          "buildVersion": "5",
+          "date": "2026-11-12T08:49:33.641407+00:00",
+          "localizedDescription": "Release notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.5",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.5/AIOStreams-tvOS.ipa",
+          "size": 10602016,
+          "minOSVersion": "18.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {
+          "NSLocalNetworkUsageDescription": "AIOStreams connects to your server and streams on your local network."
+        }
+      }
+    }
+  ],
+  "news": [
+    {
+      "identifier": "release-v0.2.87",
+      "title": "AIOStreams 0.2.87",
+      "caption": "Skip the iPhone build for changes to tv-m only",
+      "date": "2026-11-13T19:04:37.393079+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.87",
+      "notify": false
+    },
+    {
+      "identifier": "release-v0.2.74",
+      "title": "AIOStreams 0.2.74",
+      "caption": "Launch logo, anime upscaling, and PiP with the mini player (#9)",
+      "date": "2026-11-13T09:22:04.955314+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.74",
+      "notify": false
+    },
+    {
+      "identifier": "release-v0.2.64",
+      "title": "AIOStreams 0.2.64",
+      "caption": "Name smart shows in Settings, drop the iOS download tooltip, dress up the source",
+      "date": "2026-11-13T06:54:03.880760+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.64",
+      "notify": false
+    }
+  ]
+}

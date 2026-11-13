@@ -2,7 +2,7 @@
 
 Add this source URL in FlareStore (or a compatible AltStore-format client):
 
-https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json
+https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json
 
 Add it as a **source** (the URL above), not as a GitHub repository: a repository
 entry lists every IPA of every release as its own app, while the source shows each
@@ -24,6 +24,13 @@ the IPAs to one draft release, which is made public only after all uploads pass.
 Old versions retain permanent, versioned asset URLs. No expiring Actions download
 URLs are put in the feed. The generated `altstore/source.json` is a release asset,
 not a manually maintained list of guessed build metadata.
+
+The address to add is the copy of `altstore/source.json` that the release job commits
+to `main` (as GitHub's no-reply bot) after each release. `raw.githubusercontent.com`
+serves it without a redirect, so the one address stays current. The release asset's
+address, `releases/latest/download/source.json`, still works in a browser, but it
+redirects to the newest release's own copy, and a client that keeps the address it
+ended on stays on that release forever.
 
 ## Workflow
 
