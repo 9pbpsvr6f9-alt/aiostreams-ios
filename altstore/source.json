@@ -30,6 +30,15 @@
       ],
       "versions": [
         {
+          "version": "0.2.90",
+          "buildVersion": "90",
+          "date": "2026-11-13T23:32:35.504539+00:00",
+          "localizedDescription": "What's new\n\u2022 AetherEngine 7.66.1: AAC surround, image subtitle and HEVC remux fixes\n\u2022 FlareStore source: v0.2.89\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.90",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.90/AIOStreams.ipa",
+          "size": 17431821,
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "0.2.89",
           "buildVersion": "89",
           "date": "2026-11-13T19:51:44.039976+00:00",
@@ -131,6 +140,15 @@
       ],
       "versions": [
         {
+          "version": "0.2.90",
+          "buildVersion": "90",
+          "date": "2026-11-13T23:32:35.504539+00:00",
+          "localizedDescription": "What's new\n\u2022 AetherEngine 7.66.1: AAC surround, image subtitle and HEVC remux fixes\n\u2022 FlareStore source: v0.2.89\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.90",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.90/AIOStreams-tvOS.ipa",
+          "size": 10673182,
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "0.2.89",
           "buildVersion": "89",
           "date": "2026-11-13T19:51:44.039976+00:00",
@@ -203,6 +221,16 @@
     }
   ],
   "news": [
+    {
+      "identifier": "release-v0.2.90",
+      "title": "AIOStreams 0.2.90",
+      "caption": "AetherEngine 7.66.1: AAC surround, image subtitle and HEVC remux fixes",
+      "date": "2026-11-13T23:32:35.504539+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.90",
+      "notify": false
+    },
     {
       "identifier": "release-v0.2.89",
       "title": "AIOStreams 0.2.89",
