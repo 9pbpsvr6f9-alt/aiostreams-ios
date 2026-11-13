@@ -83,3 +83,20 @@ precondition(!stage.needsTransparentPage, "A cleared preview hides, and the page
 stage.stop()
 precondition(!stage.needsTransparentPage, "Stopped playback restores the opaque page")
 print("Page transparency regression tests passed")
+
+// iOS's own volume indicator is hidden only while the player fills the window, where volume
+// swipes replace it; browsing, trailer previews and the mini player keep it.
+var screen = VideoPresentation()
+precondition(!screen.isFullWindow, "Browsing shows iOS's volume indicator")
+screen.start(preview: false)
+precondition(screen.isFullWindow, "The full player hides it for its volume swipes")
+screen.place(VideoFrame.from(["frame": boxed, "pageWidth": 800], webWidth: 400), preview: false)
+precondition(!screen.isFullWindow, "The docked mini player keeps it")
+screen.place(nil, preview: false)
+precondition(screen.isFullWindow, "Expanding the mini player again hides it")
+screen.start(preview: true)
+screen.place(VideoFrame.from(["frame": boxed, "pageWidth": 800], webWidth: 400), preview: true)
+precondition(!screen.isFullWindow, "A trailer preview keeps it")
+screen.stop()
+precondition(!screen.isFullWindow, "Stopping playback shows it again")
+print("Volume indicator placement tests passed")

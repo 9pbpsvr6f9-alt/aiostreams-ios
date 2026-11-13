@@ -85,6 +85,10 @@ struct VideoPresentation {
     /// playback, and hero and title trailers, which play under the page and show through its own
     /// video hole (their frames come `hidden`). Browsing and masked video keep the page opaque.
     var needsTransparentPage: Bool { visible && !cutsMask }
+
+    /// The player fills the window: a video that is neither a preview nor placed in a frame (the
+    /// mini player or a trailer's box). Only then do the player's volume swipes apply.
+    var isFullWindow: Bool { active && !preview && frame == nil }
 }
 
 /// A centered cinema-width canvas removes conventional 16:9 trailer letterboxing, then the stage

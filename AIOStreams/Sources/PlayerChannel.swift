@@ -361,11 +361,18 @@ final class PlayerChannel {
         nowPlaying.setItem(nil)
     }
 
+    /// An http(s) address, or a finished download's file inside the app's downloads folder,
+    /// which the page names by the path the queue reported.
+    static func playable(_ text: String) -> URL? {
+        if let url = URL(string: text), let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" {
+            return url
+        }
+        return DownloadQueue.shared.localFile(text)
+    }
+
     private func load(_ message: [String: Any]) {
-        guard let text = message["url"] as? String,
-              let url = URL(string: text),
-              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https"
-        else { return reject("only http(s) urls play") }
+        guard let text = message["url"] as? String, let url = Self.playable(text)
+        else { return reject("only http(s) urls and downloaded files play") }
         let headers = (message["headers"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
         let startMs = JSON.number(message["startMs"]) ?? 0
         let mode = message["subtitleMode"] as? String ?? "default"
@@ -438,7 +445,9 @@ final class PlayerChannel {
 
     /// Pair the container's index with embedded engine tracks only; external tracks have no file index.
     private func subtitleTimelines() async -> [String: [[String: Double]]]? {
-        guard let text = loadedURL, let url = URL(string: text) else { return nil }
+        // Ranged reads of a stream's index; a downloaded file is local and never needs them.
+        guard let text = loadedURL, let url = URL(string: text),
+              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return nil }
         let current = generation
         if indexTask == nil {
             let headers = loadedHeaders
@@ -537,10 +546,8 @@ final class PlayerChannel {
     }
 
     private func addSubtitle(_ message: [String: Any]) {
-        guard let text = message["url"] as? String,
-              let url = URL(string: text),
-              let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https"
-        else { return reject("only http(s) subtitles load") }
+        guard let text = message["url"] as? String, let url = Self.playable(text)
+        else { return reject("only http(s) and downloaded subtitles load") }
         if let replace = JSON.number(message["replace"]) {
             engine.removeExternalSubtitleTrack(id: Int(replace))
             subtitleURLs[Int(replace)] = nil
