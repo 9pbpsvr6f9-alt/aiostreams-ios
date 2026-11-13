@@ -60,6 +60,10 @@ final class PlayerChannel {
     private var live = false
     private var trailer = false
     private var preview = false
+    /// The page's Anime upscaling for what plays (the setting on an anime title, or its shortcut).
+    private var upscaling = false
+    /// What the playing video was loaded with, so only a change reloads it.
+    private var loadedUpscaling = false
     private var preferredGravity: AVLayerVideoGravity = .resizeAspect
 
     func setPreviewMode(_ preview: Bool) {
@@ -312,7 +316,9 @@ final class PlayerChannel {
             let headers = (message["headers"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
             preloader.prepare(message["url"] as? String, headers: headers,
                               allowed: hasMedia && !live && !trailer)
-        case "player-stop": stop()
+        case "player-stop":
+            AppLog.info("player", "the page stopped the video")
+            stop()
         case "player-set": change(message)
         case "player-seek":
             guard let ms = JSON.number(message["positionMs"]) else { break }
@@ -345,12 +351,41 @@ final class PlayerChannel {
             break
         case "player-settings":
             if let delay = JSON.number(message["audioDelayMs"]) { engine.setAudioDelay(delay / 1000) }
+            if let on = JSON.flag(message["upscaling"]) { setUpscaling(on) }
         case "now-playing":
             nowPlaying.setItem(message["item"] as? [String: Any])
         default:
             return false
         }
         return true
+    }
+
+    private func upscalingWanted(live: Bool? = nil) -> Bool {
+        upscaling && !trailer && !preview && !(live ?? self.live)
+    }
+
+    /// The page turned upscaling on or off: a playing video reloads in place, at its position.
+    private func setUpscaling(_ on: Bool) {
+        upscaling = on
+        let wanted = upscalingWanted()
+        guard loadedURL != nil, loadTask == nil, wanted != loadedUpscaling else { return }
+        loadedUpscaling = wanted
+        let current = generation
+        Task { [weak self] in
+            guard let self, current == self.generation else { return }
+            do {
+                try await self.engine.reloadAtCurrentPosition { $0.upscalesLowResolutionVideo = wanted }
+                AppLog.info("player", "upscaling \(wanted ? "on" : "off") for this video")
+            } catch {
+                AppLog.warn("player", "Could not switch upscaling: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Where the playing video is, for a page that loads again around it.
+    var positionMs: Double? {
+        guard loadedURL != nil, !preview, !trailer, engine.currentTime.isFinite, engine.currentTime > 0 else { return nil }
+        return engine.currentTime * 1000
     }
 
     /// A page that loads again never owns the video the last one started.
@@ -392,6 +427,10 @@ final class PlayerChannel {
         // A Matroska file's attached fonts (tens of MB on anime) are read before the first packet. The
         // overlay draws subtitles with system fonts and never reads `fontAttachments`, so they're skipped.
         options.skipsContainerAttachments = true
+        // AetherEngine's super resolution for low-resolution SDR video (iOS 26, MetalFX); it falls back
+        // to the plain picture where the device can't, and never for trailers, previews or live.
+        options.upscalesLowResolutionVideo = upscalingWanted(live: options.isLive)
+        loadedUpscaling = options.upscalesLowResolutionVideo
         options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
         // TrueHD Atmos and DTS:X with their heights, which iOS plays as Spatial Audio (OS 26 and later).
         options.objectAudioRendering = .render(.l714)
@@ -591,6 +630,9 @@ final class PlayerChannel {
         engine.selectSubtitleTrack(index: track.id)
         sendTracks()
     }
+
+    /// The look the page last sent; Picture in Picture styles its captions after it.
+    var subtitleLook: SubtitleLook { overlay.look }
 
     private func style(_ message: [String: Any]) {
         let gravity: AVLayerVideoGravity

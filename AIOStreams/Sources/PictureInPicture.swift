@@ -1,6 +1,7 @@
 import AetherEngineFeatures
 @preconcurrency import AVKit
 import Combine
+import CoreMedia
 import UIKit
 
 /// AVKit owns the floating window. Controllers are prepared while inline video is visible, so iOS
@@ -45,11 +46,13 @@ final class PictureInPicture: NSObject {
                 guard let self else { return }
                 let returned = self.backgrounded
                 self.backgrounded = false
-                if returned && (self.active || self.starting) { self.stopForRestore() }
+                let fromWindow = self.active || self.starting
+                if returned && fromWindow { self.stopForRestore() }
                 if returned {
                     // A background WebKit process can miss didStop's message. Always resync inline UI.
+                    // Coming back from the window by the app's icon opens the full player too.
                     self.changed(false)
-                    self.send(["type": "pip", "value": false])
+                    self.send(["type": "pip", "value": false, "restore": fromWindow])
                     self.channel.restoreAfterBackground()
                 }
                 self.refresh()
@@ -66,11 +69,20 @@ final class PictureInPicture: NSObject {
     }
 
     func refresh() {
-        guard policy.prepares else { clear(); return }
+        guard policy.prepares else {
+            if active || starting {
+                let p = policy
+                AppLog.warn("pip", "no longer eligible (media \(p.hasMedia), preview \(p.preview), source \(p.sourceAvailable)); closing it")
+            }
+            clear(); return
+        }
         let native = engine.nativePlayerLayer
         let software = native == nil ? engine.softwarePiPSource : nil
         let key = native.map { ObjectIdentifier($0) } ?? software.map { ObjectIdentifier($0.layer) }
         if key != sourceKey {
+            if active || starting {
+                AppLog.warn("pip", "the video's picture changed under the window (\(native != nil ? "native" : software != nil ? "software" : "none")); closing it")
+            }
             clear()
             sourceKey = key
             softwareSource = software // AVKit's sample-buffer content source holds its delegate weakly.
@@ -118,7 +130,10 @@ final class PictureInPicture: NSObject {
 
     private func setActive(_ on: Bool) {
         engine.pictureInPictureActive = on
-        if !on { engine.setNativeSubtitleRendering(false) }
+        if !on {
+            engine.setNativeSubtitleRendering(false)
+            engine.currentAVPlayer?.currentItem?.textStyleRules = nil
+        }
         changed(on)
         send(["type": "pip", "value": on])
     }
@@ -127,13 +142,16 @@ final class PictureInPicture: NSObject {
 extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
         guard controller === self.controller else { controller.stopPictureInPicture(); return }
+        AppLog.info("pip", "starting (\(manualRequest ? "button" : "automatic"))")
         starting = true
         restoring = false
         engine.pictureInPictureActive = true // Arm the engine before its background lifecycle decision.
+        engine.currentAVPlayer?.currentItem?.textStyleRules = Self.captionRules(channel.subtitleLook)
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         guard controller === self.controller else { controller.stopPictureInPicture(); return }
+        AppLog.info("pip", "started")
         starting = false
         manualRequest = false
         wasActive = true
@@ -143,6 +161,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         guard controller === self.controller else { retired.removeValue(forKey: ObjectIdentifier(controller)); return }
+        AppLog.warn("pip", "could not start: \(error.localizedDescription)")
         let report = manualRequest
         starting = false
         manualRequest = false
@@ -154,6 +173,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         guard controller === self.controller else { retired.removeValue(forKey: ObjectIdentifier(controller)); return }
         let pause = PictureInPicturePolicy.pausesWhenStopped(wasActive: wasActive, restoring: restoring)
+        AppLog.info("pip", restoring ? "closed to return to the app" : "closed")
         starting = false
         wasActive = false
         restoring = false
@@ -164,10 +184,39 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
     func pictureInPictureController(_ controller: AVPictureInPictureController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
         guard controller === self.controller else { completionHandler(false); return }
+        AppLog.info("pip", "returning to the app")
         restoring = true
         restore()
         changed(false)
-        send(["type": "pip", "value": false])
+        // `restore`: the page opens the full player again if the video was in the mini player.
+        send(["type": "pip", "value": false, "restore": true])
         completionHandler(true)
+    }
+}
+
+extension PictureInPicture {
+    /// The AVPlayer path's window draws the stream's WebVTT captions in the system's boxed style.
+    /// These rules ask for the app's look instead: its text colour and font, no box unless the look
+    /// has one, and an outline (or a shadow) edge. Settings > Accessibility > Subtitles & Captioning
+    /// can still win over them. The software path draws the system caption style into the frames
+    /// and has no hook for the app's look in AetherEngine 7.64.0 or 7.65.0.
+    static func captionRules(_ look: SubtitleLook) -> [AVTextStyleRule] {
+        func argb(_ color: UIColor) -> [NSNumber] {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            guard color.getRed(&r, green: &g, blue: &b, alpha: &a) else { return [1, 1, 1, 1] }
+            return [a, r, g, b].map { NSNumber(value: Double($0)) }
+        }
+        let edge: CFString = look.outlineSize > 0 ? kCMTextMarkupCharacterEdgeStyle_Uniform
+            : look.shadowSize > 0 ? kCMTextMarkupCharacterEdgeStyle_DropShadow
+            : kCMTextMarkupCharacterEdgeStyle_None
+        var attributes: [String: Any] = [
+            kCMTextMarkupAttribute_ForegroundColorARGB as String: argb(look.color),
+            kCMTextMarkupAttribute_CharacterBackgroundColorARGB as String: argb(look.box ? look.backColor : .clear),
+            kCMTextMarkupAttribute_BackgroundColorARGB as String: argb(.clear),
+            kCMTextMarkupAttribute_CharacterEdgeStyle as String: edge as String,
+        ]
+        if look.bold { attributes[kCMTextMarkupAttribute_BoldStyle as String] = true }
+        if let family = look.fontFamily { attributes[kCMTextMarkupAttribute_FontFamilyName as String] = family }
+        return AVTextStyleRule(textMarkupAttributes: attributes).map { [$0] } ?? []
     }
 }

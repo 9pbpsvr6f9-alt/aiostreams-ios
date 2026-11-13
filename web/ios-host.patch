@@ -1,3 +1,19 @@
+diff --git a/packages/web/index.html b/packages/web/index.html
+index 1132cc26..2a893a55 100644
+--- a/packages/web/index.html
++++ b/packages/web/index.html
+@@ -130,9 +130,9 @@
+           document
+             .getElementById('splash')
+             .style.setProperty('--splash-size', 28800 / side + 'vmin');
+-        // The Android app covers the page until this shows.
++        // The Android and iOS apps cover the page until this shows.
+         var app = window.aiostreamsApp;
+-        if (app && app.platform === 'android')
++        if (app && (app.platform === 'android' || app.platform === 'ios'))
+           requestAnimationFrame(function () {
+             requestAnimationFrame(function () {
+               app.send({ type: 'splash-shown' });
 diff --git a/packages/web/src/app/item/_components/actions.tsx b/packages/web/src/app/item/_components/actions.tsx
 index 2ba0f44..b17357e 100644
 --- a/packages/web/src/app/item/_components/actions.tsx
@@ -125,6 +141,82 @@ index c239d4d..88c7e1b 100644
      <div
        data-ui="item-trailer-hint"
        aria-hidden={!shown || full}
+diff --git a/packages/web/src/app/player/page.tsx b/packages/web/src/app/player/page.tsx
+index 95372614..fe3bb8a3 100644
+--- a/packages/web/src/app/player/page.tsx
++++ b/packages/web/src/app/player/page.tsx
+@@ -37,7 +37,7 @@ import {
+ } from '@/lib/playback/stream';
+ import { PlaybackReporter } from '@/lib/playback/reporter';
+ import { currentHost } from '@/lib/hosts';
+-import { appLog } from '@/lib/hosts/shell/bridge';
++import { appBridge, appLog } from '@/lib/hosts/shell/bridge';
+ import { useFeature } from '@/lib/jellyfin/server-info';
+ import {
+   leaveFullscreen,
+@@ -82,6 +82,7 @@ import { navigate, to, versionsPath } from '@/lib/paths';
+ import {
+   canMinimise,
+   closePlayback,
++  expandPlayback,
+   minimisePlayback,
+   playbackNow,
+   playOn,
+@@ -89,7 +90,7 @@ import {
+   stopPlayback,
+   usePlayback,
+ } from '@/lib/playback/session';
+-import { leaveAppPip, useAppPip } from '@/lib/hosts/shell/pip';
++import { leaveAppPip, setInAppPip, useAppPip } from '@/lib/hosts/shell/pip';
+ import { PictureInPicture } from '@/features/player/picture-in-picture';
+ import { noteChannelPlayed } from '@/features/live-tv/live-tv';
+ import { useZap, type Zap } from '@/features/player/live';
+@@ -894,6 +895,35 @@ function Player({
+   const launchedName = launched?.name ?? '';
+   const failure = player.state.error ?? '';
+   const pip = useAppPip();
++  // iOS: the player's PiP button opens the mini player in the app (below); iOS's window takes over on
++  // leaving it. Coming back from that window, by its button or the app's icon, opens the full player.
++  const ios = appBridge()?.platform === 'ios';
++  // Checked again a moment later, as the return can still shrink the player as it lands (seen in
++  // portrait), and against the session rather than this render's `mini`.
++  React.useEffect(() => {
++    if (!ios) return;
++    const timers: number[] = [];
++    const grow = () => {
++      if (playbackNow()?.mini) expandPlayback();
++    };
++    const off = appBridge()?.subscribe((m) => {
++      if (m.type !== 'pip' || m.value || !m.restore) return;
++      grow();
++      timers.push(window.setTimeout(grow, 1000));
++    });
++    return () => {
++      off?.();
++      timers.forEach(clearTimeout);
++    };
++  }, [ios]);
++  const latestMinimise = React.useRef(minimise);
++  latestMinimise.current = minimise;
++  const canShrink = ios && !mini && !!minimise;
++  React.useEffect(() => {
++    if (!canShrink) return;
++    setInAppPip(() => latestMinimise.current?.());
++    return () => setInAppPip(undefined);
++  }, [canShrink]);
+   useFullWindowFor(!!failure || next.asking || !!launched);
+   const covered = !pip && (!player.state.started || !!launched);
+   React.useLayoutEffect(() => onCovered(covered), [covered, onCovered]);
+@@ -902,7 +932,8 @@ function Player({
+     if (mini) leaveFullscreen();
+   }, [mini]);
+ 
+-  if (pip)
++  // iOS keeps the mini player's card, and so its video's place, while its video is in the window.
++  if (pip && !(ios && mini))
+     return (
+       <div data-page="player" className="fixed inset-0">
+         {/* Android draws its own controls over the small window. */}
 diff --git a/packages/web/src/app/settings/about.tsx b/packages/web/src/app/settings/about.tsx
 index e41938f..d8ffaba 100644
 --- a/packages/web/src/app/settings/about.tsx
@@ -298,7 +390,7 @@ index 3ca1664..24dc4ae 100644
        <NavigationCard />
      </>
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
-index 2e7bd37..7149d5f 100644
+index 2e7bd378..70e35d15 100644
 --- a/packages/web/src/app/settings/playback.tsx
 +++ b/packages/web/src/app/settings/playback.tsx
 @@ -1,4 +1,5 @@
@@ -315,7 +407,7 @@ index 2e7bd37..7149d5f 100644
    NEXT_LEADS,
    STILL_WATCHING_AFTER,
    HOLD_RATES,
-@@ -102,6 +104,63 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
+@@ -102,6 +104,71 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
    );
  }
  
@@ -325,6 +417,7 @@ index 2e7bd37..7149d5f 100644
 +  const [gestures, setGestures] = useSetting(settings.ios.gestures);
 +  const [fill, setFill] = useSetting(settings.ios.fillOnStart);
 +  const [skipCountdown, setSkipCountdown] = useSetting(settings.ios.skipCountdown);
++  const [launchLogo, setLaunchLogo] = useSetting(settings.ios.launchLogo);
 +  return (
 +    <SettingsCard
 +      name="ios-player"
@@ -372,6 +465,13 @@ index 2e7bd37..7149d5f 100644
 +        value={String(skipCountdown)}
 +        onValueChange={(v) => setSkipCountdown(Number(v))}
 +      />
++      <Switch
++        side="right"
++        label={t`Launch logo`}
++        help={t`Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens.`}
++        value={launchLogo}
++        onValueChange={setLaunchLogo}
++      />
 +    </SettingsCard>
 +  );
 +}
@@ -379,7 +479,7 @@ index 2e7bd37..7149d5f 100644
  export function PlaybackSection() {
    const { prefs, update } = usePlaybackPrefs();
    const [seekStep, setSeekStep] = useSetting(settings.controls.seekStep);
-@@ -154,6 +213,7 @@ export function PlaybackSection() {
+@@ -154,6 +221,7 @@ export function PlaybackSection() {
  
    return (
      <>
@@ -1591,19 +1691,22 @@ index f7a92d4..77125c6 100644
      /** Hands the brightness back to the system. */
      release(): void;
 diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
-index 39f60cb..a9c1015 100644
+index 39f60cb8..72c75529 100644
 --- a/packages/web/src/lib/hosts/shell/bridge.ts
 +++ b/packages/web/src/lib/hosts/shell/bridge.ts
-@@ -92,6 +92,8 @@ export type ShellMessage =
+@@ -92,7 +92,10 @@ export type ShellMessage =
        devices: { name: string; description: string }[] | null;
      }
    | { type: 'fullscreen'; value: boolean }
+-  | { type: 'pip'; value: boolean }
 +  /** iOS: the volume buttons changed the system volume while the full player hides iOS's indicator. */
 +  | { type: 'system-volume'; volume: number }
-   | { type: 'pip'; value: boolean }
++  /** `restore`: iOS's window asked for the full player back, rather than closing. */
++  | { type: 'pip'; value: boolean; restore?: boolean }
    /** A tap on the small video, a drag of it starting, where it is as it drags, or where it let go, in the page's pixels. */
    | { type: 'player-frame'; event: 'tap' | 'grabbed' }
-@@ -188,7 +190,7 @@ export type MediaKey =
+   | { type: 'player-frame'; event: 'moving' | 'moved'; x: number; y: number }
+@@ -188,7 +191,7 @@ export type MediaKey =
  interface ShellBridge {
    protocol: number;
    version: string;
@@ -1671,10 +1774,10 @@ index 0000000..63c99c9
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..8cda26e
+index 00000000..09ceb038
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,122 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -1696,6 +1799,7 @@ index 0000000..8cda26e
 +      haptics: settings.ios.haptics.read(),
 +      automaticPip: settings.ios.automaticPip.read(),
 +      gestures: settings.ios.gestures.read(),
++      launchLogo: settings.ios.launchLogo.read(),
 +    });
 +    // The parts of an unstarted episode the spoiler blur leaves clear (styles.css).
 +    html.toggleAttribute('data-unblur-pictures', !settings.ios.spoilerPictures.read());
@@ -1773,7 +1877,8 @@ index 0000000..8cda26e
 +  name: 'ios-app',
 +  device: () => ({ id: appBridge()?.deviceId, name: appBridge()?.device }),
 +  player: appEngine,
-+  playerFeatures: ['audio', 'chapters', 'headers'],
++  // Upscaling: AetherEngine's super resolution, for Anime upscaling (iOS 26).
++  playerFeatures: ['audio', 'chapters', 'headers', 'upscaling'],
 +  resolveYouTube,
 +  // The app's queue, as the Android app's: background transfers that go on with the app closed.
 +  downloads: shellDownloads,
@@ -1795,11 +1900,44 @@ index 0000000..8cda26e
 +  saveFile: (name, type, text) =>
 +    appBridge()?.send({ type: 'save-file', name, mime: type, text }),
 +};
+diff --git a/packages/web/src/lib/hosts/shell/pip.ts b/packages/web/src/lib/hosts/shell/pip.ts
+index fffeacef..e4d8b8cd 100644
+--- a/packages/web/src/lib/hosts/shell/pip.ts
++++ b/packages/web/src/lib/hosts/shell/pip.ts
+@@ -15,3 +15,20 @@ export function leaveAppPip(): void {
+   if (shell && shell.platform !== 'android' && pip.get()?.value)
+     shell.send({ type: 'pip', value: false });
+ }
++
++let inApp: (() => void) | undefined;
++
++/**
++ * iOS: the player's mini player, which its Picture in Picture button opens
++ * while the app is open; iOS's own window takes over on leaving the app.
++ */
++export function setInAppPip(open?: () => void): void {
++  inApp = open;
++}
++
++/** Opens the mini player if the page offered one. */
++export function openInAppPip(): boolean {
++  if (!inApp) return false;
++  inApp();
++  return true;
++}
 diff --git a/packages/web/src/lib/hosts/shell/player.ts b/packages/web/src/lib/hosts/shell/player.ts
-index 5112efd..77d703a 100644
+index 5112efd0..30c886e7 100644
 --- a/packages/web/src/lib/hosts/shell/player.ts
 +++ b/packages/web/src/lib/hosts/shell/player.ts
-@@ -97,6 +97,10 @@ function unzoomed(frame: VideoFrame): VideoFrame {
+@@ -15,6 +15,7 @@ import {
+ } from '@/lib/subtitles/style';
+ import { parseChapters } from '@/lib/playback/chapters';
+ import { upscalingOn } from '@/lib/playback/upscaling';
++import { openInAppPip } from './pip';
+ import type { Span } from '@/lib/subtitles/align';
+ import {
+   ownTrackLabel,
+@@ -97,6 +98,10 @@ function unzoomed(frame: VideoFrame): VideoFrame {
      height: frame.height * zoom,
      radius: frame.radius * zoom,
      bottomRadius: frame.bottomRadius * zoom,
@@ -1809,8 +1947,8 @@ index 5112efd..77d703a 100644
 +    } }),
    };
  }
-
-@@ -127,6 +131,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+ 
+@@ -127,6 +132,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
        headers: played.headers,
        startMs: played.startMs,
        live: !!played.source.IsInfiniteStream,
@@ -1819,7 +1957,7 @@ index 5112efd..77d703a 100644
        append,
        audioLanguages: audioCodes(prefs, played.source),
        subtitleLanguages: subtitleLanguages(prefs),
-@@ -343,11 +349,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -343,11 +350,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
      setFrame:
        external || !shell.miniPlayer
          ? undefined
@@ -1836,7 +1974,29 @@ index 5112efd..77d703a 100644
      // The user's own player keeps its own look.
      setStyle({ subtitleStyle, fit, height }) {
        if (external || !subtitleStyle) return;
-@@ -451,7 +460,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -360,8 +370,20 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+     toggleFullscreen: external
+       ? () => send('player-set', { fullscreen: !fullscreen })
+       : () => shell.send({ type: 'fullscreen' }),
++    // iOS opens the mini player while automatic Picture in Picture can carry the video out of
++    // the app; without that, the button asks for iOS's window at once.
+     togglePictureInPicture:
+-      external || !shell.pip ? undefined : () => shell.send({ type: 'pip' }),
++      external || !shell.pip
++        ? undefined
++        : () => {
++            if (
++              shell.platform === 'ios' &&
++              settings.ios.automaticPip.read() &&
++              openInAppPip()
++            )
++              return;
++            shell.send({ type: 'pip' });
++          },
+     ownText(id) {
+       const track = tracks.find((t) => t.id === id && t.external);
+       return (track?.title && added.get(track.title)) || null;
+@@ -451,7 +473,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
            if (next) load(next, true);
            else send('player-unqueue');
          }
@@ -1852,7 +2012,7 @@ index 5112efd..77d703a 100644
 +        : undefined,
    };
  };
-
+ 
 diff --git a/packages/web/src/lib/jellyfin/client.ts b/packages/web/src/lib/jellyfin/client.ts
 index 03c7dde..030e75e 100644
 --- a/packages/web/src/lib/jellyfin/client.ts
@@ -1959,7 +2119,7 @@ index 0a565dd..5f62c48 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..d136c2c 100644
+index 9be266c1..38a12983 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
@@ -1989,7 +2149,7 @@ index 9be266c..d136c2c 100644
  /** Episodes in a row with no input before asking; 0 never asks. */
  export const STILL_WATCHING_AFTER = [0, 2, 3, 4, 5, 8] as const;
  
-@@ -605,6 +616,24 @@ export const settings = {
+@@ -605,6 +616,26 @@ export const settings = {
        MINI_CORNERS
      ),
    },
@@ -1998,6 +2158,8 @@ index 9be266c..d136c2c 100644
 +    haptics: device<boolean>('aiostreams-ios-haptics', true),
 +    gestures: device<boolean>('aiostreams-ios-gestures', true),
 +    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
++    /** The app's own logo from launch until the page's splash draws it. */
++    launchLogo: device<boolean>('aiostreams-ios-launch-logo', true),
 +    /** Which parts of an unstarted episode the spoiler blur covers on this device. */
 +    spoilerPictures: device<boolean>('aiostreams-ios-spoiler-pictures', true),
 +    spoilerTitles: device<boolean>('aiostreams-ios-spoiler-titles', true),
@@ -2035,10 +2197,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..a4b0eab 100644
+index 2014fb0e..ff23473c 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,121 @@ msgstr "Your rating"
+@@ -5752,3 +5752,129 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -2160,6 +2322,14 @@ index 2014fb0..a4b0eab 100644
 +#. iOS host additions
 +msgid "No shows yet."
 +msgstr "No shows yet."
++
++#. iOS host additions
++msgid "Launch logo"
++msgstr "Launch logo"
++
++#. iOS host additions
++msgid "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
++msgstr "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
 index 96e99ee..5744a0d 100644
 --- a/packages/web/src/styles.css

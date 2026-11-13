@@ -18,11 +18,19 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var gesturesEnabled = true { didSet { updateVolumeIndicator() } }
     /// The full-window player is showing, where volume swipes replace iOS's volume indicator.
     private var playerFillsWindow = false { didSet { updateVolumeIndicator() } }
+    /// Picture in Picture shows the video, and the page is browsed beside it with iOS's indicator.
+    private var pipActive = false { didSet { updateVolumeIndicator() } }
     /// The system volume, watched while the full player hides iOS's indicator, for the volume buttons' toast.
     private var volumeObservation: NSKeyValueObservation?
+    private var urlObservation: NSKeyValueObservation?
+    private var activeObserver: NSObjectProtocol?
+    /// The page's process ended while the app was away; it loads again on return, not under the video.
+    private var pageReloadOwed = false
     /// When the player's own swipe last set the volume; the change it causes needs no toast.
     private var ownVolumeChangeAt: TimeInterval = -.infinity
     private var webView: WKWebView!
+    /// The web app's logo, covering the page until its own splash has drawn.
+    private var launchLogo: LaunchLogo?
     private var player: PlayerChannel!
     private var pictureInPicture: PictureInPicture!
     private let pipBackdrop = UIView()
@@ -117,6 +125,12 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             ])
         }
         videoStage.refresh()
+        if LaunchLogo.enabled {
+            let cover = LaunchLogo(frame: root.bounds)
+            cover.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            root.addSubview(cover)
+            launchLogo = cover
+        }
         view = root
     }
 
@@ -125,7 +139,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     /// with gestures on; browsing, previews and the mini player keep iOS's indicator.
     private func updateVolumeIndicator() {
         guard let root = viewIfLoaded else { return }
-        if playerFillsWindow && gesturesEnabled {
+        if playerFillsWindow && gesturesEnabled && !pipActive {
             systemVolume.attach(to: root)
             if volumeObservation == nil {
                 volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) {
@@ -144,7 +158,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     /// The volume buttons moved the system volume: the page shows the swipe's toast, as iOS's own
     /// indicator is hidden in the player. A change the swipe itself made shows its own toast already.
     private func systemVolumeChanged(_ volume: Double) {
-        guard playerFillsWindow, gesturesEnabled, volume.isFinite,
+        guard playerFillsWindow, gesturesEnabled, !pipActive, volume.isFinite,
               ProcessInfo.processInfo.systemUptime - ownVolumeChangeAt > 0.5 else { return }
         bridge.send(["type": "system-volume", "volume": volume])
     }
@@ -171,6 +185,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         pictureInPicture.changed = { [weak self] active in
             guard let self else { return }
             self.pipBackdrop.isHidden = !active
+            self.pipActive = active
             self.overlay.isHidden = active || !self.player.hasMedia
             self.videoStage.refresh()
         }
@@ -187,6 +202,20 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.restoreBrightness() }
+        }
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.pageReloadOwed else { return }
+                self.pageReloadOwed = false
+                self.reloadPage(resuming: true)
+            }
+        }
+        // Which page shows, for the log a problem report copies (the route only).
+        urlObservation = webView.observe(\.url, options: [.new]) { webView, _ in
+            let route = webView.url?.fragment.map { $0.components(separatedBy: "?")[0] } ?? "-"
+            Task { @MainActor in AppLog.info("page", "at \(route)") }
         }
         webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
     }
@@ -223,7 +252,14 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         case "pip":
             if JSON.flag(message["value"]) == false { pictureInPicture.stopForRestore() }
             else { pictureInPicture.toggle() }
+        case "splash-shown":
+            // The page's splash shows the same logo now.
+            launchLogo?.lift()
+            launchLogo = nil
         case "ios-player-settings":
+            if let on = JSON.flag(message["launchLogo"]) {
+                UserDefaults.standard.set(on, forKey: LaunchLogo.enabledKey)
+            }
             if let enabled = JSON.flag(message["automaticPip"]) { pictureInPicture.automaticEnabled = enabled }
             if let enabled = JSON.flag(message["haptics"]) { haptics.enabled = enabled }
             if let enabled = JSON.flag(message["gestures"]) {
@@ -387,6 +423,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     deinit {
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
+        if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
     }
 
     private func setFullscreen(_ on: Bool) {
@@ -450,9 +487,37 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         restoreBrightness()
+        // iOS ends a background app's page under memory pressure. Loading it again then would stop
+        // the video under Picture in Picture, so the page waits for the app to come back.
+        if pictureInPicture?.active == true || UIApplication.shared.applicationState != .active {
+            AppLog.warn("app", "the page's process ended in the background; it loads again on return")
+            pageReloadOwed = true
+            return
+        }
         AppLog.warn("app", "the page's process ended; loading it again")
+        reloadPage(resuming: false)
+    }
+
+    /// Loads the page again; a player page reopens at the video's current position.
+    private func reloadPage(resuming: Bool) {
+        var target: URL?
+        if resuming, let current = webView.url, let fragment = current.fragment,
+           fragment.hasPrefix("/play/"), !fragment.hasPrefix("/play/trailer/"),
+           let ms = player?.positionMs, var route = URLComponents(string: fragment),
+           var whole = URLComponents(url: current, resolvingAgainstBaseURL: false) {
+            var items = (route.queryItems ?? []).filter { $0.name != "start" }
+            items.append(URLQueryItem(name: "start", value: String(Int(ms))))
+            route.queryItems = items
+            whole.fragment = route.string
+            target = whole.url
+        }
         player?.pageLoading()
-        webView.reload()
+        if let target {
+            AppLog.info("app", "loading the page again at the video's position")
+            webView.load(URLRequest(url: target))
+        } else {
+            webView.reload()
+        }
     }
 
     // MARK: - WKUIDelegate
