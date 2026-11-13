@@ -46,11 +46,13 @@ final class PictureInPicture: NSObject {
                 guard let self else { return }
                 let returned = self.backgrounded
                 self.backgrounded = false
-                if returned && (self.active || self.starting) { self.stopForRestore() }
+                let fromWindow = self.active || self.starting
+                if returned && fromWindow { self.stopForRestore() }
                 if returned {
                     // A background WebKit process can miss didStop's message. Always resync inline UI.
+                    // Coming back from the window by the app's icon opens the full player too.
                     self.changed(false)
-                    self.send(["type": "pip", "value": false])
+                    self.send(["type": "pip", "value": false, "restore": fromWindow])
                     self.channel.restoreAfterBackground()
                 }
                 self.refresh()
@@ -169,13 +171,11 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
     func pictureInPictureController(_ controller: AVPictureInPictureController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
         guard controller === self.controller else { completionHandler(false); return }
-        // The window's own button, not the app's stop on coming back: only that asks for the full
-        // player. Coming back to the app another way leaves the video in the mini player.
-        let tapped = !restoring
         restoring = true
         restore()
         changed(false)
-        send(["type": "pip", "value": false, "restore": tapped])
+        // `restore`: the page opens the full player again if the video was in the mini player.
+        send(["type": "pip", "value": false, "restore": true])
         completionHandler(true)
     }
 }
