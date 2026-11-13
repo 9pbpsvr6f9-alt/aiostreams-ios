@@ -378,6 +378,13 @@ final class PlayerChannel {
         options.httpHeaders = headers
         options.prepareNativeSubtitles = !trailer
         options.isLive = JSON.flag(message["live"]) ?? false
+        // Faster starts. A segment is served while it is written, so the picture starts on its first
+        // fragments rather than after the whole segment (engine changelog: 0.9 s against 2.2 s to the
+        // first frame over a 6 Mbit/s link); VOD only, the engine ignores it for live and its other routes.
+        options.progressiveSegmentDelivery = true
+        // A Matroska file's attached fonts (tens of MB on anime) are read before the first packet. The
+        // overlay draws subtitles with system fonts and never reads `fontAttachments`, so they're skipped.
+        options.skipsContainerAttachments = true
         options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
         // TrueHD Atmos and DTS:X with their heights, which iOS plays as Spatial Audio (OS 26 and later).
         options.objectAudioRendering = .render(.l714)

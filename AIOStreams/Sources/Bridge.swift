@@ -84,6 +84,8 @@ final class Bridge: NSObject {
             pip: true,
             device: \(literal(AppInfo.deviceName)),
             deviceId: \(literal(AppInfo.deviceId)),
+            // The system's 12- or 24-hour clock, for the page's Time format on Automatic.
+            hours24: \(AppInfo.hours24 ? "true" : "false"),
             send,
             subscribe(listener) {
               listeners.add(listener);
