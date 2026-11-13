@@ -45,8 +45,13 @@ final class PictureInPicture: NSObject {
                 guard let self else { return }
                 let returned = self.backgrounded
                 self.backgrounded = false
-                if returned && self.active { self.stopForRestore() }
-                if returned { self.channel.restoreAfterBackground() }
+                if returned && (self.active || self.starting) { self.stopForRestore() }
+                if returned {
+                    // A background WebKit process can miss didStop's message. Always resync inline UI.
+                    self.changed(false)
+                    self.send(["type": "pip", "value": false])
+                    self.channel.restoreAfterBackground()
+                }
                 self.refresh()
             }.store(in: &bag)
     }
