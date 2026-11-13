@@ -22,7 +22,7 @@ index dba75cf..6ea3092 100644
        )}
      >
 diff --git a/packages/web/src/app/item/_components/trailer.tsx b/packages/web/src/app/item/_components/trailer.tsx
-index c239d4d..46879c3 100644
+index c239d4d..6cad292 100644
 --- a/packages/web/src/app/item/_components/trailer.tsx
 +++ b/packages/web/src/app/item/_components/trailer.tsx
 @@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
@@ -54,8 +54,14 @@ index c239d4d..46879c3 100644
          >
            <div
              className={cn(
-@@ -175,8 +180,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
-             <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent" />
+@@ -171,12 +176,11 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+               full && 'opacity-0'
+             )}
+           >
+-            <div className="absolute inset-0 bg-gradient-to-r from-[--background] via-[--background]/60 via-40% to-transparent rtl:bg-gradient-to-l" />
+-            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent" />
++            <div className={cn("absolute inset-0 bg-gradient-to-r from-[--background] via-[--background]/60 via-40% to-transparent rtl:bg-gradient-to-l", inline && "hidden landscape:block lg:block")} />
++            <div className={inline ? "absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-[--background] via-[--background]/70 to-transparent max-sm:h-1/2" : "absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent"} />
            </div>
            <TrailerVeil shown={shown} />
 -        </div>,
@@ -64,6 +70,15 @@ index c239d4d..46879c3 100644
        )}
        {spot && (
          <TrailerPreview
+@@ -197,7 +201,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+     </>
+   );
+   const keys = !!currentHost().tv || usingKeys();
+-  const hint = (
++  const hint = !inline && (
+     <div
+       data-ui="item-trailer-hint"
+       aria-hidden={!shown || full}
 diff --git a/packages/web/src/app/settings/about.tsx b/packages/web/src/app/settings/about.tsx
 index e41938f..d8ffaba 100644
 --- a/packages/web/src/app/settings/about.tsx

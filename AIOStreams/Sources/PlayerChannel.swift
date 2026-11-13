@@ -65,7 +65,23 @@ final class PlayerChannel {
     func setPreviewMode(_ preview: Bool) {
         self.preview = preview
         applyVideoGravity()
+        configureAudioSession()
         pipEligibilityChanged()
+    }
+
+    /// Volume zero alone still claims exclusive audio on iOS. Silent artwork previews
+    /// mix with other apps; ordinary playback and audible trailers retain movie audio.
+    private func configureAudioSession() {
+        let mixes = loadedURL == nil || (preview && effectivePlaybackVolume == 0)
+        let options: AVAudioSession.CategoryOptions = mixes ? [.mixWithOthers] : []
+        let session = AVAudioSession.sharedInstance()
+        guard session.category != .playback || session.mode != .moviePlayback ||
+              session.categoryOptions != options else { return }
+        do {
+            try session.setCategory(.playback, mode: .moviePlayback, options: options)
+        } catch {
+            AppLog.warn("audio", "Could not configure playback mixing: \(error.localizedDescription)")
+        }
     }
 
     private func applyVideoGravity(force: Bool = false) {
@@ -380,6 +396,7 @@ final class PlayerChannel {
         lineWatch?.cancel()
         loadedHeaders = headers
         loadedURL = text
+        configureAudioSession()
         ended = false
         restarted = false
         lastStatus = nil
@@ -456,6 +473,7 @@ final class PlayerChannel {
         indexTask = nil
         lineWatch?.cancel()
         engine.stop()
+        configureAudioSession()
         overlay.clear()
         thumbnails.clear()
         showVideo(false)
@@ -487,6 +505,7 @@ final class PlayerChannel {
             echo["muted"] = value
         }
         if message["volume"] != nil || message["muted"] != nil {
+            configureAudioSession()
             engine.volume = muted ? 0 : Float(min(max(volume, 0), 1))
         }
         if let value = JSON.number(message["speed"]), value > 0 {
