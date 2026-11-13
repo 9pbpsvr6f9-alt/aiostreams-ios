@@ -30,6 +30,15 @@
       ],
       "versions": [
         {
+          "version": "0.2.89",
+          "buildVersion": "89",
+          "date": "2026-11-13T19:51:44.039976+00:00",
+          "localizedDescription": "What's new\n\u2022 Serve the FlareStore source from one fixed address\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.89",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.89/AIOStreams.ipa",
+          "size": 17407737,
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "0.2.87",
           "buildVersion": "87",
           "date": "2026-11-13T19:04:37.393079+00:00",
@@ -122,6 +131,15 @@
       ],
       "versions": [
         {
+          "version": "0.2.89",
+          "buildVersion": "89",
+          "date": "2026-11-13T19:51:44.039976+00:00",
+          "localizedDescription": "What's new\n\u2022 Serve the FlareStore source from one fixed address\n\nFull notes: https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.89",
+          "downloadURL": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/download/v0.2.89/AIOStreams-tvOS.ipa",
+          "size": 10646185,
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "0.2.87",
           "buildVersion": "87",
           "date": "2026-11-13T19:04:37.393079+00:00",
@@ -185,6 +203,16 @@
     }
   ],
   "news": [
+    {
+      "identifier": "release-v0.2.89",
+      "title": "AIOStreams 0.2.89",
+      "caption": "Serve the FlareStore source from one fixed address",
+      "date": "2026-11-13T19:51:44.039976+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/tag/v0.2.89",
+      "notify": false
+    },
     {
       "identifier": "release-v0.2.87",
       "title": "AIOStreams 0.2.87",
