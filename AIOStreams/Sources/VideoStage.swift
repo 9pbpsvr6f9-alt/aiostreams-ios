@@ -19,6 +19,8 @@ final class VideoStage {
 
     /// Told whether the page must be transparent (`VideoPresentation.needsTransparentPage`).
     var needsTransparentPage: (Bool) -> Void = { _ in }
+    /// Told whether the player fills the window (`VideoPresentation.isFullWindow`).
+    var fullWindowChanged: (Bool) -> Void = { _ in }
 
     private let video: UIView
     private let subtitles: UIView
@@ -101,6 +103,7 @@ final class VideoStage {
         subtitles.frame = content
         cutHole(presentation.visible ? shown : nil, animated: animated)
         needsTransparentPage(presentation.needsTransparentPage)
+        fullWindowChanged(presentation.isFullWindow)
     }
 
     /// The corners the radius applies to: the bar's video has a bottom radius of its own, a docked

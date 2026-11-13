@@ -20,6 +20,11 @@ final class SystemVolumeControl {
         if control.superview !== parent { parent.addSubview(control) }
     }
 
+    /// While attached, iOS hides its own volume indicator, so it is attached only in the player.
+    func detach() {
+        control.removeFromSuperview()
+    }
+
     @discardableResult
     func set(_ value: Double) -> Bool {
         guard value.isFinite, control.window != nil else { return false }

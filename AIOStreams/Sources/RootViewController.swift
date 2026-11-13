@@ -14,7 +14,9 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private let bridge = Bridge()
     private let systemVolume = SystemVolumeControl()
     private let haptics = PlayerHaptics()
-    private var gesturesEnabled = true
+    private var gesturesEnabled = true { didSet { updateVolumeIndicator() } }
+    /// The full-window player is showing, where volume swipes replace iOS's volume indicator.
+    private var playerFillsWindow = false { didSet { updateVolumeIndicator() } }
     private var webView: WKWebView!
     private var player: PlayerChannel!
     private var pictureInPicture: PictureInPicture!
@@ -88,6 +90,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             webView.scrollView.backgroundColor = color
             webView.underPageBackgroundColor = color
         }
+        videoStage.fullWindowChanged = { [weak self] full in
+            guard let self, self.playerFillsWindow != full else { return }
+            self.playerFillsWindow = full
+        }
         videoStage.web = webView
         videoStage.view.frame = root.bounds
         videoStage.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -106,12 +112,24 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             ])
         }
         videoStage.refresh()
-        systemVolume.attach(to: root)
         view = root
+    }
+
+    /// Apple's volume view hides iOS's own volume indicator while it is on screen, and the player's
+    /// volume swipes need it there to set the volume. So it is there only in the full-window player
+    /// with gestures on; browsing, previews and the mini player keep iOS's indicator.
+    private func updateVolumeIndicator() {
+        guard let root = viewIfLoaded else { return }
+        if playerFillsWindow && gesturesEnabled {
+            systemVolume.attach(to: root)
+        } else {
+            systemVolume.detach()
+        }
     }
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        updateVolumeIndicator()
         player = PlayerChannel(engine: engine, overlay: overlay, thumbnails: thumbnails) { [weak self] message in
             self?.bridge.send(message)
         }
