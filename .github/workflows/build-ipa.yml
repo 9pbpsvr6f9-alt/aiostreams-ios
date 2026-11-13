@@ -3,7 +3,11 @@ name: Build IPA
 on:
   push:
     branches: [main]
+  # tv-m has its own workflow; its changes need no iPhone build.
   pull_request:
+    paths-ignore:
+      - 'tv-m/**'
+      - '.github/workflows/build-tv-m.yml'
   workflow_dispatch:
     inputs:
       aiostreams_ref:
