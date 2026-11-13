@@ -623,6 +623,9 @@ final class PlayerChannel {
         sendTracks()
     }
 
+    /// The look the page last sent; Picture in Picture styles its captions after it.
+    var subtitleLook: SubtitleLook { overlay.look }
+
     private func style(_ message: [String: Any]) {
         let gravity: AVLayerVideoGravity
         switch message["fit"] as? String {
