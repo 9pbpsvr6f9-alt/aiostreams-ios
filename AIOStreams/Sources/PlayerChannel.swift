@@ -32,9 +32,10 @@ final class PlayerChannel {
         backgroundRecoveryTask = Task { [weak self] in
             guard let self else { return }
             defer { if current == self.generation { self.backgroundRecoveryTask = nil } }
+            guard current == self.generation, !Task.isCancelled, self.hasMedia else { return }
             do {
                 try await self.engine.reloadAtCurrentPosition()
-                guard current == self.generation, !Task.isCancelled else { return }
+                guard current == self.generation, !Task.isCancelled, self.hasMedia else { return }
                 self.applyTransport()
                 self.applyVideoGravity(force: true)
                 if self.wantsPaused { self.engine.pause() } else { self.engine.play() }
@@ -394,6 +395,7 @@ final class PlayerChannel {
         loadTask = Task { [weak self] in
             guard let self else { return }
             defer { if current == self.generation { self.loadTask = nil } }
+            guard current == self.generation, !Task.isCancelled else { return }
             do {
                 try await self.engine.load(url: url, startPosition: startMs > 0 ? startMs / 1000 : nil, options: options)
                 guard current == self.generation else { return }
