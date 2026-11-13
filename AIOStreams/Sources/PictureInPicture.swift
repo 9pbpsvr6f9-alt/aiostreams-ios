@@ -199,7 +199,7 @@ extension PictureInPicture {
     /// These rules ask for the app's look instead: its text colour and font, no box unless the look
     /// has one, and an outline (or a shadow) edge. Settings > Accessibility > Subtitles & Captioning
     /// can still win over them. The software path draws the system caption style into the frames
-    /// and has no hook for the app's look in AetherEngine 7.64.0 or 7.65.0.
+    /// and has no hook for the app's look in AetherEngine 7.64.0 through 7.66.1.
     static func captionRules(_ look: SubtitleLook) -> [AVTextStyleRule] {
         func argb(_ color: UIColor) -> [NSNumber] {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
