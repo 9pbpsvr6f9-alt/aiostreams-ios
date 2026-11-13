@@ -142,7 +142,7 @@ index c239d4d..88c7e1b 100644
        data-ui="item-trailer-hint"
        aria-hidden={!shown || full}
 diff --git a/packages/web/src/app/player/page.tsx b/packages/web/src/app/player/page.tsx
-index 95372614..ac872a5c 100644
+index 95372614..fe3bb8a3 100644
 --- a/packages/web/src/app/player/page.tsx
 +++ b/packages/web/src/app/player/page.tsx
 @@ -37,7 +37,7 @@ import {
@@ -171,21 +171,30 @@ index 95372614..ac872a5c 100644
  import { PictureInPicture } from '@/features/player/picture-in-picture';
  import { noteChannelPlayed } from '@/features/live-tv/live-tv';
  import { useZap, type Zap } from '@/features/player/live';
-@@ -894,6 +895,26 @@ function Player({
+@@ -894,6 +895,35 @@ function Player({
    const launchedName = launched?.name ?? '';
    const failure = player.state.error ?? '';
    const pip = useAppPip();
 +  // iOS: the player's PiP button opens the mini player in the app (below); iOS's window takes over on
 +  // leaving it. Coming back from that window, by its button or the app's icon, opens the full player.
 +  const ios = appBridge()?.platform === 'ios';
-+  const latestMini = React.useRef(mini);
-+  latestMini.current = mini;
++  // Checked again a moment later, as the return can still shrink the player as it lands (seen in
++  // portrait), and against the session rather than this render's `mini`.
 +  React.useEffect(() => {
 +    if (!ios) return;
-+    return appBridge()?.subscribe((m) => {
-+      if (m.type === 'pip' && !m.value && m.restore && latestMini.current)
-+        expandPlayback();
++    const timers: number[] = [];
++    const grow = () => {
++      if (playbackNow()?.mini) expandPlayback();
++    };
++    const off = appBridge()?.subscribe((m) => {
++      if (m.type !== 'pip' || m.value || !m.restore) return;
++      grow();
++      timers.push(window.setTimeout(grow, 1000));
 +    });
++    return () => {
++      off?.();
++      timers.forEach(clearTimeout);
++    };
 +  }, [ios]);
 +  const latestMinimise = React.useRef(minimise);
 +  latestMinimise.current = minimise;
@@ -198,7 +207,7 @@ index 95372614..ac872a5c 100644
    useFullWindowFor(!!failure || next.asking || !!launched);
    const covered = !pip && (!player.state.started || !!launched);
    React.useLayoutEffect(() => onCovered(covered), [covered, onCovered]);
-@@ -902,7 +923,8 @@ function Player({
+@@ -902,7 +932,8 @@ function Player({
      if (mini) leaveFullscreen();
    }, [mini]);
  
