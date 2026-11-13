@@ -15,7 +15,9 @@ are for personal use. So this folder holds none of its code, only:
   Top Shelf item, which `patches/0002` shows in the shelf's poster shape. `0106` puts Who's watching in glass. `0107` adds Settings > Account > Ask every time you come
   back, kept on the device. `0108`: Settings > Interface > Background (a frosted backdrop
   following the hero or the highlighted card), Who's watching on a frosted aurora with thinner
-  rings, a smaller skip button, Down selecting Keep watching during a countdown.
+  rings, a smaller skip button, Down selecting Keep watching during a countdown. `0109` draws that background without
+  filters, which the app turns off: a tiny, box-blurred copy of the picture, stretched and dimmed,
+  and a tall plain fade from the hero into it.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
