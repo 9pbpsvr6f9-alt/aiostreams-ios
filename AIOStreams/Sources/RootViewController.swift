@@ -1,3 +1,4 @@
+import AVFoundation
 import AetherEngineFeatures
 import SafariServices
 import UIKit
@@ -17,6 +18,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var gesturesEnabled = true { didSet { updateVolumeIndicator() } }
     /// The full-window player is showing, where volume swipes replace iOS's volume indicator.
     private var playerFillsWindow = false { didSet { updateVolumeIndicator() } }
+    /// The system volume, watched while the full player hides iOS's indicator, for the volume buttons' toast.
+    private var volumeObservation: NSKeyValueObservation?
+    /// When the player's own swipe last set the volume; the change it causes needs no toast.
+    private var ownVolumeChangeAt: TimeInterval = -.infinity
     private var webView: WKWebView!
     private var player: PlayerChannel!
     private var pictureInPicture: PictureInPicture!
@@ -122,9 +127,26 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         guard let root = viewIfLoaded else { return }
         if playerFillsWindow && gesturesEnabled {
             systemVolume.attach(to: root)
+            if volumeObservation == nil {
+                volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) {
+                    [weak self] _, change in
+                    guard let volume = change.newValue else { return }
+                    Task { @MainActor in self?.systemVolumeChanged(Double(volume)) }
+                }
+            }
         } else {
             systemVolume.detach()
+            volumeObservation?.invalidate()
+            volumeObservation = nil
         }
+    }
+
+    /// The volume buttons moved the system volume: the page shows the swipe's toast, as iOS's own
+    /// indicator is hidden in the player. A change the swipe itself made shows its own toast already.
+    private func systemVolumeChanged(_ volume: Double) {
+        guard playerFillsWindow, gesturesEnabled, volume.isFinite,
+              ProcessInfo.processInfo.systemUptime - ownVolumeChangeAt > 0.5 else { return }
+        bridge.send(["type": "system-volume", "volume": volume])
     }
 
     override func viewDidLoad() {
@@ -300,6 +322,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         if gesturesEnabled, message["level"] as? String == "volume", player.hasMedia,
            UIApplication.shared.applicationState == .active,
            let start = SwipeVolume.start(system: volume, player: player.effectivePlaybackVolume),
+           markOwnVolumeChange(),
            systemVolume.set(start) {
             // Lower system volume BEFORE removing player attenuation. This happens once,
             // on the initial read for a volume swipe, never for a brightness swipe.
@@ -327,6 +350,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
               let value = JSON.number(message["value"]) else { return }
         let clamped = min(max(value, 0), 1)
         if level == "volume" {
+            markOwnVolumeChange()
             if systemVolume.set(clamped) {
                 haptics.tick(level, value: clamped)
             } else {
@@ -342,6 +366,13 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             screen.brightness = CGFloat(clamped)
             haptics.tick(level, value: clamped)
         }
+    }
+
+    /// Notes that the swipe is about to set the volume, so its change shows no second toast.
+    @discardableResult
+    private func markOwnVolumeChange() -> Bool {
+        ownVolumeChangeAt = ProcessInfo.processInfo.systemUptime
+        return true
     }
 
     private func restoreBrightness() {

@@ -583,17 +583,36 @@ index 320a9ca..3d978f8 100644
 
  export function useToggleFlash(): [React.ReactNode, (paused: boolean) => void] {
 diff --git a/packages/web/src/features/player/gestures.ts b/packages/web/src/features/player/gestures.ts
-index 07a04fb..e047bb9 100644
+index 07a04fb..1c44ca9 100644
 --- a/packages/web/src/features/player/gestures.ts
 +++ b/packages/web/src/features/player/gestures.ts
-@@ -1,5 +1,6 @@
+@@ -1,5 +1,7 @@
  import { t } from '@lingui/core/macro';
  import React from 'react';
 +import { iosGesturesEnabled } from '@/lib/hosts/shell/ios-feedback';
++import { appBridge } from '@/lib/hosts/shell/bridge';
  import { currentHost } from '@/lib/hosts';
  import type { PlayerController } from '@/lib/playback/controller';
  import { useLatest } from '@/hooks/use-latest';
-@@ -138,7 +139,7 @@ export function usePlayerGestures(gestures: Gestures) {
+@@ -71,6 +73,17 @@ export interface Gestures {
+ 
+ export function usePlayerGestures(gestures: Gestures) {
+   const latest = useLatest(gestures);
++  // iOS hides its own volume indicator in the player, so the volume buttons show the
++  // swipe's toast instead. The app sends only changes the buttons made, not a swipe's.
++  React.useEffect(
++    () =>
++      appBridge()?.subscribe((m) => {
++        if (m.type !== 'system-volume' || !Number.isFinite(m.volume)) return;
++        const percent = Math.round(Math.min(1, Math.max(0, m.volume)) * 100);
++        latest.current.notice(t`Volume ${percent}%`);
++      }),
++    [latest]
++  );
+   const press = React.useRef<Press | null>(null);
+   const points = React.useRef(new Map<number, Point>());
+   const pinch = React.useRef<{ from: number; done: boolean } | null>(null);
+@@ -138,7 +151,7 @@ export function usePlayerGestures(gestures: Gestures) {
        shown: null,
      };
      if (levels)
@@ -602,8 +621,8 @@ index 07a04fb..e047bb9 100644
          swipe.from = now[swipe.level];
          apply(swipe);
        });
-@@ -162,6 +163,13 @@ export function usePlayerGestures(gestures: Gestures) {
-
+@@ -162,6 +175,13 @@ export function usePlayerGestures(gestures: Gestures) {
+ 
    const onTouchDown = (e: React.PointerEvent<HTMLElement>) => {
      points.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 +    if (!iosGesturesEnabled() && points.current.size > 1) {
@@ -616,7 +635,7 @@ index 07a04fb..e047bb9 100644
      if (points.current.size === 2) {
        // A second finger makes it a pinch.
        if (press.current) end(press.current, false);
-@@ -186,7 +194,12 @@ export function usePlayerGestures(gestures: Gestures) {
+@@ -186,7 +206,12 @@ export function usePlayerGestures(gestures: Gestures) {
        swipe: null,
        scrubX: 0,
        timer: setTimeout(() => {
@@ -630,9 +649,9 @@ index 07a04fb..e047bb9 100644
          const release = latest.current.hold();
          p.kind = release ? 'held' : 'none';
          if (release) p.release = release;
-@@ -196,6 +209,14 @@ export function usePlayerGestures(gestures: Gestures) {
+@@ -196,6 +221,14 @@ export function usePlayerGestures(gestures: Gestures) {
    };
-
+ 
    const onTouchMove = (e: React.PointerEvent<HTMLElement>) => {
 +    if (!iosGesturesEnabled()) {
 +      const p = press.current;
@@ -645,7 +664,7 @@ index 07a04fb..e047bb9 100644
      if (points.current.has(e.pointerId))
        points.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
      const spread = pinch.current;
-@@ -247,7 +268,8 @@ export function usePlayerGestures(gestures: Gestures) {
+@@ -247,7 +280,8 @@ export function usePlayerGestures(gestures: Gestures) {
      press.current = null;
      if (p.kind === 'pending' && !cancel) {
        clearTimeout(p.timer);
@@ -654,8 +673,8 @@ index 07a04fb..e047bb9 100644
 +      else latest.current.onTap();
      } else end(p, !cancel);
    };
-
-@@ -271,7 +293,7 @@ export function usePlayerGestures(gestures: Gestures) {
+ 
+@@ -271,7 +305,7 @@ export function usePlayerGestures(gestures: Gestures) {
        e.currentTarget.setPointerCapture(e.pointerId);
        const m: NonNullable<typeof mouse.current> = {
          timer: setTimeout(() => {
@@ -664,7 +683,7 @@ index 07a04fb..e047bb9 100644
            m.release = latest.current.hold() || undefined;
          }, HOLD_MS),
        };
-@@ -294,7 +316,8 @@ export function usePlayerGestures(gestures: Gestures) {
+@@ -294,7 +328,8 @@ export function usePlayerGestures(gestures: Gestures) {
        if (!swallow && pointer.current !== 'touch') latest.current.onClick();
      },
      onDoubleClick: () => {
@@ -948,10 +967,19 @@ index f7a92d4..77125c6 100644
      /** Hands the brightness back to the system. */
      release(): void;
 diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
-index 39f60cb..f18c1eb 100644
+index 39f60cb..a9c1015 100644
 --- a/packages/web/src/lib/hosts/shell/bridge.ts
 +++ b/packages/web/src/lib/hosts/shell/bridge.ts
-@@ -188,7 +188,7 @@ export type MediaKey =
+@@ -92,6 +92,8 @@ export type ShellMessage =
+       devices: { name: string; description: string }[] | null;
+     }
+   | { type: 'fullscreen'; value: boolean }
++  /** iOS: the volume buttons changed the system volume while the full player hides iOS's indicator. */
++  | { type: 'system-volume'; volume: number }
+   | { type: 'pip'; value: boolean }
+   /** A tap on the small video, a drag of it starting, where it is as it drags, or where it let go, in the page's pixels. */
+   | { type: 'player-frame'; event: 'tap' | 'grabbed' }
+@@ -188,7 +190,7 @@ export type MediaKey =
  interface ShellBridge {
    protocol: number;
    version: string;
