@@ -10,8 +10,8 @@ on:
   workflow_dispatch:
     inputs:
       aiostreams_ref:
-        description: AIOStreams branch or tag to take the web app from
-        default: main
+        description: AIOStreams commit, branch or tag for the web app (empty takes tv-mickey/AIOSTREAMS_REF)
+        default: ''
       runner:
         description: Runner (his CI uses xcode-27; macos-26 if that label is unavailable)
         type: choice
@@ -60,12 +60,18 @@ jobs:
       - name: Check the bridge script compiles
         run: node scripts/check-bridge.mjs
 
+      # Pinned, as his web patches only fit some AIOStreams commits. His script clones a branch or tag
+      # but fetches any commit into a checkout that exists, so the checkout is made here first.
       - name: Build the web app
-        env:
-          AIOSTREAMS_REF: ${{ inputs.aiostreams_ref || 'main' }}
         run: |
+          ref="${{ inputs.aiostreams_ref }}"
+          [ -n "$ref" ] || ref="$(tr -d '[:space:]' < ../tv-mickey/AIOSTREAMS_REF)"
+          echo "AIOStreams web app at $ref"
+          mkdir -p .build/AIOStreams
+          git -C .build/AIOStreams init -q
+          git -C .build/AIOStreams remote add origin https://github.com/Viren070/AIOStreams.git
           corepack enable
-          bash scripts/fetch-web.sh
+          AIOSTREAMS_REF="$ref" bash scripts/fetch-web.sh
 
       - name: Show the toolchain
         run: |
