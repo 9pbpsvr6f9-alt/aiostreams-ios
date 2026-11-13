@@ -18,7 +18,7 @@ are for personal use. So this folder holds none of its code, only:
   rings, a smaller skip button, Down selecting Keep watching during a countdown. `0109` draws that background without
   filters, which the app turns off: a tiny, box-blurred copy of the picture, stretched and dimmed,
   and a tall plain fade from the hero into it. `0110` puts Who's watching up as the app goes away, so a return
-  opens on it.
+  opens on it. `0111` draws the floating top tabs as glass.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
