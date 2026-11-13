@@ -141,82 +141,6 @@ index c239d4d..88c7e1b 100644
      <div
        data-ui="item-trailer-hint"
        aria-hidden={!shown || full}
-diff --git a/packages/web/src/app/player/page.tsx b/packages/web/src/app/player/page.tsx
-index 95372614..fe3bb8a3 100644
---- a/packages/web/src/app/player/page.tsx
-+++ b/packages/web/src/app/player/page.tsx
-@@ -37,7 +37,7 @@ import {
- } from '@/lib/playback/stream';
- import { PlaybackReporter } from '@/lib/playback/reporter';
- import { currentHost } from '@/lib/hosts';
--import { appLog } from '@/lib/hosts/shell/bridge';
-+import { appBridge, appLog } from '@/lib/hosts/shell/bridge';
- import { useFeature } from '@/lib/jellyfin/server-info';
- import {
-   leaveFullscreen,
-@@ -82,6 +82,7 @@ import { navigate, to, versionsPath } from '@/lib/paths';
- import {
-   canMinimise,
-   closePlayback,
-+  expandPlayback,
-   minimisePlayback,
-   playbackNow,
-   playOn,
-@@ -89,7 +90,7 @@ import {
-   stopPlayback,
-   usePlayback,
- } from '@/lib/playback/session';
--import { leaveAppPip, useAppPip } from '@/lib/hosts/shell/pip';
-+import { leaveAppPip, setInAppPip, useAppPip } from '@/lib/hosts/shell/pip';
- import { PictureInPicture } from '@/features/player/picture-in-picture';
- import { noteChannelPlayed } from '@/features/live-tv/live-tv';
- import { useZap, type Zap } from '@/features/player/live';
-@@ -894,6 +895,35 @@ function Player({
-   const launchedName = launched?.name ?? '';
-   const failure = player.state.error ?? '';
-   const pip = useAppPip();
-+  // iOS: the player's PiP button opens the mini player in the app (below); iOS's window takes over on
-+  // leaving it. Coming back from that window, by its button or the app's icon, opens the full player.
-+  const ios = appBridge()?.platform === 'ios';
-+  // Checked again a moment later, as the return can still shrink the player as it lands (seen in
-+  // portrait), and against the session rather than this render's `mini`.
-+  React.useEffect(() => {
-+    if (!ios) return;
-+    const timers: number[] = [];
-+    const grow = () => {
-+      if (playbackNow()?.mini) expandPlayback();
-+    };
-+    const off = appBridge()?.subscribe((m) => {
-+      if (m.type !== 'pip' || m.value || !m.restore) return;
-+      grow();
-+      timers.push(window.setTimeout(grow, 1000));
-+    });
-+    return () => {
-+      off?.();
-+      timers.forEach(clearTimeout);
-+    };
-+  }, [ios]);
-+  const latestMinimise = React.useRef(minimise);
-+  latestMinimise.current = minimise;
-+  const canShrink = ios && !mini && !!minimise;
-+  React.useEffect(() => {
-+    if (!canShrink) return;
-+    setInAppPip(() => latestMinimise.current?.());
-+    return () => setInAppPip(undefined);
-+  }, [canShrink]);
-   useFullWindowFor(!!failure || next.asking || !!launched);
-   const covered = !pip && (!player.state.started || !!launched);
-   React.useLayoutEffect(() => onCovered(covered), [covered, onCovered]);
-@@ -902,7 +932,8 @@ function Player({
-     if (mini) leaveFullscreen();
-   }, [mini]);
- 
--  if (pip)
-+  // iOS keeps the mini player's card, and so its video's place, while its video is in the window.
-+  if (pip && !(ios && mini))
-     return (
-       <div data-page="player" className="fixed inset-0">
-         {/* Android draws its own controls over the small window. */}
 diff --git a/packages/web/src/app/settings/about.tsx b/packages/web/src/app/settings/about.tsx
 index e41938f..d8ffaba 100644
 --- a/packages/web/src/app/settings/about.tsx
@@ -1691,22 +1615,19 @@ index f7a92d4..77125c6 100644
      /** Hands the brightness back to the system. */
      release(): void;
 diff --git a/packages/web/src/lib/hosts/shell/bridge.ts b/packages/web/src/lib/hosts/shell/bridge.ts
-index 39f60cb8..72c75529 100644
+index 39f60cb..a9c1015 100644
 --- a/packages/web/src/lib/hosts/shell/bridge.ts
 +++ b/packages/web/src/lib/hosts/shell/bridge.ts
-@@ -92,7 +92,10 @@ export type ShellMessage =
+@@ -92,6 +92,8 @@ export type ShellMessage =
        devices: { name: string; description: string }[] | null;
      }
    | { type: 'fullscreen'; value: boolean }
--  | { type: 'pip'; value: boolean }
 +  /** iOS: the volume buttons changed the system volume while the full player hides iOS's indicator. */
 +  | { type: 'system-volume'; volume: number }
-+  /** `restore`: iOS's window asked for the full player back, rather than closing. */
-+  | { type: 'pip'; value: boolean; restore?: boolean }
+   | { type: 'pip'; value: boolean }
    /** A tap on the small video, a drag of it starting, where it is as it drags, or where it let go, in the page's pixels. */
    | { type: 'player-frame'; event: 'tap' | 'grabbed' }
-   | { type: 'player-frame'; event: 'moving' | 'moved'; x: number; y: number }
-@@ -188,7 +191,7 @@ export type MediaKey =
+@@ -188,7 +190,7 @@ export type MediaKey =
  interface ShellBridge {
    protocol: number;
    version: string;
@@ -1900,44 +1821,11 @@ index 00000000..09ceb038
 +  saveFile: (name, type, text) =>
 +    appBridge()?.send({ type: 'save-file', name, mime: type, text }),
 +};
-diff --git a/packages/web/src/lib/hosts/shell/pip.ts b/packages/web/src/lib/hosts/shell/pip.ts
-index fffeacef..e4d8b8cd 100644
---- a/packages/web/src/lib/hosts/shell/pip.ts
-+++ b/packages/web/src/lib/hosts/shell/pip.ts
-@@ -15,3 +15,20 @@ export function leaveAppPip(): void {
-   if (shell && shell.platform !== 'android' && pip.get()?.value)
-     shell.send({ type: 'pip', value: false });
- }
-+
-+let inApp: (() => void) | undefined;
-+
-+/**
-+ * iOS: the player's mini player, which its Picture in Picture button opens
-+ * while the app is open; iOS's own window takes over on leaving the app.
-+ */
-+export function setInAppPip(open?: () => void): void {
-+  inApp = open;
-+}
-+
-+/** Opens the mini player if the page offered one. */
-+export function openInAppPip(): boolean {
-+  if (!inApp) return false;
-+  inApp();
-+  return true;
-+}
 diff --git a/packages/web/src/lib/hosts/shell/player.ts b/packages/web/src/lib/hosts/shell/player.ts
-index 5112efd0..30c886e7 100644
+index 5112efd..77d703a 100644
 --- a/packages/web/src/lib/hosts/shell/player.ts
 +++ b/packages/web/src/lib/hosts/shell/player.ts
-@@ -15,6 +15,7 @@ import {
- } from '@/lib/subtitles/style';
- import { parseChapters } from '@/lib/playback/chapters';
- import { upscalingOn } from '@/lib/playback/upscaling';
-+import { openInAppPip } from './pip';
- import type { Span } from '@/lib/subtitles/align';
- import {
-   ownTrackLabel,
-@@ -97,6 +98,10 @@ function unzoomed(frame: VideoFrame): VideoFrame {
+@@ -97,6 +97,10 @@ function unzoomed(frame: VideoFrame): VideoFrame {
      height: frame.height * zoom,
      radius: frame.radius * zoom,
      bottomRadius: frame.bottomRadius * zoom,
@@ -1947,8 +1835,8 @@ index 5112efd0..30c886e7 100644
 +    } }),
    };
  }
- 
-@@ -127,6 +132,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+
+@@ -127,6 +131,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
        headers: played.headers,
        startMs: played.startMs,
        live: !!played.source.IsInfiniteStream,
@@ -1957,7 +1845,7 @@ index 5112efd0..30c886e7 100644
        append,
        audioLanguages: audioCodes(prefs, played.source),
        subtitleLanguages: subtitleLanguages(prefs),
-@@ -343,11 +350,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -343,11 +349,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
      setFrame:
        external || !shell.miniPlayer
          ? undefined
@@ -1974,29 +1862,7 @@ index 5112efd0..30c886e7 100644
      // The user's own player keeps its own look.
      setStyle({ subtitleStyle, fit, height }) {
        if (external || !subtitleStyle) return;
-@@ -360,8 +370,20 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
-     toggleFullscreen: external
-       ? () => send('player-set', { fullscreen: !fullscreen })
-       : () => shell.send({ type: 'fullscreen' }),
-+    // iOS opens the mini player while automatic Picture in Picture can carry the video out of
-+    // the app; without that, the button asks for iOS's window at once.
-     togglePictureInPicture:
--      external || !shell.pip ? undefined : () => shell.send({ type: 'pip' }),
-+      external || !shell.pip
-+        ? undefined
-+        : () => {
-+            if (
-+              shell.platform === 'ios' &&
-+              settings.ios.automaticPip.read() &&
-+              openInAppPip()
-+            )
-+              return;
-+            shell.send({ type: 'pip' });
-+          },
-     ownText(id) {
-       const track = tracks.find((t) => t.id === id && t.external);
-       return (track?.title && added.get(track.title)) || null;
-@@ -451,7 +473,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -451,7 +460,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
            if (next) load(next, true);
            else send('player-unqueue');
          }
@@ -2012,7 +1878,7 @@ index 5112efd0..30c886e7 100644
 +        : undefined,
    };
  };
- 
+
 diff --git a/packages/web/src/lib/jellyfin/client.ts b/packages/web/src/lib/jellyfin/client.ts
 index 03c7dde..030e75e 100644
 --- a/packages/web/src/lib/jellyfin/client.ts

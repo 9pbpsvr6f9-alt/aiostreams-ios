@@ -1,7 +1,6 @@
 import AetherEngineFeatures
 @preconcurrency import AVKit
 import Combine
-import CoreMedia
 import UIKit
 
 /// AVKit owns the floating window. Controllers are prepared while inline video is visible, so iOS
@@ -46,13 +45,11 @@ final class PictureInPicture: NSObject {
                 guard let self else { return }
                 let returned = self.backgrounded
                 self.backgrounded = false
-                let fromWindow = self.active || self.starting
-                if returned && fromWindow { self.stopForRestore() }
+                if returned && (self.active || self.starting) { self.stopForRestore() }
                 if returned {
                     // A background WebKit process can miss didStop's message. Always resync inline UI.
-                    // Coming back from the window by the app's icon opens the full player too.
                     self.changed(false)
-                    self.send(["type": "pip", "value": false, "restore": fromWindow])
+                    self.send(["type": "pip", "value": false])
                     self.channel.restoreAfterBackground()
                 }
                 self.refresh()
@@ -130,10 +127,7 @@ final class PictureInPicture: NSObject {
 
     private func setActive(_ on: Bool) {
         engine.pictureInPictureActive = on
-        if !on {
-            engine.setNativeSubtitleRendering(false)
-            engine.currentAVPlayer?.currentItem?.textStyleRules = nil
-        }
+        if !on { engine.setNativeSubtitleRendering(false) }
         changed(on)
         send(["type": "pip", "value": on])
     }
@@ -146,7 +140,6 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
         starting = true
         restoring = false
         engine.pictureInPictureActive = true // Arm the engine before its background lifecycle decision.
-        engine.currentAVPlayer?.currentItem?.textStyleRules = Self.captionRules(channel.subtitleLook)
     }
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
@@ -188,35 +181,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
         restoring = true
         restore()
         changed(false)
-        // `restore`: the page opens the full player again if the video was in the mini player.
-        send(["type": "pip", "value": false, "restore": true])
+        send(["type": "pip", "value": false])
         completionHandler(true)
-    }
-}
-
-extension PictureInPicture {
-    /// The AVPlayer path's window draws the stream's WebVTT captions in the system's boxed style.
-    /// These rules ask for the app's look instead: its text colour and font, no box unless the look
-    /// has one, and an outline (or a shadow) edge. Settings > Accessibility > Subtitles & Captioning
-    /// can still win over them. The software path draws the system caption style into the frames
-    /// and has no hook for the app's look in AetherEngine 7.64.0 or 7.65.0.
-    static func captionRules(_ look: SubtitleLook) -> [AVTextStyleRule] {
-        func argb(_ color: UIColor) -> [NSNumber] {
-            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-            guard color.getRed(&r, green: &g, blue: &b, alpha: &a) else { return [1, 1, 1, 1] }
-            return [a, r, g, b].map { NSNumber(value: Double($0)) }
-        }
-        let edge: CFString = look.outlineSize > 0 ? kCMTextMarkupCharacterEdgeStyle_Uniform
-            : look.shadowSize > 0 ? kCMTextMarkupCharacterEdgeStyle_DropShadow
-            : kCMTextMarkupCharacterEdgeStyle_None
-        var attributes: [String: Any] = [
-            kCMTextMarkupAttribute_ForegroundColorARGB as String: argb(look.color),
-            kCMTextMarkupAttribute_CharacterBackgroundColorARGB as String: argb(look.box ? look.backColor : .clear),
-            kCMTextMarkupAttribute_BackgroundColorARGB as String: argb(.clear),
-            kCMTextMarkupAttribute_CharacterEdgeStyle as String: edge as String,
-        ]
-        if look.bold { attributes[kCMTextMarkupAttribute_BoldStyle as String] = true }
-        if let family = look.fontFamily { attributes[kCMTextMarkupAttribute_FontFamilyName as String] = family }
-        return AVTextStyleRule(textMarkupAttributes: attributes).map { [$0] } ?? []
     }
 }
