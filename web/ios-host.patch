@@ -167,7 +167,7 @@ index 3ca1664..24dc4ae 100644
        <NavigationCard />
      </>
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
-index 2e7bd37..a0371d4 100644
+index 2e7bd37..32a5b81 100644
 --- a/packages/web/src/app/settings/playback.tsx
 +++ b/packages/web/src/app/settings/playback.tsx
 @@ -1,4 +1,5 @@
@@ -210,7 +210,7 @@ index 2e7bd37..a0371d4 100644
 +      <Switch
 +        side="right"
 +        label={t`Haptic feedback`}
-+        help={t`Light feedback for play, pause, seeking, brightness or volume adjustments, and when you hold a title for its menu. Available on supported devices.`}
++        help={t`Light feedback for play, pause, seeking, brightness or volume adjustments, opening and choosing from a title's menu, and the bottom bar's tabs. Available on supported devices.`}
 +        value={haptics}
 +        onValueChange={setHaptics}
 +      />
@@ -1019,10 +1019,10 @@ index 0000000..63c99c9
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..247d2c7
+index 0000000..a369556
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,82 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -1058,10 +1058,23 @@ index 0000000..247d2c7
 +  };
 +  restoreScroll();
 +  addEventListener('pageshow', restoreScroll);
++  // A selection tick for a menu's choice and for the bottom bar's (or iPad rail's) tabs.
++  // The player's own menus send their own feedback (iosFeedback('track')).
++  const tapped = (e: MouseEvent) => {
++    const target = e.target instanceof Element ? e.target : null;
++    const choice = target?.closest(
++      '[role^="menuitem"], [data-ui="mobile-nav-item"], [data-ui="nav-item"]'
++    );
++    if (!choice || choice.closest('[data-ui="player-menu"]')) return;
++    if (settings.ios.haptics.read())
++      appBridge()?.send({ type: 'ui-haptic', action: 'select' });
++  };
++  document.addEventListener('click', tapped, true);
 +  return () => {
 +    unsubscribe?.();
 +    stopSettings();
 +    removeEventListener('pageshow', restoreScroll);
++    document.removeEventListener('click', tapped, true);
 +    for (const name of ['data-unblur-pictures', 'data-unblur-titles', 'data-unblur-descriptions'])
 +      html.removeAttribute(name);
 +  };
@@ -1324,7 +1337,7 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..5cd26f6 100644
+index 2014fb0..f2c8f44 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
 @@ -5752,3 +5752,77 @@ msgstr "Your rating"
@@ -1345,8 +1358,8 @@ index 2014fb0..5cd26f6 100644
 +msgstr "Haptic feedback"
 +
 +#. iOS host additions
-+msgid "Light feedback for play, pause, seeking, brightness or volume adjustments, and when you hold a title for its menu. Available on supported devices."
-+msgstr "Light feedback for play, pause, seeking, brightness or volume adjustments, and when you hold a title for its menu. Available on supported devices."
++msgid "Light feedback for play, pause, seeking, brightness or volume adjustments, opening and choosing from a title's menu, and the bottom bar's tabs. Available on supported devices."
++msgstr "Light feedback for play, pause, seeking, brightness or volume adjustments, opening and choosing from a title's menu, and the bottom bar's tabs. Available on supported devices."
 +
 +#. iOS host additions
 +msgid "Player gestures"

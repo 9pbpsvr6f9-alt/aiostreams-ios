@@ -26,6 +26,13 @@ final class PlayerHaptics {
         menuImpact.prepare()
     }
 
+    /// A selection tick for a menu's choice or a tab of the bottom bar.
+    func select() {
+        guard enabled, policy.action(now: ProcessInfo.processInfo.systemUptime) else { return }
+        selection.selectionChanged()
+        selection.prepare()
+    }
+
     func action(selectionChange: Bool = false) {
         guard enabled, policy.action(now: ProcessInfo.processInfo.systemUptime) else { return }
         if selectionChange {

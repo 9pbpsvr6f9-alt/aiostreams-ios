@@ -190,8 +190,11 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             }
         case "ui-haptic":
             // Browsing, so no media is needed, unlike the player's own feedback.
-            if UIApplication.shared.applicationState == .active, message["action"] as? String == "menu" {
-                haptics.menu()
+            guard UIApplication.shared.applicationState == .active else { break }
+            switch message["action"] as? String {
+            case "menu": haptics.menu()
+            case "select": haptics.select()
+            default: break
             }
         case "player-haptic":
             if player.hasMedia, UIApplication.shared.applicationState == .active,
