@@ -1,3 +1,19 @@
+diff --git a/packages/web/index.html b/packages/web/index.html
+index 1132cc26..2a893a55 100644
+--- a/packages/web/index.html
++++ b/packages/web/index.html
+@@ -130,9 +130,9 @@
+           document
+             .getElementById('splash')
+             .style.setProperty('--splash-size', 28800 / side + 'vmin');
+-        // The Android app covers the page until this shows.
++        // The Android and iOS apps cover the page until this shows.
+         var app = window.aiostreamsApp;
+-        if (app && app.platform === 'android')
++        if (app && (app.platform === 'android' || app.platform === 'ios'))
+           requestAnimationFrame(function () {
+             requestAnimationFrame(function () {
+               app.send({ type: 'splash-shown' });
 diff --git a/packages/web/src/app/item/_components/actions.tsx b/packages/web/src/app/item/_components/actions.tsx
 index 2ba0f44..b17357e 100644
 --- a/packages/web/src/app/item/_components/actions.tsx
@@ -298,7 +314,7 @@ index 3ca1664..24dc4ae 100644
        <NavigationCard />
      </>
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
-index 2e7bd37..7149d5f 100644
+index 2e7bd378..70e35d15 100644
 --- a/packages/web/src/app/settings/playback.tsx
 +++ b/packages/web/src/app/settings/playback.tsx
 @@ -1,4 +1,5 @@
@@ -315,7 +331,7 @@ index 2e7bd37..7149d5f 100644
    NEXT_LEADS,
    STILL_WATCHING_AFTER,
    HOLD_RATES,
-@@ -102,6 +104,63 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
+@@ -102,6 +104,71 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
    );
  }
  
@@ -325,6 +341,7 @@ index 2e7bd37..7149d5f 100644
 +  const [gestures, setGestures] = useSetting(settings.ios.gestures);
 +  const [fill, setFill] = useSetting(settings.ios.fillOnStart);
 +  const [skipCountdown, setSkipCountdown] = useSetting(settings.ios.skipCountdown);
++  const [launchLogo, setLaunchLogo] = useSetting(settings.ios.launchLogo);
 +  return (
 +    <SettingsCard
 +      name="ios-player"
@@ -372,6 +389,13 @@ index 2e7bd37..7149d5f 100644
 +        value={String(skipCountdown)}
 +        onValueChange={(v) => setSkipCountdown(Number(v))}
 +      />
++      <Switch
++        side="right"
++        label={t`Launch logo`}
++        help={t`Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens.`}
++        value={launchLogo}
++        onValueChange={setLaunchLogo}
++      />
 +    </SettingsCard>
 +  );
 +}
@@ -379,7 +403,7 @@ index 2e7bd37..7149d5f 100644
  export function PlaybackSection() {
    const { prefs, update } = usePlaybackPrefs();
    const [seekStep, setSeekStep] = useSetting(settings.controls.seekStep);
-@@ -154,6 +213,7 @@ export function PlaybackSection() {
+@@ -154,6 +221,7 @@ export function PlaybackSection() {
  
    return (
      <>
@@ -1671,10 +1695,10 @@ index 0000000..63c99c9
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..8cda26e
+index 00000000..09ceb038
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,122 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -1696,6 +1720,7 @@ index 0000000..8cda26e
 +      haptics: settings.ios.haptics.read(),
 +      automaticPip: settings.ios.automaticPip.read(),
 +      gestures: settings.ios.gestures.read(),
++      launchLogo: settings.ios.launchLogo.read(),
 +    });
 +    // The parts of an unstarted episode the spoiler blur leaves clear (styles.css).
 +    html.toggleAttribute('data-unblur-pictures', !settings.ios.spoilerPictures.read());
@@ -1773,7 +1798,8 @@ index 0000000..8cda26e
 +  name: 'ios-app',
 +  device: () => ({ id: appBridge()?.deviceId, name: appBridge()?.device }),
 +  player: appEngine,
-+  playerFeatures: ['audio', 'chapters', 'headers'],
++  // Upscaling: AetherEngine's super resolution, for Anime upscaling (iOS 26).
++  playerFeatures: ['audio', 'chapters', 'headers', 'upscaling'],
 +  resolveYouTube,
 +  // The app's queue, as the Android app's: background transfers that go on with the app closed.
 +  downloads: shellDownloads,
@@ -1959,7 +1985,7 @@ index 0a565dd..5f62c48 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..d136c2c 100644
+index 9be266c1..38a12983 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
@@ -1989,7 +2015,7 @@ index 9be266c..d136c2c 100644
  /** Episodes in a row with no input before asking; 0 never asks. */
  export const STILL_WATCHING_AFTER = [0, 2, 3, 4, 5, 8] as const;
  
-@@ -605,6 +616,24 @@ export const settings = {
+@@ -605,6 +616,26 @@ export const settings = {
        MINI_CORNERS
      ),
    },
@@ -1998,6 +2024,8 @@ index 9be266c..d136c2c 100644
 +    haptics: device<boolean>('aiostreams-ios-haptics', true),
 +    gestures: device<boolean>('aiostreams-ios-gestures', true),
 +    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
++    /** The app's own logo from launch until the page's splash draws it. */
++    launchLogo: device<boolean>('aiostreams-ios-launch-logo', true),
 +    /** Which parts of an unstarted episode the spoiler blur covers on this device. */
 +    spoilerPictures: device<boolean>('aiostreams-ios-spoiler-pictures', true),
 +    spoilerTitles: device<boolean>('aiostreams-ios-spoiler-titles', true),
@@ -2035,10 +2063,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..a4b0eab 100644
+index 2014fb0e..ff23473c 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,121 @@ msgstr "Your rating"
+@@ -5752,3 +5752,129 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -2160,6 +2188,14 @@ index 2014fb0..a4b0eab 100644
 +#. iOS host additions
 +msgid "No shows yet."
 +msgstr "No shows yet."
++
++#. iOS host additions
++msgid "Launch logo"
++msgstr "Launch logo"
++
++#. iOS host additions
++msgid "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
++msgstr "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
 index 96e99ee..5744a0d 100644
 --- a/packages/web/src/styles.css

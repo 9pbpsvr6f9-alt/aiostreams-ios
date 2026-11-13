@@ -60,6 +60,10 @@ final class PlayerChannel {
     private var live = false
     private var trailer = false
     private var preview = false
+    /// The page's Anime upscaling for what plays (the setting on an anime title, or its shortcut).
+    private var upscaling = false
+    /// What the playing video was loaded with, so only a change reloads it.
+    private var loadedUpscaling = false
     private var preferredGravity: AVLayerVideoGravity = .resizeAspect
 
     func setPreviewMode(_ preview: Bool) {
@@ -345,12 +349,35 @@ final class PlayerChannel {
             break
         case "player-settings":
             if let delay = JSON.number(message["audioDelayMs"]) { engine.setAudioDelay(delay / 1000) }
+            if let on = JSON.flag(message["upscaling"]) { setUpscaling(on) }
         case "now-playing":
             nowPlaying.setItem(message["item"] as? [String: Any])
         default:
             return false
         }
         return true
+    }
+
+    private func upscalingWanted(live: Bool? = nil) -> Bool {
+        upscaling && !trailer && !preview && !(live ?? self.live)
+    }
+
+    /// The page turned upscaling on or off: a playing video reloads in place, at its position.
+    private func setUpscaling(_ on: Bool) {
+        upscaling = on
+        let wanted = upscalingWanted()
+        guard loadedURL != nil, loadTask == nil, wanted != loadedUpscaling else { return }
+        loadedUpscaling = wanted
+        let current = generation
+        Task { [weak self] in
+            guard let self, current == self.generation else { return }
+            do {
+                try await self.engine.reloadAtCurrentPosition { $0.upscalesLowResolutionVideo = wanted }
+                AppLog.info("player", "upscaling \(wanted ? "on" : "off") for this video")
+            } catch {
+                AppLog.warn("player", "Could not switch upscaling: \(error.localizedDescription)")
+            }
+        }
     }
 
     /// A page that loads again never owns the video the last one started.
@@ -392,6 +419,10 @@ final class PlayerChannel {
         // A Matroska file's attached fonts (tens of MB on anime) are read before the first packet. The
         // overlay draws subtitles with system fonts and never reads `fontAttachments`, so they're skipped.
         options.skipsContainerAttachments = true
+        // AetherEngine's super resolution for low-resolution SDR video (iOS 26, MetalFX); it falls back
+        // to the plain picture where the device can't, and never for trailers, previews or live.
+        options.upscalesLowResolutionVideo = upscalingWanted(live: options.isLive)
+        loadedUpscaling = options.upscalesLowResolutionVideo
         options.preferredAudioLanguages = JSON.strings(message["audioLanguages"])
         // TrueHD Atmos and DTS:X with their heights, which iOS plays as Spatial Audio (OS 26 and later).
         options.objectAudioRendering = .render(.l714)
