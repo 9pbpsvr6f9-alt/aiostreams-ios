@@ -1,6 +1,34 @@
-# AIOStreams for iOS/iPadOS and Apple TV
+# AIOStreams for iPhone, iPad and Apple TV
 
-An unofficial iPhone, iPad and Apple TV port of the [AIOStreams](https://github.com/Viren070/AIOStreams) app, playing through [AetherEngine](https://github.com/superuser404notfound/AetherEngine).
+Your [AIOStreams](https://github.com/Viren070/AIOStreams) and Jellyfin library as a native app, made for
+watching rather than browsing. AIOStreams' own interface runs on top of
+[AetherEngine](https://github.com/superuser404notfound/AetherEngine), so the files Safari and AVPlayer give up
+on still play: Dolby Vision, HDR10, HDR10+, HLG, Atmos and image subtitles. An Apple TV build comes with it.
+
+Unofficial and community made. It isn't affiliated with AIOStreams, Jellyfin or Apple.
+
+## What's in it
+
+**Watching**
+- Native subtitles in the style you pick, with rounded outlines. Picture in Picture takes on that style where iOS allows.
+- A skip intro countdown: the skip happens by itself after a few seconds, and one tap keeps you watching.
+- Picture in Picture that passes the video between the in-app mini player and iOS's floating window.
+- Swipes for brightness and volume, light haptics, and the player opening in landscape every time.
+- Optional anime upscaling on iOS 26.
+
+**Offline**
+- Downloads that carry on in the background and play without a connection. What you watch syncs to Jellyfin once you're back online.
+- Smart downloads: choose a show, and its next episodes stay on your device and are removed once watched.
+
+**Browsing**
+- Trailers in the hero and on title pages.
+- Spoiler protection that blurs the pictures, titles or descriptions of episodes you haven't started.
+- The app opens on its logo instead of a black screen.
+
+**Updates**
+- One FlareStore address for every release. Each version lists what changed, and older versions stay installable.
+
+## Screenshots
 
 ### Apple TV
 
@@ -33,6 +61,8 @@ An unofficial iPhone, iPad and Apple TV port of the [AIOStreams](https://github.
 
 The screenshots come from Apple's simulators connected to a demo server with a made-up catalogue. Every title, poster and video in them is drawn by `tools/demo-server`. To retake them, run the **Screenshots** workflow from the Actions tab, or `scripts/screenshots.sh` on a Mac.
 
+## How it's built
+
 It follows the design of the official Android and desktop apps, which are a web view over a native player. Their source is public under AGPL-3.0, so this port builds from that source rather than from the APK.
 
 - The page is AIOStreams' own web app (`packages/web`, standalone build). It draws every screen and the player's controls.
@@ -61,9 +91,9 @@ automated upstream PRs, release publication and the default-branch activation st
 
 ## Getting an IPA
 
-You need macOS to build it; this repository has no prebuilt binary. Either:
+Every release on this repository carries unsigned IPAs, which FlareStore installs. To build one yourself, either:
 
-**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on a `macos-26` runner and uploads `AIOStreams.ipa` as a workflow artifact. After this update is merged, successful main-branch builds also publish versioned releases and refresh the sideloading source. Manual builds can publish by enabling `publish_release`.
+**GitHub Actions (no Mac needed).** Push this repository to GitHub. The `Build IPA` workflow runs on GitHub's `xcode-27` runner (`macos-26` remains a manual choice) and uploads `AIOStreams.ipa` as a workflow artifact. After this update is merged, successful main-branch builds also publish versioned releases and refresh the sideloading source. Manual builds can publish by enabling `publish_release`.
 
 **Locally on a Mac** with Xcode 27 (26.3 is AetherEngine's best-effort floor), Node 24, pnpm 11 and XcodeGen:
 
