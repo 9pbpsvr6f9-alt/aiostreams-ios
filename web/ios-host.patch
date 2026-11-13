@@ -22,19 +22,37 @@ index dba75cf..6ea3092 100644
        )}
      >
 diff --git a/packages/web/src/app/item/_components/trailer.tsx b/packages/web/src/app/item/_components/trailer.tsx
-index c239d4d..6cad292 100644
+index c239d4d..88c7e1b 100644
 --- a/packages/web/src/app/item/_components/trailer.tsx
 +++ b/packages/web/src/app/item/_components/trailer.tsx
-@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
+@@ -5,8 +5,10 @@ import { createPortal } from 'react-dom';
  import { LuChevronUp } from 'react-icons/lu';
  import { cn } from '@aiostreams/ui/core/styling';
  import { currentHost } from '@/lib/hosts';
 +import { appBridge } from '@/lib/hosts/shell/bridge';
 +import { ITEM_BACKDROP_BOX } from './backdrop';
  import { focusOn, keyboardFocus, useAction, usingKeys } from '@/lib/input';
- import { trailersOf } from '@/lib/playback/trailers';
+-import { trailersOf } from '@/lib/playback/trailers';
++import { trailersOf, usePrefetchTrailer } from '@/lib/playback/trailers';
  import type { BaseItemDto } from '@/lib/jellyfin/types';
-@@ -156,14 +158,17 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+ import {
+   TrailerPreview,
+@@ -87,6 +89,14 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+   React.useEffect(() => {
+     if (!on) setPlaying(false);
+   }, [on]);
++  // On iOS the stream's address is looked up while the page sits idle, not after, so the
++  // trailer starts sooner. The lookup is the one the preview reads, cached for an hour.
++  const prefetch = usePrefetchTrailer();
++  const firstTrailer = item && on && !over ? trailersOf(item)[0]?.url : undefined;
++  React.useEffect(() => {
++    if (appBridge()?.platform === 'ios') prefetch(firstTrailer);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [firstTrailer]);
+   React.useEffect(() => {
+     if (!playing) {
+       setShown(false);
+@@ -156,27 +166,32 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
      () => ({ shown, openFull }),
      [shown, openFull]
    );
@@ -51,11 +69,15 @@ index c239d4d..6cad292 100644
            aria-hidden
 -          className="pointer-events-none fixed inset-0 -z-[4]"
 +          className={inline ? ITEM_BACKDROP_BOX : 'pointer-events-none fixed inset-0 -z-[4]'}
++          // The artwork's 2px fade at its foot would bare the video's edge as a line.
++          style={inline ? { maskImage: 'none', WebkitMaskImage: 'none' } : undefined}
          >
            <div
              className={cn(
-@@ -171,12 +176,11 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
-               full && 'opacity-0'
+               'absolute inset-0 transition-opacity duration-500',
+-              full && 'opacity-0'
++              // Inline, the artwork stays until the video plays, then the two cross-fade.
++              (full || (inline && !shown)) && 'opacity-0'
              )}
            >
 -            <div className="absolute inset-0 bg-gradient-to-r from-[--background] via-[--background]/60 via-40% to-transparent rtl:bg-gradient-to-l" />
@@ -63,14 +85,15 @@ index c239d4d..6cad292 100644
 +            <div className={cn("absolute inset-0 bg-gradient-to-r from-[--background] via-[--background]/60 via-40% to-transparent rtl:bg-gradient-to-l", inline && "hidden landscape:block lg:block")} />
 +            <div className={inline ? "absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-[--background] via-[--background]/70 to-transparent max-sm:h-1/2" : "absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent"} />
            </div>
-           <TrailerVeil shown={shown} />
+-          <TrailerVeil shown={shown} />
 -        </div>,
 -        document.body
++          {!inline && <TrailerVeil shown={shown} />}
 +        </div>
        )}
        {spot && (
          <TrailerPreview
-@@ -197,7 +201,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+@@ -197,7 +212,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
      </>
    );
    const keys = !!currentHost().tv || usingKeys();
