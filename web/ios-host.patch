@@ -1019,10 +1019,10 @@ index 0000000..63c99c9
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..4fd9c0b
+index 0000000..2e1ee1c
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,98 @@
+@@ -0,0 +1,117 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -1078,19 +1078,38 @@ index 0000000..4fd9c0b
 +    '[data-ui="open-card"]',
 +    '[data-ui="hero-action"]',
 +  ].join(', ');
++  // One tick per press: a menu's trigger answers its touch-down, and its click may follow.
++  let ticked: { el: Element; at: number } | null = null;
++  const tick = (el: Element) => {
++    const now = performance.now();
++    if (ticked?.el === el && now - ticked.at < 600) return;
++    ticked = { el, at: now };
++    if (settings.ios.haptics.read())
++      appBridge()?.send({ type: 'ui-haptic', action: 'select' });
++  };
 +  const tapped = (e: MouseEvent) => {
 +    const target = e.target instanceof Element ? e.target : null;
 +    const choice = target?.closest(TAPPABLE);
 +    if (!choice || choice.closest('[data-ui="player-menu"]')) return;
-+    if (settings.ios.haptics.read())
-+      appBridge()?.send({ type: 'ui-haptic', action: 'select' });
++    tick(choice);
++  };
++  // A bar tab that opens a menu (the account's "You") opens it on touch-down, which takes the
++  // click away, so it ticks then. Only the bars' tabs: a card's touch-down may start a scroll.
++  const pressed = (e: PointerEvent) => {
++    const target = e.target instanceof Element ? e.target : null;
++    const tab = target?.closest(
++      ':is([data-ui="mobile-nav-item"], [data-ui="nav-item"])[aria-haspopup]'
++    );
++    if (tab) tick(tab);
 +  };
 +  document.addEventListener('click', tapped, true);
++  document.addEventListener('pointerdown', pressed, true);
 +  return () => {
 +    unsubscribe?.();
 +    stopSettings();
 +    removeEventListener('pageshow', restoreScroll);
 +    document.removeEventListener('click', tapped, true);
++    document.removeEventListener('pointerdown', pressed, true);
 +    for (const name of ['data-unblur-pictures', 'data-unblur-titles', 'data-unblur-descriptions'])
 +      html.removeAttribute(name);
 +  };
