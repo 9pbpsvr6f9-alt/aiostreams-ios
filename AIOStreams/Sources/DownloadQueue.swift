@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import UIKit
 
 /**
  * The page's downloads, as the Android and desktop apps' queues keep them (upstream
@@ -454,7 +455,8 @@ final class DownloadQueue: NSObject {
             }
             return entry
         }
-        return ["type": "download-state", "folder": "On this device", "jobs": jobs]
+        // The page writes "Saved to" before it: "Saved to this iPhone".
+        return ["type": "download-state", "folder": "this \(UIDevice.current.model)", "jobs": jobs]
     }
 
     private func updateTimer() {

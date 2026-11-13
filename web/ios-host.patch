@@ -1,3 +1,26 @@
+diff --git a/packages/web/src/app/item/_components/actions.tsx b/packages/web/src/app/item/_components/actions.tsx
+index 2ba0f44..b17357e 100644
+--- a/packages/web/src/app/item/_components/actions.tsx
++++ b/packages/web/src/app/item/_components/actions.tsx
+@@ -1,6 +1,7 @@
+ import React from 'react';
+ import { t } from '@lingui/core/macro';
+ import { Trans } from '@lingui/react/macro';
++import { appBridge } from '@/lib/hosts/shell/bridge';
+ import {
+   BiCast,
+   BiCheck,
+@@ -82,7 +83,9 @@ export function useQuickActions(
+   target?: BaseItemDto
+ ): string[] {
+   const offered = useOffered(item, target);
+-  return QUICK.filter((name) => offered[name]).slice(0, 3);
++  // A phone has room for four beside More on iOS, which puts Download next to Favourite.
++  const room = appBridge()?.platform === 'ios' ? 4 : 3;
++  return QUICK.filter((name) => offered[name]).slice(0, room);
+ }
+ 
+ export function Captioned({
 diff --git a/packages/web/src/app/item/_components/backdrop.tsx b/packages/web/src/app/item/_components/backdrop.tsx
 index dba75cf..6ea3092 100644
 --- a/packages/web/src/app/item/_components/backdrop.tsx
@@ -120,18 +143,27 @@ index e41938f..d8ffaba 100644
            ],
            ...(shell.player && !shell.mpv
 diff --git a/packages/web/src/app/settings/downloads.tsx b/packages/web/src/app/settings/downloads.tsx
-index d2ad407..48e4d7f 100644
+index d2ad407..1890854 100644
 --- a/packages/web/src/app/settings/downloads.tsx
 +++ b/packages/web/src/app/settings/downloads.tsx
-@@ -9,6 +9,7 @@ import {
+@@ -9,8 +9,16 @@ import {
    useSetting,
    DOWNLOAD_SEARCHES,
    DOWNLOADS_AT_ONCE,
 +  type IosSmartCellular,
  } from '@/lib/settings';
  import { downloadsHost, useDownloadFolder } from '@/lib/downloads';
++import {
++  SMART_COUNTS,
++  useSetSmartShow,
++  useSmartShows,
++  type SmartCount,
++} from '@/lib/downloads/smart';
++import type { BaseItemDto } from '@/lib/jellyfin/types';
  import { SettingsCard, SettingsRow } from './_components/settings-card';
-@@ -21,6 +22,8 @@ export function DownloadsSection() {
+ import { onDevice } from './_components/common';
+ 
+@@ -21,8 +29,11 @@ export function DownloadsSection() {
    const [searches, setSearches] = useSetting(settings.downloads.searches);
    const [subtitles, setSubtitles] = useSetting(settings.downloads.subtitles);
    const [wifiOnly, setWifiOnly] = useSetting(settings.downloads.wifiOnly);
@@ -139,8 +171,11 @@ index d2ad407..48e4d7f 100644
 +  const ios = currentHost().name === 'ios-app';
    const button = 'w-full rounded-full sm:w-auto';
    return (
++    <>
      <SettingsCard description={onDevice()}>
-@@ -101,7 +104,7 @@ export function DownloadsSection() {
+       {host?.folder && (
+         <SettingsRow
+@@ -101,7 +112,7 @@ export function DownloadsSection() {
            onValueChange={setSubtitles}
          />
        )}
@@ -149,7 +184,7 @@ index d2ad407..48e4d7f 100644
          <Switch
            side="right"
            label={t`Only on Wi-Fi`}
-@@ -110,6 +113,19 @@ export function DownloadsSection() {
+@@ -110,6 +121,65 @@ export function DownloadsSection() {
            onValueChange={setWifiOnly}
          />
        )}
@@ -165,6 +200,52 @@ index d2ad407..48e4d7f 100644
 +          value={smartCellular}
 +          onValueChange={(v) => setSmartCellular(v as IosSmartCellular)}
 +        />
++      )}
++    </SettingsCard>
++    <SmartDownloadsSection />
++    </>
++  );
++}
++
++/** iOS: the shows keeping their next episodes downloaded, each set as on its Download button. */
++export function SmartDownloadsSection() {
++  const shows = useSmartShows();
++  const setSmart = useSetSmartShow();
++  if (currentHost().name !== 'ios-app' || !downloadsHost()) return null;
++  const label = (count: SmartCount) =>
++    count === 'season'
++      ? t`Rest of the season`
++      : count === 1
++        ? t`Next episode`
++        : t`Next ${count} episodes`;
++  return (
++    <SettingsCard
++      name="smart-downloads"
++      title={t`Smart downloads`}
++      description={t`Shows that keep their next unwatched episodes on this device, deleting each once it's watched. Turn one on from the Download button on a show's page.`}
++    >
++      {shows.length ? (
++        shows.map((show) => (
++          <Select
++            key={show.seriesId}
++            label={show.name}
++            options={[
++              { value: 'off', label: t`Off` },
++              ...SMART_COUNTS.map((c) => ({ value: String(c), label: label(c) })),
++            ]}
++            value={String(show.count)}
++            onValueChange={(v) =>
++              setSmart(
++                { Id: show.seriesId, Name: show.name } as BaseItemDto,
++                v === 'off' ? null : v === 'season' ? 'season' : (Number(v) as SmartCount)
++              )
++            }
++          />
++        ))
++      ) : (
++        <p className="text-sm text-[--muted]">
++          <Trans>No shows yet.</Trans>
++        </p>
 +      )}
      </SettingsCard>
    );
@@ -1157,10 +1238,10 @@ index 000b3b2..189d966 100644
  }
 diff --git a/packages/web/src/lib/downloads/smart.ts b/packages/web/src/lib/downloads/smart.ts
 new file mode 100644
-index 0000000..1a52593
+index 0000000..5953489
 --- /dev/null
 +++ b/packages/web/src/lib/downloads/smart.ts
-@@ -0,0 +1,243 @@
+@@ -0,0 +1,269 @@
 +import React from 'react';
 +import { appBridge } from '@/lib/hosts/shell/bridge';
 +import { useSession } from '@/lib/jellyfin/session';
@@ -1190,6 +1271,8 @@ index 0000000..1a52593
 +  base: string;
 +  userId: string;
 +  count: SmartCount;
++  /** The show's name, for the list in Settings. */
++  name?: string;
 +}
 +
 +const SHOWS_KEY = 'aiostreams-ios-smart-shows';
@@ -1228,6 +1311,25 @@ index 0000000..1a52593
 +  return shows[showKey(client.base, user.Id!, seriesId)]?.count ?? null;
 +}
 +
++/** This server and user's smart shows, for the list in Settings. */
++export function useSmartShows(): { seriesId: string; name: string; count: SmartCount }[] {
++  const { client, user } = useSession();
++  const shows = React.useSyncExternalStore(
++    (listener) => {
++      listeners.add(listener);
++      return () => listeners.delete(listener);
++    },
++    () => snapshot
++  );
++  return Object.entries(shows)
++    .filter(([, s]) => s.base === client.base && s.userId === user.Id)
++    .map(([key, s]) => {
++      const seriesId = key.slice(key.lastIndexOf('|') + 1);
++      return { seriesId, name: s.name || seriesId, count: s.count };
++    })
++    .sort((a, b) => a.name.localeCompare(b.name));
++}
++
 +/** Turns a show's smart downloads on with `count`, or off with null. Off keeps what it saved. */
 +export function useSetSmartShow() {
 +  const { client, user } = useSession();
@@ -1250,7 +1352,12 @@ index 0000000..1a52593
 +      } else {
 +        writeShows({
 +          ...rest,
-+          [key]: { base: client.base, userId: user.Id!, count },
++          [key]: {
++            base: client.base,
++            userId: user.Id!,
++            count,
++            name: series.Name ?? undefined,
++          },
 +        });
 +      }
 +    },
@@ -1864,10 +1971,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..e72bfda 100644
+index 2014fb0..a4b0eab 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,109 @@ msgstr "Your rating"
+@@ -5752,3 +5752,121 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -1977,6 +2084,18 @@ index 2014fb0..e72bfda 100644
 +#. iOS host additions
 +msgid "All smart downloads"
 +msgstr "All smart downloads"
++
++#. iOS host additions
++msgid "Smart downloads"
++msgstr "Smart downloads"
++
++#. iOS host additions
++msgid "Shows that keep their next unwatched episodes on this device, deleting each once it's watched. Turn one on from the Download button on a show's page."
++msgstr "Shows that keep their next unwatched episodes on this device, deleting each once it's watched. Turn one on from the Download button on a show's page."
++
++#. iOS host additions
++msgid "No shows yet."
++msgstr "No shows yet."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
 index 96e99ee..5744a0d 100644
 --- a/packages/web/src/styles.css
