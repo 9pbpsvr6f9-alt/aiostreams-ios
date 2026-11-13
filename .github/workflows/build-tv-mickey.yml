@@ -1,0 +1,134 @@
+# Mickey's Apple TV app at tv-mickey/MICKEY_REF with tv-mickey/patches applied, built unsigned for
+# personal use. The IPA is a run artifact only: no release, no sideloading source.
+name: Build Apple TV (personal)
+
+on:
+  pull_request:
+    paths:
+      - 'tv-mickey/**'
+      - '.github/workflows/build-tv-mickey.yml'
+  workflow_dispatch:
+    inputs:
+      aiostreams_ref:
+        description: AIOStreams branch or tag to take the web app from
+        default: main
+      runner:
+        description: Runner (his CI uses xcode-27; macos-26 if that label is unavailable)
+        type: choice
+        options: [xcode-27, macos-26]
+        default: xcode-27
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner || 'xcode-27' }}
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: mickey
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch Mickey's app at the pinned commit
+        working-directory: .
+        run: |
+          ref="$(tr -d '[:space:]' < tv-mickey/MICKEY_REF)"
+          git init -q mickey
+          git -C mickey fetch -q --depth 1 https://github.com/mickey2266/AIOStreamsTVOS.git "$ref"
+          git -C mickey checkout -q --detach FETCH_HEAD
+          echo "Building mickey2266/AIOStreamsTVOS at $ref"
+
+      - name: Apply our patches
+        working-directory: .
+        run: |
+          shopt -s nullglob
+          for patch in tv-mickey/patches/*.patch; do
+            echo "Applying $patch"
+            git -C mickey apply --whitespace=nowarn "$PWD/$patch" || { echo "::error::$patch no longer applies"; exit 1; }
+          done
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check the bridge script compiles
+        run: node scripts/check-bridge.mjs
+
+      - name: Build the web app
+        env:
+          AIOSTREAMS_REF: ${{ inputs.aiostreams_ref || 'main' }}
+        run: |
+          corepack enable
+          bash scripts/fetch-web.sh
+
+      - name: Show the toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Generate the Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - uses: actions/cache@v4
+        with:
+          path: mickey/build/SourcePackages
+          key: tv-mickey-spm-${{ hashFiles('mickey/Packages/AetherHost/Package.swift', 'mickey/project.yml') }}
+
+      # Above his own run numbers, so tvOS installs this over his app as an update.
+      - name: Build for Apple TV
+        run: |
+          echo "BUILD_NUMBER=$((100000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          xcodebuild build \
+            -project AIOStreamsTV.xcodeproj \
+            -scheme AIOStreamsTV \
+            -configuration Release \
+            -destination 'generic/platform=tvOS' \
+            -derivedDataPath build \
+            CURRENT_PROJECT_VERSION="$((100000 + GITHUB_RUN_NUMBER))" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""
+
+      # As his workflow packs it: frameworks take the app's minimum tvOS, ad-hoc signatures with the
+      # shared App Group entitlements, inside out.
+      - name: Pack the .ipa
+        run: |
+          app="build/Build/Products/Release-appletvos/AIOStreams.app"
+          test -d "$app" || { echo "No app at $app"; ls -R build/Build/Products; exit 1; }
+          shelf="$app/PlugIns/AIOStreamsTopShelf.appex"
+          test -d "$shelf" || { echo "No Top Shelf extension at $shelf"; exit 1; }
+          plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist"; }
+          echo "App $(plist "$app" CFBundleShortVersionString) ($(plist "$app" CFBundleVersion))"
+          test "$(plist "$app" CFBundleVersion)" = "$BUILD_NUMBER" || { echo "Unexpected CFBundleVersion"; exit 1; }
+          test "$(plist "$shelf" CFBundleVersion)" = "$BUILD_NUMBER" || { echo "Top Shelf version differs"; exit 1; }
+          ls "$app/Frameworks" | grep -q '^AetherLibavcodec.framework$' || { echo "No FFmpeg frameworks"; exit 1; }
+          min="$(plist "$app" MinimumOSVersion)"
+          for framework in "$app"/Frameworks/*.framework; do
+            /usr/libexec/PlistBuddy -c "Set :MinimumOSVersion $min" "$framework/Info.plist" 2>/dev/null \
+              || /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string $min" "$framework/Info.plist"
+          done
+          for framework in "$app"/Frameworks/*; do
+            codesign --force --sign - --timestamp=none "$framework"
+          done
+          codesign --force --sign - --timestamp=none --entitlements TopShelf/TopShelf.entitlements "$shelf"
+          codesign --force --sign - --timestamp=none --entitlements App/AIOStreamsTV.entitlements "$app"
+          rm -rf Payload AIOStreams-TV.ipa
+          mkdir Payload
+          cp -R "$app" Payload/
+          zip -qry AIOStreams-TV.ipa Payload
+          ls -lh AIOStreams-TV.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AIOStreams-TV-personal-ipa
+          path: mickey/AIOStreams-TV.ipa
+          if-no-files-found: error
+          retention-days: 30
