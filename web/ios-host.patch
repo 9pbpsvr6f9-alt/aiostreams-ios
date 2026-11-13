@@ -120,7 +120,7 @@ index e41938f..d8ffaba 100644
            ],
            ...(shell.player && !shell.mpv
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
-index 2e7bd37..b868543 100644
+index 2e7bd37..905726a 100644
 --- a/packages/web/src/app/settings/playback.tsx
 +++ b/packages/web/src/app/settings/playback.tsx
 @@ -1,4 +1,5 @@
@@ -129,15 +129,24 @@ index 2e7bd37..b868543 100644
  import { plural, t } from '@lingui/core/macro';
  import { Trans } from '@lingui/react/macro';
  import { Select } from '@aiostreams/ui/select';
-@@ -102,6 +103,52 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
+@@ -26,6 +27,7 @@ import {
+   settings,
+   useSetting,
+   NEXT_COUNTDOWNS,
++  IOS_SKIP_COUNTDOWNS,
+   NEXT_LEADS,
+   STILL_WATCHING_AFTER,
+   HOLD_RATES,
+@@ -102,6 +104,63 @@ function SegmentActionSelect({ type }: { type: SegmentType }) {
    );
  }
-
+ 
 +function IosPlayerSettings() {
 +  const [haptics, setHaptics] = useSetting(settings.ios.haptics);
 +  const [automaticPip, setAutomaticPip] = useSetting(settings.ios.automaticPip);
 +  const [gestures, setGestures] = useSetting(settings.ios.gestures);
 +  const [fill, setFill] = useSetting(settings.ios.fillOnStart);
++  const [skipCountdown, setSkipCountdown] = useSetting(settings.ios.skipCountdown);
 +  return (
 +    <SettingsCard
 +      name="ios-player"
@@ -175,6 +184,16 @@ index 2e7bd37..b868543 100644
 +          settings.video.fit.write(on ? 'crop' : 'fit');
 +        }}
 +      />
++      <Select
++        label={t`Skip countdown`}
++        help={t`Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip.`}
++        options={IOS_SKIP_COUNTDOWNS.map((s) => ({
++          value: String(s),
++          label: s ? seconds(s) : t`Off`,
++        }))}
++        value={String(skipCountdown)}
++        onValueChange={(v) => setSkipCountdown(Number(v))}
++      />
 +    </SettingsCard>
 +  );
 +}
@@ -182,8 +201,8 @@ index 2e7bd37..b868543 100644
  export function PlaybackSection() {
    const { prefs, update } = usePlaybackPrefs();
    const [seekStep, setSeekStep] = useSetting(settings.controls.seekStep);
-@@ -154,6 +201,7 @@ export function PlaybackSection() {
-
+@@ -154,6 +213,7 @@ export function PlaybackSection() {
+ 
    return (
      <>
 +      {appBridge()?.platform === 'ios' && <IosPlayerSettings />}
@@ -295,10 +314,16 @@ index 51dba34..beaef18 100644
    return (
      <FollowContext.Provider value={follow}>
 diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
-index 87e0d0f..10290a7 100644
+index 87e0d0f..a85c853 100644
 --- a/packages/web/src/features/player/controls.tsx
 +++ b/packages/web/src/features/player/controls.tsx
-@@ -18,6 +18,7 @@ import { LoadingSpinner } from '@aiostreams/ui/loading-spinner';
+@@ -13,11 +13,13 @@ import {
+   LuRotateCw,
+   LuSkipBack,
+   LuSkipForward,
++  LuX,
+ } from 'react-icons/lu';
+ import { LoadingSpinner } from '@aiostreams/ui/loading-spinner';
  import { cn } from '@aiostreams/ui/core/styling';
  import { clock, clockTime, itemSubtitle, itemTitle } from '@/lib/format';
  import { currentHost } from '@/lib/hosts';
@@ -306,7 +331,7 @@ index 87e0d0f..10290a7 100644
  import { appBridge } from '@/lib/hosts/shell/bridge';
  import type { PlayerController } from '@/lib/playback/controller';
  import { settings, useSetting } from '@/lib/settings';
-@@ -213,6 +214,7 @@ export function PlayerControls({
+@@ -213,6 +215,7 @@ export function PlayerControls({
      if (text) showNotice(text, 'failed' in syncOutcome ? 4000 : 2000);
    }, [syncOutcome, showNotice]);
    const togglePlay = () => {
@@ -314,7 +339,7 @@ index 87e0d0f..10290a7 100644
      showFlash(latest.current.state.paused);
      latest.current.togglePlay();
    };
-@@ -223,6 +225,7 @@ export function PlayerControls({
+@@ -223,6 +226,7 @@ export function PlayerControls({
    const [seekPicture, setSeekPicture] = React.useState(true);
    const seekBy = (deltaMs: number, picture = true) => {
      if (live) return;
@@ -322,7 +347,7 @@ index 87e0d0f..10290a7 100644
      setSeekPicture(picture);
      burstSeek(deltaMs);
      showSeekFlash(deltaMs);
-@@ -314,7 +317,7 @@ export function PlayerControls({
+@@ -314,7 +318,7 @@ export function PlayerControls({
      player,
      seekBy: (deltaMs) => seekBy(deltaMs, false),
      seekStepMs: seekStep * 1000,
@@ -331,7 +356,7 @@ index 87e0d0f..10290a7 100644
      onTap: () => (shown.get() ? hide() : wake()),
      onClick: togglePlay,
      onDoubleClick: () => latest.current.toggleFullscreen?.(),
-@@ -334,8 +337,10 @@ export function PlayerControls({
+@@ -334,8 +338,10 @@ export function PlayerControls({
        const s = scrubbing.current;
        scrubbing.current = null;
        setScrub(null);
@@ -343,7 +368,16 @@ index 87e0d0f..10290a7 100644
        wake();
      },
      onPinch: player.fit
-@@ -710,7 +715,10 @@ export function PlayerControls({
+@@ -663,6 +669,8 @@ export function PlayerControls({
+           segment={skipping.segment}
+           fresh={skipping.fresh}
+           onSkip={skipping.skip}
++          countdown={skipping.countdown}
++          held={state.paused || state.waiting}
+         />
+       )}
+ 
+@@ -710,7 +718,10 @@ export function PlayerControls({
                previewPicture={!strip && (!!scrub || seekPicture)}
                handle={touch}
                thumbnails={player.thumbnails}
@@ -355,6 +389,77 @@ index 87e0d0f..10290a7 100644
                onStep={(direction, held) =>
                  tv
                    ? remoteStep(direction * seekStep * 1000, held)
+@@ -885,10 +896,16 @@ function SkipSegment({
+   segment,
+   fresh,
+   onSkip,
++  countdown,
++  held = false,
+ }: {
+   segment: Segment;
+   fresh: boolean;
+   onSkip?: () => void;
++  /** iOS: the skip happens by itself once this runs out. */
++  countdown?: SegmentSkip['countdown'];
++  /** Paused or waiting, when the countdown, which runs in playback time, holds too. */
++  held?: boolean;
+ }) {
+   const visible = useControlsShown();
+   return (
+@@ -901,16 +918,49 @@ function SkipSegment({
+         visible
+           ? 'bottom-[calc(7rem+env(safe-area-inset-bottom))] sm:bottom-[calc(8rem+env(safe-area-inset-bottom))]'
+           : 'bottom-[calc(2rem+env(safe-area-inset-bottom))]',
+-        !visible && !fresh && 'pointer-events-none opacity-0'
++        !visible && !fresh && 'pointer-events-none opacity-0',
++        countdown && 'flex items-center gap-2'
+       )}
+     >
++      {countdown && (
++        <button
++          type="button"
++          data-name="keep-watching"
++          aria-label={t`Keep watching`}
++          onClick={countdown.stop}
++          className="flex size-10 flex-none items-center justify-center rounded-full border border-white/15 bg-black/40 text-lg text-white shadow-lg backdrop-blur-md transition active:scale-95"
++        >
++          <LuX />
++        </button>
++      )}
+       <PlayerAction
+         primary
+-        className="shadow-lg"
+-        rightIcon={<LuSkipForward />}
++        className={cn('shadow-lg', countdown && 'relative overflow-hidden')}
++        rightIcon={<LuSkipForward className="relative" />}
+         onClick={onSkip}
+       >
+-        {skipLabel(segment)}
++        {countdown && (
++          // Fills across in step with the countdown, and holds while the video does.
++          <span
++            key={countdown.id}
++            aria-hidden
++            data-name="countdown-fill"
++            className="pointer-events-none absolute inset-0 origin-left bg-black/15 motion-reduce:hidden rtl:origin-right"
++            style={{
++              animation: `skip-countdown ${countdown.total}s linear forwards`,
++              animationPlayState: held ? 'paused' : 'running',
++            }}
++          />
++        )}
++        <span className="relative">{skipLabel(segment)}</span>
++        {countdown && (
++          <span
++            data-name="countdown"
++            className="relative ms-1 inline-flex min-w-[1.5em] justify-center rounded-full bg-black/10 px-1.5 text-sm tabular-nums"
++          >
++            {countdown.seconds}
++          </span>
++        )}
+       </PlayerAction>
+     </div>
+   );
 diff --git a/packages/web/src/features/player/feedback.tsx b/packages/web/src/features/player/feedback.tsx
 index 320a9ca..3d978f8 100644
 --- a/packages/web/src/features/player/feedback.tsx
@@ -600,6 +705,110 @@ index 8cc128d..1207b12 100644
            {...menuState('subtitles')}
            action={
              player.subtitleFiles && {
+diff --git a/packages/web/src/features/player/segments.ts b/packages/web/src/features/player/segments.ts
+index e3bb77f..53ce70a 100644
+--- a/packages/web/src/features/player/segments.ts
++++ b/packages/web/src/features/player/segments.ts
+@@ -3,6 +3,7 @@ import React from 'react';
+ import { ticksToMs } from '@/lib/format';
+ import { settings, useSetting, type SegmentType } from '@/lib/settings';
+ import { useLatest } from '@/hooks/use-latest';
++import { appBridge } from '@/lib/hosts/shell/bridge';
+ import type { PlayerController } from '@/lib/playback/controller';
+ import type { PlannedSkip } from '@/lib/playback/engine';
+ import type { MediaSegmentDto } from '@/lib/jellyfin/types';
+@@ -120,6 +121,60 @@ export function useSegmentSkip({
+     return () => clearTimeout(timer);
+   }, [offeredId]);
+ 
++  // iOS: an offered skip counts down in playback time, so it holds while the video is paused or
++  // waiting, then skips by itself. Credits are left alone, as a scene may follow them, and so is a
++  // watch party's skip, which is everyone's to ask for.
++  const segment = offeringNext ? undefined : offered;
++  const segmentKey = segment ? segmentId(segment) : null;
++  const [countdownSeconds] = useSetting(settings.ios.skipCountdown);
++  const countsDown =
++    !!segment &&
++    started &&
++    appBridge()?.platform === 'ios' &&
++    countdownSeconds > 0 &&
++    segment.type !== 'Outro' &&
++    !player.shared;
++  // Each segment counts down once: skipped or dismissed, seeking back offers the plain button.
++  const counted = React.useRef(new Set<string>());
++  const [countFrom, setCountFrom] = React.useState<{
++    id: string;
++    atMs: number;
++  } | null>(null);
++  React.useEffect(() => {
++    if (!countsDown || !segmentKey || counted.current.has(segmentKey)) {
++      setCountFrom(null);
++      return;
++    }
++    setCountFrom((was) =>
++      was?.id === segmentKey
++        ? was
++        : { id: segmentKey, atMs: latest.current.playhead.positionMs }
++    );
++  }, [countsDown, segmentKey, latest]);
++  const counting = countFrom && countFrom.id === segmentKey ? countFrom : null;
++  const remaining = usePlayhead(player.playhead, (head) =>
++    counting
++      ? Math.max(
++          0,
++          Math.ceil(
++            (counting.atMs + countdownSeconds * 1000 - head.positionMs) / 1000
++          )
++        )
++      : null
++  );
++  React.useEffect(() => {
++    if (!counting || remaining !== 0 || !segment) return;
++    counted.current.add(counting.id);
++    setCountFrom(null);
++    latest.current.seek(segment.endMs, SKIP_SNAP_MS);
++    showNotice(skippedNotice(segment));
++  }, [counting, remaining, segment, latest, showNotice]);
++  const stopCountdown = React.useCallback(() => {
++    if (!segmentKey) return;
++    counted.current.add(segmentKey);
++    setCountFrom(null);
++  }, [segmentKey]);
++
+   const { loaded, durationMs } = player.state;
+   const planned: PlannedSkip[] = segments
+     .filter((s) => actionOf(s) !== 'none' && !endsEpisode(durationMs, s.endMs))
+@@ -136,14 +191,27 @@ export function useSegmentSkip({
+     if (loaded) latest.current.skipAhead?.(latestPlanned.current);
+   }, [plannedKey, loaded, latest, latestPlanned]);
+ 
+-  const segment = offeringNext ? undefined : offered;
+   return {
+     segments,
+     segment,
+-    fresh,
++    // A countdown keeps its button up however long it runs.
++    fresh: fresh || !!counting,
+     skip: segment
+-      ? () => latest.current.seek(segment.endMs, SKIP_SNAP_MS)
++      ? () => {
++          if (segmentKey) counted.current.add(segmentKey);
++          setCountFrom(null);
++          latest.current.seek(segment.endMs, SKIP_SNAP_MS);
++        }
+       : undefined,
++    countdown:
++      counting && remaining !== null && remaining > 0
++        ? {
++            id: counting.id,
++            seconds: Math.min(remaining, countdownSeconds),
++            total: countdownSeconds,
++            stop: stopCountdown,
++          }
++        : undefined,
+     notice,
+   };
+ }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
 index 4daab21..37a3643 100644
 --- a/packages/web/src/features/trailers/preview.tsx
@@ -965,13 +1174,13 @@ index 0a565dd..5f62c48 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..9bd5691 100644
+index 9be266c..81cb546 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
  export const SEGMENT_ACTIONS = ['ask', 'skip', 'none'] as const;
  export type SegmentAction = (typeof SEGMENT_ACTIONS)[number];
-
+ 
 -export const SUBTITLE_SIZES = ['small', 'normal', 'large', 'huge'] as const;
 +export const SUBTITLE_SIZES = [
 +  'smaller',
@@ -983,7 +1192,16 @@ index 9be266c..9bd5691 100644
  export type SubtitleSize = (typeof SUBTITLE_SIZES)[number];
  /** `default` keeps the player's own font. */
  export const SUBTITLE_FONTS = [
-@@ -605,6 +611,12 @@ export const settings = {
+@@ -247,6 +253,8 @@ export const NEXT_PROMPTS = ['credits', 'end', 'off'] as const;
+ export type NextPrompt = (typeof NEXT_PROMPTS)[number];
+ export const NEXT_LEADS = [15, 30, 45, 60, 90, 120] as const;
+ export const NEXT_COUNTDOWNS = [5, 10, 15, 30] as const;
++/** Seconds an offered skip counts down on iOS before it skips by itself; 0 never does. */
++export const IOS_SKIP_COUNTDOWNS = [0, 3, 5, 10] as const;
+ /** Episodes in a row with no input before asking; 0 never asks. */
+ export const STILL_WATCHING_AFTER = [0, 2, 3, 4, 5, 8] as const;
+ 
+@@ -605,6 +613,15 @@ export const settings = {
        MINI_CORNERS
      ),
    },
@@ -992,6 +1210,9 @@ index 9be266c..9bd5691 100644
 +    haptics: device<boolean>('aiostreams-ios-haptics', true),
 +    gestures: device<boolean>('aiostreams-ios-gestures', true),
 +    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
++    skipCountdown: device<number>('aiostreams-ios-skip-countdown', 5, (n) =>
++      (IOS_SKIP_COUNTDOWNS as readonly number[]).includes(n)
++    ),
 +  },
    video: {
      fit: device<VideoFit>('aiostreams-web-video-fit', 'fit', VIDEO_FITS),
@@ -1017,10 +1238,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..c768327 100644
+index 2014fb0..cb26f31 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,49 @@ msgstr "Your rating"
+@@ -5752,3 +5752,61 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -1070,20 +1291,42 @@ index 2014fb0..c768327 100644
 +
 +msgid "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
 +msgstr "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
++
++#. iOS host additions
++msgid "Keep watching"
++msgstr "Keep watching"
++
++#. iOS host additions
++msgid "Skip countdown"
++msgstr "Skip countdown"
++
++#. iOS host additions
++msgid "Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip."
++msgstr "Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99ee..9bbdc6b 100644
+index 96e99ee..f06d87e 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
-@@ -152,6 +152,14 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
+@@ -152,6 +152,24 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
    background-color: var(--background) !important;
  }
-
+ 
 +/* WKWebView history snapshots need a painted document canvas while browsing.
 +   A hero or title trailer plays under the page and shows through its video
 +   hole, as on Android, so the canvas stays clear there. Also covers startup. */
 +html.see-through[data-host='ios-app']:not(.playing):not([data-video-hole]) {
 +  background-color: var(--background, #000) !important;
 +  color-scheme: dark;
++}
++
++/* The iOS skip button's countdown, filling across it. */
++@keyframes skip-countdown {
++  from {
++    transform: scaleX(0);
++  }
++  to {
++    transform: scaleX(1);
++  }
 +}
 +
  /* Important so custom CSS can't cover the video beneath the page. */
