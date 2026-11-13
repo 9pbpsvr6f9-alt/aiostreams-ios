@@ -268,13 +268,27 @@ final class SubtitleOverlayView: UIView {
             context.setShadow(offset: CGSize(width: offset, height: offset), blur: offset, color: UIColor.black.withAlphaComponent(0.8).cgColor)
         }
         if outline > 0, !look.box {
-            // The outline first, then the fill over it, as libass draws a border.
-            let stroked = NSMutableAttributedString(attributedString: string)
-            stroked.addAttributes(
-                [.strokeColor: look.outlineColor, .strokeWidth: 200 * outline / max(font(of: string), 1)],
-                range: NSRange(location: 0, length: stroked.length)
-            )
-            stroked.draw(with: inner, options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            // The outline first, then the fill over it, as libass draws a border. It is the glyphs
+            // in the outline colour, drawn again around a circle of the outline's radius, so the
+            // outline is the glyphs grown by a disc with round corners. UIKit's text stroke has
+            // mitred corners, which on sharp letters (A, V, W, M, K) spike out as black "horns".
+            // The copies are drawn opaque in one transparency layer, which then takes the colour's
+            // own alpha and casts the shadow once, so overlaps neither darken nor stack shadows.
+            let outlined = NSMutableAttributedString(attributedString: string)
+            outlined.addAttribute(.foregroundColor, value: look.outlineColor.withAlphaComponent(1),
+                                  range: NSRange(location: 0, length: outlined.length))
+            let steps = min(48, max(12, Int((2 * CGFloat.pi * outline).rounded(.up))))
+            context.saveGState()
+            context.setAlpha(look.outlineColor.cgColor.alpha)
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+            for step in 0..<steps {
+                let angle = 2 * CGFloat.pi * CGFloat(step) / CGFloat(steps)
+                outlined.draw(with: inner.offsetBy(dx: cos(angle) * outline, dy: sin(angle) * outline),
+                              options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            }
+            outlined.draw(with: inner, options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
+            context.endTransparencyLayer()
+            context.restoreGState()
             context.setShadow(offset: .zero, blur: 0)
         }
         string.draw(with: inner, options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil)
