@@ -53,6 +53,16 @@ jobs:
             git -C app apply --whitespace=nowarn "$PWD/$patch" || { echo "::error::$patch no longer applies"; exit 1; }
           done
 
+      # Our web changes join the upstream web patches, applied after them by name.
+      - name: Add our web patches
+        working-directory: .
+        run: |
+          shopt -s nullglob
+          for patch in tv-m/web/*.patch; do
+            cp "$patch" app/patches/web/
+            echo "Added $(basename "$patch")"
+          done
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -72,6 +82,15 @@ jobs:
           git -C .build/AIOStreams remote add origin https://github.com/Viren070/AIOStreams.git
           corepack enable
           AIOSTREAMS_REF="$ref" bash scripts/fetch-web.sh
+
+      # The web build doesn't type-check. This does, with every patch applied, and only reports.
+      - name: Type-check the patched web app (report only)
+        continue-on-error: true
+        run: |
+          cd .build/AIOStreams
+          for patch in ../../patches/web/*.patch; do git apply "$patch"; done
+          pnpm -F @aiostreams/web typecheck
+          git checkout -q -- . && git clean -fdq packages
 
       - name: Show the toolchain
         run: |

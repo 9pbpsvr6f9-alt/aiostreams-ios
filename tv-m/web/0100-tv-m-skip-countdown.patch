@@ -1,0 +1,226 @@
+diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
+index 454eb4c5..6772fd20 100644
+--- a/packages/web/src/features/player/controls.tsx
++++ b/packages/web/src/features/player/controls.tsx
+@@ -13,6 +13,7 @@ import {
+   LuRotateCw,
+   LuSkipBack,
+   LuSkipForward,
++  LuX,
+ } from 'react-icons/lu';
+ import { LoadingSpinner } from '@aiostreams/ui/loading-spinner';
+ import { cn } from '@aiostreams/ui/core/styling';
+@@ -664,6 +665,8 @@ export function PlayerControls({
+           segment={skipping.segment}
+           fresh={skipping.fresh}
+           onSkip={skipping.skip}
++          countdown={skipping.countdown}
++          held={state.paused || state.waiting}
+         />
+       )}
+ 
+@@ -886,10 +889,16 @@ function SkipSegment({
+   segment,
+   fresh,
+   onSkip,
++  countdown,
++  held = false,
+ }: {
+   segment: Segment;
+   fresh: boolean;
+   onSkip?: () => void;
++  /** tv-m: the skip happens by itself once this runs out. */
++  countdown?: SegmentSkip['countdown'];
++  /** Paused or waiting, when the countdown, which runs in playback time, holds too. */
++  held?: boolean;
+ }) {
+   const visible = useControlsShown();
+   return (
+@@ -902,16 +911,49 @@ function SkipSegment({
+         visible
+           ? 'bottom-[calc(7rem+env(safe-area-inset-bottom))] sm:bottom-[calc(8rem+env(safe-area-inset-bottom))]'
+           : 'bottom-[calc(2rem+env(safe-area-inset-bottom))]',
+-        !visible && !fresh && 'pointer-events-none opacity-0'
++        !visible && !fresh && 'pointer-events-none opacity-0',
++        countdown && 'flex items-center gap-3'
+       )}
+     >
++      {countdown && (
++        <button
++          type="button"
++          data-name="keep-watching"
++          aria-label={t`Keep watching`}
++          onClick={countdown.stop}
++          className="flex size-12 flex-none items-center justify-center rounded-full border border-white/15 bg-black/40 text-xl text-white shadow-lg backdrop-blur-md transition"
++        >
++          <LuX />
++        </button>
++      )}
+       <PlayerAction
+         primary
+-        className="shadow-lg"
+-        rightIcon={<LuSkipForward />}
++        className={cn('shadow-lg', countdown && 'relative overflow-hidden')}
++        rightIcon={<LuSkipForward className="relative" />}
+         onClick={onSkip}
+       >
+-        {skipLabel(segment)}
++        {countdown && (
++          // Fills across in step with the countdown, and holds while the video does.
++          <span
++            key={countdown.id}
++            aria-hidden
++            data-name="countdown-fill"
++            className="pointer-events-none absolute inset-0 origin-left bg-black/15 motion-reduce:hidden rtl:origin-right"
++            style={{
++              animation: `skip-countdown ${countdown.total}s linear forwards`,
++              animationPlayState: held ? 'paused' : 'running',
++            }}
++          />
++        )}
++        <span className="relative">{skipLabel(segment)}</span>
++        {countdown && (
++          <span
++            data-name="countdown"
++            className="relative ms-1 inline-flex min-w-[1.5em] justify-center rounded-full bg-black/10 px-1.5 text-sm tabular-nums"
++          >
++            {countdown.seconds}
++          </span>
++        )}
+       </PlayerAction>
+     </div>
+   );
+diff --git a/packages/web/src/features/player/segments.ts b/packages/web/src/features/player/segments.ts
+index e3bb77f6..760242d1 100644
+--- a/packages/web/src/features/player/segments.ts
++++ b/packages/web/src/features/player/segments.ts
+@@ -56,6 +56,9 @@ const skippedNotice = (s: Segment) =>
+     }) as Record<string, string>
+   )[s.type] ?? t`Skipped segment`;
+ 
++/** tv-m: seconds an offered intro or recap skip counts down before it skips by itself. */
++const SKIP_COUNTDOWN_SECONDS = 5;
++
+ export type SegmentSkip = ReturnType<typeof useSegmentSkip>;
+ 
+ /**
+@@ -120,6 +123,58 @@ export function useSegmentSkip({
+     return () => clearTimeout(timer);
+   }, [offeredId]);
+ 
++  // tv-m: an offered skip counts down in playback time, so it holds while the video is paused or
++  // waiting, then skips by itself. Credits are left alone, as a scene may follow them, and so is a
++  // watch party's skip, which is everyone's to ask for.
++  const segment = offeringNext ? undefined : offered;
++  const segmentKey = segment ? segmentId(segment) : null;
++  const countdownSeconds = SKIP_COUNTDOWN_SECONDS;
++  const countsDown =
++    !!segment &&
++    started &&
++    segment.type !== 'Outro' &&
++    !player.shared;
++  // Each segment counts down once: skipped or dismissed, seeking back offers the plain button.
++  const counted = React.useRef(new Set<string>());
++  const [countFrom, setCountFrom] = React.useState<{
++    id: string;
++    atMs: number;
++  } | null>(null);
++  React.useEffect(() => {
++    if (!countsDown || !segmentKey || counted.current.has(segmentKey)) {
++      setCountFrom(null);
++      return;
++    }
++    setCountFrom((was) =>
++      was?.id === segmentKey
++        ? was
++        : { id: segmentKey, atMs: latest.current.playhead.positionMs }
++    );
++  }, [countsDown, segmentKey, latest]);
++  const counting = countFrom && countFrom.id === segmentKey ? countFrom : null;
++  const remaining = usePlayhead(player.playhead, (head) =>
++    counting
++      ? Math.max(
++          0,
++          Math.ceil(
++            (counting.atMs + countdownSeconds * 1000 - head.positionMs) / 1000
++          )
++        )
++      : null
++  );
++  React.useEffect(() => {
++    if (!counting || remaining !== 0 || !segment) return;
++    counted.current.add(counting.id);
++    setCountFrom(null);
++    latest.current.seek(segment.endMs, SKIP_SNAP_MS);
++    showNotice(skippedNotice(segment));
++  }, [counting, remaining, segment, latest, showNotice]);
++  const stopCountdown = React.useCallback(() => {
++    if (!segmentKey) return;
++    counted.current.add(segmentKey);
++    setCountFrom(null);
++  }, [segmentKey]);
++
+   const { loaded, durationMs } = player.state;
+   const planned: PlannedSkip[] = segments
+     .filter((s) => actionOf(s) !== 'none' && !endsEpisode(durationMs, s.endMs))
+@@ -136,14 +191,27 @@ export function useSegmentSkip({
+     if (loaded) latest.current.skipAhead?.(latestPlanned.current);
+   }, [plannedKey, loaded, latest, latestPlanned]);
+ 
+-  const segment = offeringNext ? undefined : offered;
+   return {
+     segments,
+     segment,
+-    fresh,
++    // A countdown keeps its button up however long it runs.
++    fresh: fresh || !!counting,
+     skip: segment
+-      ? () => latest.current.seek(segment.endMs, SKIP_SNAP_MS)
++      ? () => {
++          if (segmentKey) counted.current.add(segmentKey);
++          setCountFrom(null);
++          latest.current.seek(segment.endMs, SKIP_SNAP_MS);
++        }
+       : undefined,
++    countdown:
++      counting && remaining !== null && remaining > 0
++        ? {
++            id: counting.id,
++            seconds: Math.min(remaining, countdownSeconds),
++            total: countdownSeconds,
++            stop: stopCountdown,
++          }
++        : undefined,
+     notice,
+   };
+ }
+diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
+index 2014fb0e..b78b927e 100644
+--- a/packages/web/src/locales/en-GB.po
++++ b/packages/web/src/locales/en-GB.po
+@@ -5752,3 +5752,7 @@ msgstr "Your rating"
+ #: src/app/settings/cache.tsx
+ msgid "Your watch history and totals."
+ msgstr "Your watch history and totals."
++
++#. tv-m additions
++msgid "Keep watching"
++msgstr "Keep watching"
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 96e99eee..eb92f14b 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -524,3 +524,13 @@ html[data-blur-spoilers]:not([data-tv])
+     opacity: 0;
+   }
+ }
++
++/* tv-m: the skip button's countdown, filling across it. */
++@keyframes skip-countdown {
++  from {
++    transform: scaleX(0);
++  }
++  to {
++    transform: scaleX(1);
++  }
++}
