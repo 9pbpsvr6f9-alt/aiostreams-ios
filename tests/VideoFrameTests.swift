@@ -64,3 +64,22 @@ for size in [CGSize(width: 390, height: 520), CGSize(width: 844, height: 480), C
 }
 precondition(PreviewLayout.contentRect(in: .zero) == .zero)
 print("Preview artwork cover and letterbox crop tests passed")
+
+// The page is opaque while browsing, for WebKit's back-swipe snapshots, but video must never sit
+// beneath an opaque page that hasn't been cut away (the 0.2.47 hero and title trailer regression).
+var stage = VideoPresentation()
+precondition(!stage.needsTransparentPage, "Browsing keeps the page opaque")
+stage.start(preview: false)
+precondition(stage.needsTransparentPage && !stage.cutsMask, "Full-window playback shows through the page")
+var boxed = frame; boxed["hidden"] = false
+stage.start(preview: true)
+stage.place(VideoFrame.from(["frame": boxed, "pageWidth": 800], webWidth: 400), preview: true)
+precondition(stage.cutsMask && !stage.needsTransparentPage, "A masked card preview keeps the page opaque")
+stage.place(VideoFrame.from(["frame": hidden, "pageWidth": 800], webWidth: 400), preview: true)
+precondition(!stage.cutsMask && stage.needsTransparentPage,
+             "A hero or title trailer under the page must show through its video hole")
+stage.place(nil, preview: true)
+precondition(!stage.needsTransparentPage, "A cleared preview hides, and the page goes opaque again")
+stage.stop()
+precondition(!stage.needsTransparentPage, "Stopped playback restores the opaque page")
+print("Page transparency regression tests passed")

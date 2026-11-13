@@ -75,6 +75,16 @@ struct VideoPresentation {
         preview = false
         frame = nil
     }
+
+    /// The native mask cuts the frame out of the page: a shown mini player or boxed preview.
+    var cutsMask: Bool {
+        visible && (frame.map { !$0.hidden && !$0.visibleRect.isEmpty && !$0.visibleRect.isNull } ?? false)
+    }
+
+    /// Visible video the mask doesn't reveal shows only through a transparent page: full-window
+    /// playback, and hero and title trailers, which play under the page and show through its own
+    /// video hole (their frames come `hidden`). Browsing and masked video keep the page opaque.
+    var needsTransparentPage: Bool { visible && !cutsMask }
 }
 
 /// A centered cinema-width canvas removes conventional 16:9 trailer letterboxing, then the stage

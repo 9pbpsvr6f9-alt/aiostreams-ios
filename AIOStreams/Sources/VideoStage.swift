@@ -17,7 +17,7 @@ final class VideoStage {
         didSet { refresh(animated: false) }
     }
 
-    /// Boxed video uses the native mask; only full-window playback needs a transparent page.
+    /// Told whether the page must be transparent (`VideoPresentation.needsTransparentPage`).
     var needsTransparentPage: (Bool) -> Void = { _ in }
 
     private let video: UIView
@@ -100,7 +100,7 @@ final class VideoStage {
         video.frame = presentation.preview ? PreviewLayout.contentRect(in: target.size) : content
         subtitles.frame = content
         cutHole(presentation.visible ? shown : nil, animated: animated)
-        needsTransparentPage(presentation.visible && shown == nil)
+        needsTransparentPage(presentation.needsTransparentPage)
     }
 
     /// The corners the radius applies to: the bar's video has a bottom radius of its own, a docked

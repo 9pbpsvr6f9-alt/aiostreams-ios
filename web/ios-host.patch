@@ -713,10 +713,10 @@ index 0000000..aed8da0
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..6661f72
+index 0000000..ea281fc
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,53 @@
+@@ -0,0 +1,61 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -739,9 +739,17 @@ index 0000000..6661f72
 +    });
 +  apply();
 +  const stopSettings = onSettingsChange(apply);
++  // WebKit's back swipe shows the previous page's snapshot only for history entries that
++  // restore their own scroll; the router still restores it again once the page renders.
++  const restoreScroll = () => {
++    history.scrollRestoration = 'auto';
++  };
++  restoreScroll();
++  addEventListener('pageshow', restoreScroll);
 +  return () => {
 +    unsubscribe?.();
 +    stopSettings();
++    removeEventListener('pageshow', restoreScroll);
 +  };
 +}
 +
@@ -1040,7 +1048,7 @@ index 2014fb0..c768327 100644
 +msgid "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
 +msgstr "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99ee..9f60def 100644
+index 96e99ee..9bbdc6b 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,14 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -1048,9 +1056,9 @@ index 96e99ee..9f60def 100644
  }
 
 +/* WKWebView history snapshots need a painted document canvas while browsing.
-+   Boxed native previews already cut their own layer mask; only full playback
-+   needs the transparent document. This also covers the page during startup. */
-+html.see-through[data-host='ios-app']:not(.playing) {
++   A hero or title trailer plays under the page and shows through its video
++   hole, as on Android, so the canvas stays clear there. Also covers startup. */
++html.see-through[data-host='ios-app']:not(.playing):not([data-video-hole]) {
 +  background-color: var(--background, #000) !important;
 +  color-scheme: dark;
 +}

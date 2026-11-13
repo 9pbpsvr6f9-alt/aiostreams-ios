@@ -80,7 +80,8 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
         videoStage = VideoStage(video: videoView, subtitles: overlay)
         videoStage.needsTransparentPage = { [weak webView] transparent in
-            guard let webView else { return }
+            // Refresh runs on every layout pass; only a real change repaints the page.
+            guard let webView, webView.isOpaque == transparent else { return }
             webView.isOpaque = !transparent
             let color: UIColor = transparent ? .clear : .black
             webView.backgroundColor = color
