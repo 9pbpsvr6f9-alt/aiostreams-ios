@@ -69,11 +69,20 @@ final class PictureInPicture: NSObject {
     }
 
     func refresh() {
-        guard policy.prepares else { clear(); return }
+        guard policy.prepares else {
+            if active || starting {
+                let p = policy
+                AppLog.warn("pip", "no longer eligible (media \(p.hasMedia), preview \(p.preview), source \(p.sourceAvailable)); closing it")
+            }
+            clear(); return
+        }
         let native = engine.nativePlayerLayer
         let software = native == nil ? engine.softwarePiPSource : nil
         let key = native.map { ObjectIdentifier($0) } ?? software.map { ObjectIdentifier($0.layer) }
         if key != sourceKey {
+            if active || starting {
+                AppLog.warn("pip", "the video's picture changed under the window (\(native != nil ? "native" : software != nil ? "software" : "none")); closing it")
+            }
             clear()
             sourceKey = key
             softwareSource = software // AVKit's sample-buffer content source holds its delegate weakly.
@@ -133,6 +142,7 @@ final class PictureInPicture: NSObject {
 extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate {
     func pictureInPictureControllerWillStartPictureInPicture(_ controller: AVPictureInPictureController) {
         guard controller === self.controller else { controller.stopPictureInPicture(); return }
+        AppLog.info("pip", "starting (\(manualRequest ? "button" : "automatic"))")
         starting = true
         restoring = false
         engine.pictureInPictureActive = true // Arm the engine before its background lifecycle decision.
@@ -141,6 +151,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
 
     func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
         guard controller === self.controller else { controller.stopPictureInPicture(); return }
+        AppLog.info("pip", "started")
         starting = false
         manualRequest = false
         wasActive = true
@@ -150,6 +161,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
 
     func pictureInPictureController(_ controller: AVPictureInPictureController, failedToStartPictureInPictureWithError error: Error) {
         guard controller === self.controller else { retired.removeValue(forKey: ObjectIdentifier(controller)); return }
+        AppLog.warn("pip", "could not start: \(error.localizedDescription)")
         let report = manualRequest
         starting = false
         manualRequest = false
@@ -161,6 +173,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         guard controller === self.controller else { retired.removeValue(forKey: ObjectIdentifier(controller)); return }
         let pause = PictureInPicturePolicy.pausesWhenStopped(wasActive: wasActive, restoring: restoring)
+        AppLog.info("pip", restoring ? "closed to return to the app" : "closed")
         starting = false
         wasActive = false
         restoring = false
@@ -171,6 +184,7 @@ extension PictureInPicture: @preconcurrency AVPictureInPictureControllerDelegate
     func pictureInPictureController(_ controller: AVPictureInPictureController,
                                     restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
         guard controller === self.controller else { completionHandler(false); return }
+        AppLog.info("pip", "returning to the app")
         restoring = true
         restore()
         changed(false)

@@ -316,7 +316,9 @@ final class PlayerChannel {
             let headers = (message["headers"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
             preloader.prepare(message["url"] as? String, headers: headers,
                               allowed: hasMedia && !live && !trailer)
-        case "player-stop": stop()
+        case "player-stop":
+            AppLog.info("player", "the page stopped the video")
+            stop()
         case "player-set": change(message)
         case "player-seek":
             guard let ms = JSON.number(message["positionMs"]) else { break }
@@ -378,6 +380,12 @@ final class PlayerChannel {
                 AppLog.warn("player", "Could not switch upscaling: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Where the playing video is, for a page that loads again around it.
+    var positionMs: Double? {
+        guard loadedURL != nil, !preview, !trailer, engine.currentTime.isFinite, engine.currentTime > 0 else { return nil }
+        return engine.currentTime * 1000
     }
 
     /// A page that loads again never owns the video the last one started.

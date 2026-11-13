@@ -22,6 +22,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
     private var pipActive = false { didSet { updateVolumeIndicator() } }
     /// The system volume, watched while the full player hides iOS's indicator, for the volume buttons' toast.
     private var volumeObservation: NSKeyValueObservation?
+    private var urlObservation: NSKeyValueObservation?
+    private var activeObserver: NSObjectProtocol?
+    /// The page's process ended while the app was away; it loads again on return, not under the video.
+    private var pageReloadOwed = false
     /// When the player's own swipe last set the volume; the change it causes needs no toast.
     private var ownVolumeChangeAt: TimeInterval = -.infinity
     private var webView: WKWebView!
@@ -198,6 +202,20 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             forName: UIApplication.willResignActiveNotification, object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in self?.restoreBrightness() }
+        }
+        activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.pageReloadOwed else { return }
+                self.pageReloadOwed = false
+                self.reloadPage(resuming: true)
+            }
+        }
+        // Which page shows, for the log a problem report copies (the route only).
+        urlObservation = webView.observe(\.url, options: [.new]) { webView, _ in
+            let route = webView.url?.fragment.map { $0.components(separatedBy: "?")[0] } ?? "-"
+            Task { @MainActor in AppLog.info("page", "at \(route)") }
         }
         webView.load(URLRequest(url: DemoMode.startURL ?? WebAssets.startURL))
     }
@@ -405,6 +423,7 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     deinit {
         if let backgroundObserver { NotificationCenter.default.removeObserver(backgroundObserver) }
+        if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
     }
 
     private func setFullscreen(_ on: Bool) {
@@ -468,9 +487,37 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         restoreBrightness()
+        // iOS ends a background app's page under memory pressure. Loading it again then would stop
+        // the video under Picture in Picture, so the page waits for the app to come back.
+        if pictureInPicture?.active == true || UIApplication.shared.applicationState != .active {
+            AppLog.warn("app", "the page's process ended in the background; it loads again on return")
+            pageReloadOwed = true
+            return
+        }
         AppLog.warn("app", "the page's process ended; loading it again")
+        reloadPage(resuming: false)
+    }
+
+    /// Loads the page again; a player page reopens at the video's current position.
+    private func reloadPage(resuming: Bool) {
+        var target: URL?
+        if resuming, let current = webView.url, let fragment = current.fragment,
+           fragment.hasPrefix("/play/"), !fragment.hasPrefix("/play/trailer/"),
+           let ms = player?.positionMs, var route = URLComponents(string: fragment),
+           var whole = URLComponents(url: current, resolvingAgainstBaseURL: false) {
+            var items = (route.queryItems ?? []).filter { $0.name != "start" }
+            items.append(URLQueryItem(name: "start", value: String(Int(ms))))
+            route.queryItems = items
+            whole.fragment = route.string
+            target = whole.url
+        }
         player?.pageLoading()
-        webView.reload()
+        if let target {
+            AppLog.info("app", "loading the page again at the video's position")
+            webView.load(URLRequest(url: target))
+        } else {
+            webView.reload()
+        }
     }
 
     // MARK: - WKUIDelegate
