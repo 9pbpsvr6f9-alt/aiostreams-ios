@@ -43,10 +43,24 @@ index 31420ef..4aab3a9 100644
          return parts.string ?? url
      }
 diff --git a/TopShelf/ContentProvider.swift b/TopShelf/ContentProvider.swift
-index 4dc8937..ac27511 100644
+index 4dc8937..5242539 100644
 --- a/TopShelf/ContentProvider.swift
 +++ b/TopShelf/ContentProvider.swift
-@@ -55,8 +55,10 @@ final class ContentProvider: TVTopShelfContentProvider {
+@@ -14,10 +14,9 @@ final class ContentProvider: TVTopShelfContentProvider {
+             return completionHandler(notShared())
+         }
+         let items = TopShelfStore.load()
+-        let sections = [
+-            section("Continue Watching", items.filter(\.resumes)),
+-            section("Next Up", items.filter { !$0.resumes }),
+-        ].compactMap { $0 }
++        // tv-m: one row, as the page orders it (most recently watched first), rather than resume
++        // points and next episodes apart.
++        let sections = [section("Continue Watching", items)].compactMap { $0 }
+         TopShelfStore.noteAsked(shown: sections.reduce(0) { $0 + $1.items.count })
+         completionHandler(sections.isEmpty ? nil : TVTopShelfSectionedContent(sections: sections))
+     }
+@@ -55,8 +54,10 @@ final class ContentProvider: TVTopShelfContentProvider {
          guard let play = item.playURL else { return nil }
          let shelf = TVTopShelfSectionedItem(identifier: item.id)
          shelf.title = item.label

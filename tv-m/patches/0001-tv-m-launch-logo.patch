@@ -35,17 +35,17 @@ index b686351..dec41f1 100644
              pip?.start()
 diff --git a/App/Support/LaunchLogo.swift b/App/Support/LaunchLogo.swift
 new file mode 100644
-index 0000000..603405f
+index 0000000..ad220d1
 --- /dev/null
 +++ b/App/Support/LaunchLogo.swift
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,86 @@
 +import UIKit
 +
 +/**
 + * tv-m: the web app's launch logo, drawn natively from the app's first frame until the page's own
 + * splash shows it, so the app opens on the logo, not on black. The page says `splash-shown`, with its
 + * logo's place as shares of the screen (patches/web 0103), and the cover settles on it and fades
-+ * into the identical logo beneath. A timeout lifts it if the page never says.
++ * into the identical logo beneath. That place is kept, and the next launch starts on it. A timeout lifts it if the page never says.
 + */
 +@MainActor
 +final class LaunchLogo: UIView {
@@ -54,7 +54,15 @@ index 0000000..603405f
 +    /// The page's logo as shares of the screen (centre and width), once it reports them. Until then the
 +    /// splash's own size, 288 points (the page keeps its logo 288 of its first layout's pixels, which on
 +    /// tvOS are points, in vmin through its later 1280-wide layout), in the middle.
-+    private var target: (x: CGFloat, y: CGFloat, width: CGFloat)?
++    private var target: (x: CGFloat, y: CGFloat, width: CGFloat)? = LaunchLogo.remembered
++    /// Where the page drew its logo last time, which this launch starts on: its size on this TV
++    /// can't be known before the page has drawn it once.
++    private static let rememberedKey = "tvmLaunchLogoPlace"
++    private static var remembered: (x: CGFloat, y: CGFloat, width: CGFloat)? {
++        guard let place = UserDefaults.standard.array(forKey: rememberedKey) as? [Double], place.count == 3
++        else { return nil }
++        return (CGFloat(place[0]), CGFloat(place[1]), CGFloat(place[2]))
++    }
 +    private static let side: CGFloat = 288
 +    private static let timeout: TimeInterval = 4
 +
@@ -92,6 +100,7 @@ index 0000000..603405f
 +        lifted = true
 +        if let width, let x, let y, width > 0.02, width < 0.9, (0...1).contains(x), (0...1).contains(y) {
 +            target = (CGFloat(x), CGFloat(y), CGFloat(width))
++            UserDefaults.standard.set([x, y, width], forKey: Self.rememberedKey)
 +            CATransaction.begin()
 +            CATransaction.setDisableActions(true)
 +            place()
