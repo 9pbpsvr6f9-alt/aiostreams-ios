@@ -119,6 +119,53 @@ index e41938f..d8ffaba 100644
              shell.app,
            ],
            ...(shell.player && !shell.mpv
+diff --git a/packages/web/src/app/settings/interface.tsx b/packages/web/src/app/settings/interface.tsx
+index 3ca1664..24dc4ae 100644
+--- a/packages/web/src/app/settings/interface.tsx
++++ b/packages/web/src/app/settings/interface.tsx
+@@ -307,6 +307,12 @@ export function InterfaceSection() {
+   const [blurSpoilers, setBlurSpoilers] = useSetting(
+     settings.interface.blurSpoilers
+   );
++  const ios = currentHost().name === 'ios-app';
++  const [blurPictures, setBlurPictures] = useSetting(settings.ios.spoilerPictures);
++  const [blurTitles, setBlurTitles] = useSetting(settings.ios.spoilerTitles);
++  const [blurDescriptions, setBlurDescriptions] = useSetting(
++    settings.ios.spoilerDescriptions
++  );
+   const touch = !currentHost().tv && matchMedia('(pointer: coarse)').matches;
+ 
+   const option = (value: string, label: string) => ({
+@@ -501,6 +507,29 @@ export function InterfaceSection() {
+           value={blurSpoilers}
+           onValueChange={setBlurSpoilers}
+         />
++        {ios && blurSpoilers && (
++          <>
++            <Switch
++              side="right"
++              label={t`Blur pictures`}
++              help={t`On this iPhone or iPad, choose which parts of an episode you haven't started are blurred. Home's rows stay clear.`}
++              value={blurPictures}
++              onValueChange={setBlurPictures}
++            />
++            <Switch
++              side="right"
++              label={t`Blur titles`}
++              value={blurTitles}
++              onValueChange={setBlurTitles}
++            />
++            <Switch
++              side="right"
++              label={t`Blur descriptions`}
++              value={blurDescriptions}
++              onValueChange={setBlurDescriptions}
++            />
++          </>
++        )}
+       </SettingsCard>
+       <NavigationCard />
+     </>
 diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
 index 2e7bd37..a0371d4 100644
 --- a/packages/web/src/app/settings/playback.tsx
@@ -972,10 +1019,10 @@ index 0000000..63c99c9
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
-index 0000000..ea281fc
+index 0000000..247d2c7
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,61 @@
+@@ -0,0 +1,69 @@
 +import { settings, onSettingsChange } from '@/lib/settings';
 +import type { Host } from '..';
 +import { appBridge, ask } from './bridge';
@@ -989,13 +1036,19 @@ index 0000000..ea281fc
 +  const unsubscribe = appBridge()?.subscribe((m) => {
 +    if (m.type === 'fullscreen') fullscreen = m.value;
 +  });
-+  const apply = () =>
++  const html = document.documentElement;
++  const apply = () => {
 +    appBridge()?.send({
 +      type: 'ios-player-settings',
 +      haptics: settings.ios.haptics.read(),
 +      automaticPip: settings.ios.automaticPip.read(),
 +      gestures: settings.ios.gestures.read(),
 +    });
++    // The parts of an unstarted episode the spoiler blur leaves clear (styles.css).
++    html.toggleAttribute('data-unblur-pictures', !settings.ios.spoilerPictures.read());
++    html.toggleAttribute('data-unblur-titles', !settings.ios.spoilerTitles.read());
++    html.toggleAttribute('data-unblur-descriptions', !settings.ios.spoilerDescriptions.read());
++  };
 +  apply();
 +  const stopSettings = onSettingsChange(apply);
 +  // WebKit's back swipe shows the previous page's snapshot only for history entries that
@@ -1009,6 +1062,8 @@ index 0000000..ea281fc
 +    unsubscribe?.();
 +    stopSettings();
 +    removeEventListener('pageshow', restoreScroll);
++    for (const name of ['data-unblur-pictures', 'data-unblur-titles', 'data-unblur-descriptions'])
++      html.removeAttribute(name);
 +  };
 +}
 +
@@ -1201,7 +1256,7 @@ index 0a565dd..5f62c48 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c..81cb546 100644
+index 9be266c..68c1134 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
@@ -1228,7 +1283,7 @@ index 9be266c..81cb546 100644
  /** Episodes in a row with no input before asking; 0 never asks. */
  export const STILL_WATCHING_AFTER = [0, 2, 3, 4, 5, 8] as const;
  
-@@ -605,6 +613,15 @@ export const settings = {
+@@ -605,6 +613,19 @@ export const settings = {
        MINI_CORNERS
      ),
    },
@@ -1237,6 +1292,10 @@ index 9be266c..81cb546 100644
 +    haptics: device<boolean>('aiostreams-ios-haptics', true),
 +    gestures: device<boolean>('aiostreams-ios-gestures', true),
 +    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
++    /** Which parts of an unstarted episode the spoiler blur covers on this device. */
++    spoilerPictures: device<boolean>('aiostreams-ios-spoiler-pictures', true),
++    spoilerTitles: device<boolean>('aiostreams-ios-spoiler-titles', true),
++    spoilerDescriptions: device<boolean>('aiostreams-ios-spoiler-descriptions', true),
 +    skipCountdown: device<number>('aiostreams-ios-skip-countdown', 5, (n) =>
 +      (IOS_SKIP_COUNTDOWNS as readonly number[]).includes(n)
 +    ),
@@ -1265,10 +1324,10 @@ index 4623557..6309ce8 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0..76ba91f 100644
+index 2014fb0..5cd26f6 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,61 @@ msgstr "Your rating"
+@@ -5752,3 +5752,77 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -1330,11 +1389,27 @@ index 2014fb0..76ba91f 100644
 +#. iOS host additions
 +msgid "Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip."
 +msgstr "Where Skipping is set to Ask, the skip button counts down and then skips by itself. Tap it to skip now, or the cross to keep watching. Credits are left to you, as is a watch party's skip."
++
++#. iOS host additions
++msgid "Blur pictures"
++msgstr "Blur pictures"
++
++#. iOS host additions
++msgid "Blur titles"
++msgstr "Blur titles"
++
++#. iOS host additions
++msgid "Blur descriptions"
++msgstr "Blur descriptions"
++
++#. iOS host additions
++msgid "On this iPhone or iPad, choose which parts of an episode you haven't started are blurred. Home's rows stay clear."
++msgstr "On this iPhone or iPad, choose which parts of an episode you haven't started are blurred. Home's rows stay clear."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99ee..628b910 100644
+index 96e99ee..5744a0d 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
-@@ -152,6 +152,33 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
+@@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
    background-color: var(--background) !important;
  }
  
@@ -1352,6 +1427,43 @@ index 96e99ee..628b910 100644
 +  :is([data-row='next-up'], [data-row='upcoming'], [data-row='resume'])
 +  [data-ui='wide-card']
 +  :is([data-ui='artwork'], [data-ui='wide-card-subtitle']) {
++  filter: none !important;
++}
++
++/* iOS: the parts of an unstarted episode the blur leaves clear, chosen per device
++   (Settings, Spoilers). Marked on the root by the iOS host. */
++html[data-host='ios-app'][data-unblur-pictures]
++  :is(
++    [data-ui='episode-card'],
++    [data-ui='episode-list-item'],
++    [data-ui='player-episode'],
++    [data-ui='calendar-entry'][data-episode],
++    [data-ui='calendar-day-art'][data-episode]
++  )
++  [data-ui='artwork'] {
++  filter: none !important;
++}
++html[data-host='ios-app'][data-unblur-titles]
++  :is(
++    [data-ui='episode-card'],
++    [data-ui='episode-list-item'],
++    [data-ui='player-episode'],
++    [data-ui='calendar-entry'][data-episode]
++  )
++  :is(
++    [data-ui='episode-title'] > span,
++    p[data-ui='episode-title'],
++    [data-ui='calendar-entry-subtitle']
++  ) {
++  filter: none !important;
++}
++html[data-host='ios-app'][data-unblur-descriptions]
++  :is(
++    [data-ui='episode-card'],
++    [data-ui='episode-list-item'],
++    [data-ui='player-episode']
++  )
++  [data-ui='episode-synopsis'] {
 +  filter: none !important;
 +}
 +
