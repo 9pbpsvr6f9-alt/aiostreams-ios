@@ -1039,3 +1039,22 @@ index 2014fb0..c768327 100644
 +
 +msgid "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
 +msgstr "Continue supported videos in a floating window when you go to the Home Screen or switch apps. Requires Picture in Picture to be enabled in iOS."
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 96e99ee..9f60def 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -152,6 +152,14 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
+   background-color: var(--background) !important;
+ }
+
++/* WKWebView history snapshots need a painted document canvas while browsing.
++   Boxed native previews already cut their own layer mask; only full playback
++   needs the transparent document. This also covers the page during startup. */
++html.see-through[data-host='ios-app']:not(.playing) {
++  background-color: var(--background, #000) !important;
++  color-scheme: dark;
++}
++
+ /* Important so custom CSS can't cover the video beneath the page. */
+ html.playing .page-background {
+   display: none !important;

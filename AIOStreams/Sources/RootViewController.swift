@@ -63,10 +63,10 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.overrideUserInterfaceStyle = .dark
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        webView.scrollView.backgroundColor = .clear
-        // Apply after the transparent surface colors: this is the history/overscroll underlay.
+        webView.isOpaque = true
+        webView.backgroundColor = .black
+        webView.scrollView.backgroundColor = .black
+        // Browsing snapshots need a painted surface, not just a dark under-page color.
         webView.underPageBackgroundColor = .black
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.bounces = false
@@ -79,6 +79,14 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
         bridge.webView = webView
 
         videoStage = VideoStage(video: videoView, subtitles: overlay)
+        videoStage.needsTransparentPage = { [weak webView] transparent in
+            guard let webView else { return }
+            webView.isOpaque = !transparent
+            let color: UIColor = transparent ? .clear : .black
+            webView.backgroundColor = color
+            webView.scrollView.backgroundColor = color
+            webView.underPageBackgroundColor = color
+        }
         videoStage.web = webView
         videoStage.view.frame = root.bounds
         videoStage.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -107,7 +115,6 @@ final class RootViewController: UIViewController, WKNavigationDelegate, WKUIDele
             self?.bridge.send(message)
         }
         player.showVideo = { [weak self] shown in
-            self?.webView.underPageBackgroundColor = shown ? .clear : .black
             self?.videoView.isHidden = !shown
             self?.overlay.isHidden = !shown
             if !shown {
