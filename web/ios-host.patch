@@ -899,12 +899,37 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..91ebe0c3
+index 00000000..1197bd78
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,261 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
++
++/*
++ * Diagnostic (experimental builds): on the iPhone, any error the page hits is shown on screen, over
++ * everything, so a blank screen can be read off a screenshot. Remove before main.
++ */
++// This patch's page runs only in the iPhone app; installed at once, before the page marks its host.
++if (typeof window !== 'undefined') {
++  const show = (what: string) => {
++    let box = document.getElementById('ios-diagnostic');
++    if (!box) {
++      box = document.createElement('pre');
++      box.id = 'ios-diagnostic';
++      box.style.cssText =
++        'position:fixed;left:8px;right:8px;top:60px;z-index:2147483647;max-height:70vh;overflow:auto;' +
++        'margin:0;padding:12px;border-radius:12px;background:#300;color:#fff;font:12px/1.4 ui-monospace,monospace;' +
++        'white-space:pre-wrap;pointer-events:none';
++      document.body.appendChild(box);
++    }
++    box.textContent = (box.textContent ? box.textContent + '\n\n' : 'Diagnostic: page error\n\n') + what;
++  };
++  const text = (e: unknown) =>
++    e instanceof Error ? `${e.name}: ${e.message}\n${(e.stack ?? '').split('\n').slice(0, 8).join('\n')}` : String(e);
++  window.addEventListener('error', (e) => show(text(e.error ?? e.message)));
++  window.addEventListener('unhandledrejection', (e) => show(text(e.reason)));
++}
 +
 +/** The hero's slide on show, and its newest picture. */
 +const HERO_PICTURE =
