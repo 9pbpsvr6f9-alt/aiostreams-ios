@@ -2476,7 +2476,7 @@ index 2014fb0e..ff23473c 100644
 +msgid "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 +msgstr "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..75893768 100644
+index 96e99eee..dfa49b74 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2550,7 +2550,7 @@ index 96e99eee..75893768 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,12 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,38 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2562,4 +2562,30 @@ index 96e99eee..75893768 100644
 +  [data-ui='item-page'] [data-ui='item-body']:has([data-ui='item-collection-picture']) {
 +    padding-top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
 +  }
++}
++
++/* iOS: a row of pills (All, Movies, Shows) as Liquid Glass, like the tab bar: one clear capsule
++   that blurs what's behind it, plain white labels, and the chosen one a soft glass capsule. */
++html[data-host='ios-app'] [data-ui='pill-tabs'] {
++  background-color: rgb(14 14 18 / 0.12);
++  border: 1px solid rgb(255 255 255 / 0.14);
++  box-shadow:
++    inset 1px 1px 0.5px rgb(255 255 255 / 0.4),
++    inset -1px -1px 0.5px rgb(255 255 255 / 0.14),
++    0 8px 24px -12px rgb(0 0 0 / 0.6);
++  -webkit-backdrop-filter: blur(24px) saturate(1.8);
++  backdrop-filter: blur(24px) saturate(1.8);
++}
++html[data-host='ios-app'] [data-ui='pill-tab'] {
++  background: transparent !important;
++  border-color: transparent !important;
++  box-shadow: none !important;
++  color: rgb(255 255 255 / 0.85) !important;
++}
++html[data-host='ios-app'] [data-ui='pill-tab'][data-selected] {
++  background: rgb(255 255 255 / 0.18) !important;
++  color: #fff !important;
++  box-shadow:
++    inset 0 1px 0 rgb(255 255 255 / 0.3),
++    inset 0 0 0 0.5px rgb(255 255 255 / 0.12) !important;
 +}
