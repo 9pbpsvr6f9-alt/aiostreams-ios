@@ -46,6 +46,12 @@ class SourceTests(unittest.TestCase):
         self.assertEqual(feed['iconURL'], raw + 'altstore/icon.png')
         self.assertNotIn('latest/download', json.dumps(feed))
 
+    def test_notes_leave_out_the_source_bookkeeping_commit(self):
+        feed = source.generate('v0.2.10', self.folder, notes='Fix a thing\nFlareStore source: v0.2.9\n')
+        notes = feed['apps'][0]['versions'][0]['localizedDescription']
+        self.assertIn('Fix a thing', notes)
+        self.assertNotIn('FlareStore source', notes)
+
     def test_rebuild_deduplicates_history(self):
         old = source.generate('v0.2.10', self.folder)
         new = source.generate('v0.2.10', self.folder, old)

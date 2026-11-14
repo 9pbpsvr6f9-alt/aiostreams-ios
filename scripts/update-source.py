@@ -71,6 +71,9 @@ def clean_notes(notes):
     lines = []
     for line in (notes or '').splitlines():
         line = line.strip().lstrip('-•* ').strip()
+        # The release job's own commit of the source to main is bookkeeping, not a change.
+        if line.startswith('FlareStore source: '):
+            continue
         if line and '@' not in line and line not in lines:
             lines.append(line)
     return lines[:12]
