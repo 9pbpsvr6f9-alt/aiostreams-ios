@@ -23,14 +23,13 @@ jobs:
         id: pr
         with:
           branch: automation/upstream
-          title: Update pinned AIOStreams web code and review reference changes
+          title: Update pinned AIOStreams web code
           body-path: ${{ runner.temp }}/upstream-pr.md
-          commit-message: Update upstream web pin and reference marker
+          commit-message: Update upstream web pin
           author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           committer: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
           add-paths: |
             web/AIOSTREAMS_REF
-            web/TVOS_REFERENCE_REF
       - name: Build candidate explicitly
         if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
         env:

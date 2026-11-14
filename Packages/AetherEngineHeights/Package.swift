@@ -24,7 +24,6 @@ let package = Package(
     name: "AetherEngineFeatures",
     platforms: [
         .iOS(.v18),
-        .tvOS(.v18),
     ],
     products: [
         .library(name: "AetherEngineFeatures", targets: ["AetherEngineFeatures"]),

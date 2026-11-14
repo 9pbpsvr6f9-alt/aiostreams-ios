@@ -18,8 +18,7 @@ TINT = '#6152DF'
 HISTORY = 50
 NEWS = 10
 
-APPS = [('AIOStreams.ipa', 'io.github.aiostreams-ios.app', 'AIOStreams'),
-        ('AIOStreams-tvOS.ipa', 'io.github.aiostreams-ios.tv', 'AIOStreams for Apple TV')]
+APPS = [('AIOStreams.ipa', 'io.github.aiostreams-ios.app', 'AIOStreams')]
 
 DETAILS = {
     'io.github.aiostreams-ios.app': {
@@ -36,17 +35,6 @@ DETAILS = {
             'Unofficial and unsigned: your sideloading tool signs it when you install.'),
         'screenshots': ['iphone-home', 'iphone-show', 'iphone-movie', 'iphone-versions'],
         'ipad': ['ipad-home', 'ipad-show'],
-    },
-    'io.github.aiostreams-ios.tv': {
-        'subtitle': 'Your Jellyfin library on the big screen',
-        'description': (
-            'A native Apple TV app over your server, playing through AetherEngine with HDR10, '
-            'Dolby Vision and Atmos.\n\n'
-            '• Home with a rotating hero and Continue watching\n'
-            '• Show and movie pages, a version picker and synced settings\n\n'
-            'Unofficial and unsigned: your sideloading tool signs it when you install.'),
-        'screenshots': ['tv-home', 'tv-show', 'tv-movie', 'tv-versions', 'tv-player'],
-        'ipad': [],
     },
 }
 
@@ -94,15 +82,15 @@ def generate(tag, folder, previous=None, notes=None):
     what = '\n'.join(f'• {line}' for line in changes) if changes else 'Fixes and improvements.'
     source = {'name': 'AIOStreams',
               'identifier': 'io.github.9pbpsvr6f9-alt.aiostreams',
-              'subtitle': 'Jellyfin on iPhone, iPad and Apple TV',
-              'description': ('Native AIOStreams apps for iPhone, iPad and Apple TV, made for watching and '
-                              'playing through AetherEngine. Every update says what changed, and earlier '
-                              'versions stay installable from the version history. Your sideloading tool '
-                              'signs each app when you install it.'),
+              'subtitle': 'Jellyfin on iPhone and iPad',
+              'description': ('A native AIOStreams app for iPhone and iPad, made for watching and playing '
+                              'through AetherEngine. Every update says what changed, and earlier versions '
+                              'stay installable from the version history. Your sideloading tool signs the '
+                              'app when you install it.'),
               'website': f'https://github.com/{REPO}',
               'sourceURL': SOURCE_URL,
               'iconURL': f'{RAW}/altstore/icon.png',
-              'headerURL': shot('tv-home'),
+              'headerURL': shot('ipad-home'),
               'tintColor': TINT, 'featuredApps': [b for _, b, _ in APPS], 'apps': [], 'news': []}
     for filename, bundle, name in APPS:
         ipa = folder / filename
