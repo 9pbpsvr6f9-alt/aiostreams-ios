@@ -37,6 +37,8 @@ are for personal use. So this folder holds none of its code, only:
   the term in a glass pill once the keyboard closes, and no second list of suggestions. The background
   follows the highlighted result there, and pages with nothing to follow stay plain. Native `0004`
   marks the page while the keyboard is up, for this.
+  `0119` draws the art's fade into the background on one canvas, in a smooth ramp with no seams, and
+  puts it on as soon as the art appears.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
