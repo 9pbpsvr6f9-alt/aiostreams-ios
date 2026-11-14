@@ -1812,47 +1812,26 @@ index e3bb77f6..53ce70a9 100644
    };
  }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21e..daae179f 100644
+index 4daab21e..ecd2e9ea 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
-@@ -146,22 +146,61 @@ function useOnlyOne(stop: () => void) {
+@@ -146,22 +146,32 @@ function useOnlyOne(stop: () => void) {
    }, [latest]);
  }
  
 -/** Where `spot` was as the trailer began; any move ends it, as an app's video can't follow. */
 -function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
 -  const [box] = React.useState(() => boxOf(spot));
-+/** Where a spot is, and its clip, measured at the page's scroll `at`. */
-+interface SpotPlace {
-+  box: Box;
-+  clip: Box | null;
-+  /** The page's scroll as they were measured. */
-+  at: number;
-+  /** The page's scroll now. */
-+  scroll: number;
-+}
-+
 +/**
 + * Where `spot` was as the trailer began; any move ends it, as an app's video can't follow. With
-+ * `follows` (iOS: Home's hero), scrolling doesn't end it: the box stays as measured, with the scroll
-+ * it was measured at, and the app moves the video with the page's own scrolling, in step with it.
-+ * Only the spot changing size or place within the page measures it again.
++ * `follows` (iOS: Home's hero), the box follows the spot instead, so the app's video moves with the
++ * page as it scrolls, and only the spot leaving the page ends it.
 + */
-+function useSpotBox(
-+  spot: HTMLElement,
-+  within: HTMLElement | undefined,
-+  onMoved: () => void,
-+  follows = false
-+): SpotPlace {
-+  const [place, setPlace] = React.useState<SpotPlace>(() => ({
-+    box: boxOf(spot),
-+    clip: within ? boxOf(within) : null,
-+    at: window.scrollY,
-+    scroll: window.scrollY,
-+  }));
++function useSpotBox(spot: HTMLElement, onMoved: () => void, follows = false): Box {
++  const [box, setBox] = React.useState(() => boxOf(spot));
    const latest = useLatest(onMoved);
-+  const shown = React.useRef(place);
-+  shown.current = place;
++  const shown = React.useRef(box);
++  shown.current = box;
    React.useEffect(() => {
      let frame = 0;
      const check = () => {
@@ -1861,17 +1840,9 @@ index 4daab21e..daae179f 100644
 -        if (!spot.isConnected || moved(boxOf(spot), box)) latest.current();
 +        if (!spot.isConnected) return latest.current();
 +        const now = boxOf(spot);
-+        const was = shown.current;
-+        if (!follows) {
-+          if (moved(now, was.box)) latest.current();
-+          return;
-+        }
-+        const scroll = window.scrollY;
-+        // Where the measured box is now, the page having scrolled since.
-+        const expected = { ...was.box, y: was.box.y - (scroll - was.at) };
-+        if (moved(now, expected))
-+          setPlace({ box: now, clip: within ? boxOf(within) : null, at: scroll, scroll });
-+        else if (scroll !== was.scroll) setPlace({ ...was, scroll });
++        if (!moved(now, shown.current)) return;
++        if (follows) setBox(now);
++        else latest.current();
        });
      };
      // A glide eases a scroll's jump back, so the spot can still be drawn in place.
@@ -1882,18 +1853,16 @@ index 4daab21e..daae179f 100644
        else check();
      };
      const observer = new ResizeObserver(check);
-@@ -177,8 +216,8 @@ function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
+@@ -177,7 +187,7 @@ function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
        document.removeEventListener('scroll', scroll, { capture: true });
        removeEventListener('resize', check);
      };
 -  }, [spot, box, latest]);
--  return box;
-+  }, [spot, within, latest, follows]);
-+  return place;
++  }, [spot, latest, follows]);
+   return box;
  }
  
- const MASK = ['mask-image', '-webkit-mask-image'];
-@@ -198,6 +237,32 @@ function useVideoHole(box: Box | null, radius: number) {
+@@ -198,6 +208,32 @@ function useVideoHole(box: Box | null, radius: number) {
      const y = box.y - view.top;
      const { width: w, height: h } = box;
      const r = Math.min(radius, w / 2, h / 2);
@@ -1926,7 +1895,7 @@ index 4daab21e..daae179f 100644
      /* eslint-disable lingui/no-unlocalized-strings -- SVG path data */
      const arc = (dx: number, dy: number) => `A${r} ${r} 0 0 1 ${dx} ${dy}`;
      const path =
-@@ -208,7 +273,6 @@ function useVideoHole(box: Box | null, radius: number) {
+@@ -208,7 +244,6 @@ function useVideoHole(box: Box | null, radius: number) {
      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${view.width}" height="${view.height}"><path fill-rule="evenodd" d="${path}"/></svg>`;
      const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
      for (const name of MASK) background.style.setProperty(name, mask);
@@ -1934,7 +1903,7 @@ index 4daab21e..daae179f 100644
      html.setAttribute('data-video-hole', '');
      return () => {
        for (const name of MASK) background.style.removeProperty(name);
-@@ -249,6 +313,8 @@ export interface TrailerPreviewProps {
+@@ -249,6 +284,8 @@ export interface TrailerPreviewProps {
    full?: boolean;
    /** Whether the picture shows, so what covers it can fade. */
    onShown?: (shown: boolean, trailer: Trailer) => void;
@@ -1943,7 +1912,7 @@ index 4daab21e..daae179f 100644
    onEnded(end: TrailerEnd): void;
    onExitFull?: () => void;
  }
-@@ -261,7 +327,8 @@ export interface TrailerPreviewProps {
+@@ -261,7 +298,8 @@ export interface TrailerPreviewProps {
  export function TrailerPreview(props: TrailerPreviewProps) {
    const { item, spot, full = false } = props;
    const details = useItem(item.Id ?? '');
@@ -1953,36 +1922,29 @@ index 4daab21e..daae179f 100644
    const trailers = React.useMemo(
      () => (known ? trailersOf(known) : []),
      [known]
-@@ -273,15 +340,25 @@ export function TrailerPreview(props: TrailerPreviewProps) {
+@@ -273,9 +311,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
    const muted = !full && !sound;
    const ended = useLatest(props.onEnded);
    useOnlyOne(() => ended.current('stopped'));
 -  const box = useSpotBox(spot, () => !full && ended.current('stopped'));
 -  const [clip] = React.useState(() =>
 -    props.within ? boxOf(props.within) : null
-+  const follows = !!props.follows;
-+  const place = useSpotBox(
++  const box = useSpotBox(
 +    spot,
-+    props.within,
 +    () => !full && ended.current('stopped'),
-+    follows
++    !!props.follows
++  );
++  const within = props.within;
++  const follows = !!props.follows;
++  const [firstClip] = React.useState(() => (within ? boxOf(within) : null));
++  // Following, the clip moves with the spot; else it holds where it was.
++  const clip = React.useMemo(
++    () => (follows && within ? boxOf(within) : firstClip),
++    [follows, within, firstClip, box]
    );
-+  const { box, clip, at: measuredAt } = place;
    const frame = React.useMemo(() => coverOf(box), [box]);
    const hole = React.useMemo(
-     () => (clip ? overlap(box, clip) : box),
-     [box, clip]
-   );
-+  // Following, the page's own hole moves with its scroll; the app moves the video itself.
-+  const shift = follows ? place.scroll - measuredAt : 0;
-+  const pageHole = React.useMemo(
-+    () => (shift ? { ...hole, y: hole.y - shift } : hole),
-+    [hole, shift]
-+  );
-   const next = React.useCallback(() => setAt((i) => i + 1), []);
- 
-   const none =
-@@ -409,6 +486,7 @@ function PlayedPreview({
+@@ -409,6 +456,7 @@ function PlayedPreview({
      fit: full ? undefined : 'crop',
      muted,
      thumbnails: full,
@@ -1990,7 +1952,7 @@ index 4daab21e..daae179f 100644
    });
    const { started, error } = player.state;
    const flowing = usePlayhead(
-@@ -428,6 +506,7 @@ function PlayedPreview({
+@@ -428,6 +476,7 @@ function PlayedPreview({
        full
          ? null
          : {
@@ -1998,7 +1960,7 @@ index 4daab21e..daae179f 100644
              x: frame.x - 1,
              y: frame.y - 1,
              width: frame.width + 2,
-@@ -436,23 +515,24 @@ function PlayedPreview({
+@@ -436,19 +485,19 @@ function PlayedPreview({
              // Over the page only once it plays, as it shows black until then.
              hidden: !over || !shown,
              animate: false,
@@ -2007,10 +1969,9 @@ index 4daab21e..daae179f 100644
 +            radius,
 +            bottomRadius: radius,
              subtitles: false,
-+            ...(follows && { scrollY: measuredAt }),
            },
 -    [full, frame, over, shown, radius]
-+    [full, frame, hole, over, shown, radius, follows, measuredAt]
++    [full, frame, hole, over, shown, radius]
    );
    const setFrame = useLatest(player.setFrame);
    React.useEffect(() => {
@@ -2025,11 +1986,6 @@ index 4daab21e..daae179f 100644
      },
      [host, setFrame]
    );
--  useVideoHole(host && shown && !full && !over ? hole : null, radius);
-+  useVideoHole(host && shown && !full && !over ? pageHole : null, radius);
-   usePlayerPage(full);
-   React.useEffect(() => {
-     if (!full) return;
 diff --git a/packages/web/src/lib/downloads/index.ts b/packages/web/src/lib/downloads/index.ts
 index 000b3b22..189d966d 100644
 --- a/packages/web/src/lib/downloads/index.ts
@@ -2613,7 +2569,7 @@ index fffeacef..e4d8b8cd 100644
 +  return true;
 +}
 diff --git a/packages/web/src/lib/hosts/shell/player.ts b/packages/web/src/lib/hosts/shell/player.ts
-index 5112efd0..59548e75 100644
+index 5112efd0..30c886e7 100644
 --- a/packages/web/src/lib/hosts/shell/player.ts
 +++ b/packages/web/src/lib/hosts/shell/player.ts
 @@ -15,6 +15,7 @@ import {
@@ -2624,11 +2580,10 @@ index 5112efd0..59548e75 100644
  import type { Span } from '@/lib/subtitles/align';
  import {
    ownTrackLabel,
-@@ -97,6 +98,11 @@ function unzoomed(frame: VideoFrame): VideoFrame {
+@@ -97,6 +98,10 @@ function unzoomed(frame: VideoFrame): VideoFrame {
      height: frame.height * zoom,
      radius: frame.radius * zoom,
      bottomRadius: frame.bottomRadius * zoom,
-+    ...(frame.scrollY !== undefined && { scrollY: frame.scrollY * zoom }),
 +    ...(frame.clip && { clip: {
 +      x: frame.clip.x * zoom, y: frame.clip.y * zoom,
 +      width: frame.clip.width * zoom, height: frame.clip.height * zoom,
@@ -2636,7 +2591,7 @@ index 5112efd0..59548e75 100644
    };
  }
  
-@@ -127,6 +133,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -127,6 +132,8 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
        headers: played.headers,
        startMs: played.startMs,
        live: !!played.source.IsInfiniteStream,
@@ -2645,7 +2600,7 @@ index 5112efd0..59548e75 100644
        append,
        audioLanguages: audioCodes(prefs, played.source),
        subtitleLanguages: subtitleLanguages(prefs),
-@@ -343,11 +351,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -343,11 +350,14 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
      setFrame:
        external || !shell.miniPlayer
          ? undefined
@@ -2662,7 +2617,7 @@ index 5112efd0..59548e75 100644
      // The user's own player keeps its own look.
      setStyle({ subtitleStyle, fit, height }) {
        if (external || !subtitleStyle) return;
-@@ -360,8 +371,20 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -360,8 +370,20 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
      toggleFullscreen: external
        ? () => send('player-set', { fullscreen: !fullscreen })
        : () => shell.send({ type: 'fullscreen' }),
@@ -2684,7 +2639,7 @@ index 5112efd0..59548e75 100644
      ownText(id) {
        const track = tracks.find((t) => t.id === id && t.external);
        return (track?.title && added.get(track.title)) || null;
-@@ -451,7 +474,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
+@@ -451,7 +473,15 @@ export const appEngine: EngineFactory = (emit, { launched }) => {
            if (next) load(next, true);
            else send('player-unqueue');
          }
@@ -2735,7 +2690,7 @@ index 29cb2aef..93e22672 100644
    item: BaseItemDto;
    source: SourceInfo;
 diff --git a/packages/web/src/lib/playback/engine.ts b/packages/web/src/lib/playback/engine.ts
-index 7064fc81..13b0bdea 100644
+index 7064fc81..df4ed7f7 100644
 --- a/packages/web/src/lib/playback/engine.ts
 +++ b/packages/web/src/lib/playback/engine.ts
 @@ -34,6 +34,8 @@ export interface EngineTrack extends Track {
@@ -2756,19 +2711,7 @@ index 7064fc81..13b0bdea 100644
    x: number;
    y: number;
    width: number;
-@@ -133,6 +137,11 @@ export interface VideoFrame {
-   bottomRadius: number;
-   /** Subtitles show in the mini player. */
-   subtitles: boolean;
-+  /**
-+   * iOS: the page's scroll when the box was measured. The app then moves the video with the page's
-+   * own scrolling, in step with it, rather than wait for a new frame from the page.
-+   */
-+  scrollY?: number;
- }
- 
- /** A stretch the page offers to skip; `auto` when it skips it unasked. */
-@@ -161,7 +170,7 @@ export interface PlayerEngine {
+@@ -161,7 +165,7 @@ export interface PlayerEngine {
    /** The page's controls showing over the video, or hidden again. */
    showControls?(shown: boolean): void;
    /** Draws the video in `frame` over the page, or back behind it filling the window. */

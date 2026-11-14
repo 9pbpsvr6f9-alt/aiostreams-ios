@@ -1,5 +1,4 @@
 import UIKit
-import WebKit
 
 /**
  * The video and its subtitles, which the page can draw small: its mini player docked in a page's
@@ -15,13 +14,8 @@ final class VideoStage {
     let view = UIView()
     /// The page, which the hole is cut through.
     weak var web: UIView? {
-        didSet {
-            watchScroll()
-            refresh(animated: false)
-        }
+        didSet { refresh(animated: false) }
     }
-    /// The web view's scrolling, which a frame measured at a scroll (`VideoFrame.scrollY`) follows.
-    private var scrollWatch: NSKeyValueObservation?
 
     /// Told whether the page must be transparent (`VideoPresentation.needsTransparentPage`).
     var needsTransparentPage: (Bool) -> Void = { _ in }
@@ -79,7 +73,7 @@ final class VideoStage {
         let shown = frame.flatMap { $0.visibleRect.isEmpty || $0.visibleRect.isNull ? nil : $0 }
         let target: CGRect
         if let shown, let web {
-            target = container.convert(shifted(shown.visibleRect, for: shown), from: web)
+            target = container.convert(shown.visibleRect, from: web)
         } else {
             target = container.bounds
         }
@@ -112,31 +106,6 @@ final class VideoStage {
         fullWindowChanged(presentation.isFullWindow)
     }
 
-    /// A frame measured at a scroll, moved by how far the web view has scrolled since.
-    private func shifted(_ rect: CGRect, for frame: VideoFrame) -> CGRect {
-        guard let measured = frame.scrollY, let scroll = (web as? WKWebView)?.scrollView else { return rect }
-        return rect.offsetBy(dx: 0, dy: measured - scroll.contentOffset.y)
-    }
-
-    /// Follows the web view's scrolling, so a trailer the page placed once (iOS: Home's hero) moves
-    /// with the page in the same frame, where waiting for the page's next frame shook it.
-    private func watchScroll() {
-        scrollWatch = (web as? WKWebView)?.scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
-            MainActor.assumeIsolated { self?.followScroll() }
-        }
-    }
-
-    private func followScroll() {
-        guard animator == nil, presentation.visible, let shown = frame, shown.scrollY != nil,
-              !shown.visibleRect.isEmpty, !shown.visibleRect.isNull,
-              let container = view.superview, let web else { return }
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        view.frame = container.convert(shifted(shown.visibleRect, for: shown), from: web)
-        CATransaction.commit()
-        if presentation.cutsMask { cutHole(shown, animated: false) }
-    }
-
     /// The corners the radius applies to: the bar's video has a bottom radius of its own, a docked
     /// preview's is the same all round.
     private static func corners(_ frame: VideoFrame?) -> CACornerMask {
@@ -160,7 +129,7 @@ final class VideoStage {
         if frame.bottomRadius > 0 { corners.formUnion([.bottomLeft, .bottomRight]) }
         let radius = max(frame.radius, frame.bottomRadius)
         path.append(UIBezierPath(
-            roundedRect: shifted(frame.visibleRect, for: frame),
+            roundedRect: frame.visibleRect,
             byRoundingCorners: corners,
             cornerRadii: CGSize(width: radius, height: radius)
         ))

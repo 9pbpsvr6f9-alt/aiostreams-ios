@@ -15,10 +15,6 @@ invalid = frame; invalid["width"] = -1
 precondition(VideoFrame.from(["frame": invalid, "pageWidth": 800], webWidth: 400) == nil)
 invalid = frame; invalid["x"] = true
 precondition(VideoFrame.from(["frame": invalid, "pageWidth": 800], webWidth: 400) == nil)
-// A frame measured at a scroll carries it, in points; one without it has none.
-var scrolled = frame; scrolled["scrollY"] = 300
-precondition(VideoFrame.from(["frame": scrolled, "pageWidth": 800], webWidth: 400)!.scrollY == 150)
-precondition(placed.scrollY == nil)
 var hidden = frame; hidden["hidden"] = true
 precondition(VideoFrame.from(["frame": hidden, "pageWidth": 800], webWidth: 400)!.hidden)
 print("Video frame placement tests passed")

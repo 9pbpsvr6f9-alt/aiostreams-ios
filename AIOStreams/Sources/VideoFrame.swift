@@ -11,9 +11,6 @@ struct VideoFrame: Equatable {
     let radius: CGFloat
     let bottomRadius: CGFloat
     let subtitles: Bool
-    /// The page's scroll, in points, when the box was measured: the stage then moves the video with
-    /// the web view's own scrolling, in step with it, rather than waiting for the page's next frame.
-    var scrollY: CGFloat? = nil
 
     /// The cover picture can be much bigger than its poster. Only this part may be drawn.
     var visibleRect: CGRect { clip.map { rect.intersection($0) } ?? rect }
@@ -47,8 +44,7 @@ struct VideoFrame: Equatable {
             animate: frame["animate"] as? Bool ?? false,
             radius: max(0, points(number(frame["radius"]) ?? 0)),
             bottomRadius: max(0, points(number(frame["bottomRadius"]) ?? 0)),
-            subtitles: frame["subtitles"] as? Bool ?? true,
-            scrollY: number(frame["scrollY"]).map(points)
+            subtitles: frame["subtitles"] as? Bool ?? true
         )
     }
 }
