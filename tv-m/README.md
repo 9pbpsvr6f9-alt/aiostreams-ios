@@ -26,6 +26,8 @@ are for personal use. So this folder holds none of its code, only:
   you're on), calms the glass, thins the focus ring, fits a row title's pill in its own box, and
   shortens the hero so the first row peeks in. `0003` also fades the search keyboard's frost out above
   the results.
+  `0114` takes title, collection and follow-hero backdrops to the left edge too, and fades a title's
+  backdrop into the frosted background as Home's hero does.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
