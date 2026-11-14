@@ -15,7 +15,7 @@ index 1132cc26..2a893a55 100644
              requestAnimationFrame(function () {
                app.send({ type: 'splash-shown' });
 diff --git a/packages/web/src/app/item/_components/actions.tsx b/packages/web/src/app/item/_components/actions.tsx
-index 2ba0f44..b17357e 100644
+index 2ba0f442..b17357e0 100644
 --- a/packages/web/src/app/item/_components/actions.tsx
 +++ b/packages/web/src/app/item/_components/actions.tsx
 @@ -1,6 +1,7 @@
@@ -38,19 +38,19 @@ index 2ba0f44..b17357e 100644
  
  export function Captioned({
 diff --git a/packages/web/src/app/item/_components/backdrop.tsx b/packages/web/src/app/item/_components/backdrop.tsx
-index dba75cf..6ea3092 100644
+index dba75cfb..6ea3092b 100644
 --- a/packages/web/src/app/item/_components/backdrop.tsx
 +++ b/packages/web/src/app/item/_components/backdrop.tsx
 @@ -3,6 +3,9 @@ import { cn } from '@aiostreams/ui/core/styling';
  import { BackdropFrame } from '@/components/media/hero';
  import { CachedImage } from '@/components/cached-image';
-
+ 
 +/** Shared by the artwork and the iOS inline trailer, so previews never fill the page. */
 +export const ITEM_BACKDROP_BOX = 'pointer-events-none absolute inset-x-0 top-[calc(var(--top-bar,0px)*-1)] h-[calc(55vh+var(--top-bar,0px))] overflow-hidden transition-opacity duration-500 [mask-image:linear-gradient(to_top,transparent,black_2px)] landscape:h-[calc(85vh+var(--top-bar,0px))] lg:h-[calc(85vh+var(--top-bar,0px))]';
 +
  /** Art that arrives within this was never seen missing, so it just appears. */
  const UNSEEN_MS = 250;
-
+ 
 @@ -79,7 +82,7 @@ export function Backdrop({
        data-ui="item-backdrop"
        // Fades out at its edge, where some GPUs draw the art's last row past the shade.
@@ -60,8 +60,129 @@ index dba75cf..6ea3092 100644
          trailer && 'opacity-0'
        )}
      >
+diff --git a/packages/web/src/app/item/_components/header.tsx b/packages/web/src/app/item/_components/header.tsx
+index 97578415..5805f0a3 100644
+--- a/packages/web/src/app/item/_components/header.tsx
++++ b/packages/web/src/app/item/_components/header.tsx
+@@ -146,6 +146,21 @@ export function Header({
+   const nextUpPending = item.Type === 'Series' && nextUp.isPending;
+   const logo = logoUrl(client, item, { maxWidth: 416 });
+   const [logoFailed, setLogoFailed] = React.useState(false);
++  // iOS: a collection shows its picture in place of its name on a phone.
++  const collectionPictures = React.useMemo(
++    () =>
++      item.Type === 'BoxSet'
++        ? [
++            ...landscapeUrls(client, item, { maxWidth: 720 }),
++            ...[posterUrl(client, item, { maxWidth: 480 })].filter(
++              (url): url is string => !!url
++            ),
++          ]
++        : [],
++    [client, item]
++  );
++  const [pictureGone, setPictureGone] = React.useState(false);
++  const pictured = collectionPictures.length > 0 && !pictureGone;
+   const poster = posterUrl(client, item, { maxWidth: 320 });
+   const links = React.useMemo(() => linksFor(item, season), [item, season]);
+   const overviewImage = React.useMemo(
+@@ -225,12 +240,24 @@ export function Header({
+               className="max-h-24 max-w-[min(26rem,85%)] object-contain object-left max-sm:mx-auto max-sm:object-center lg:max-h-32"
+             />
+           ) : (
+-            <h1
+-              data-ui="item-title"
+-              className="text-3xl font-bold leading-tight max-sm:text-center sm:text-4xl lg:text-5xl"
+-            >
+-              {item.Name}
+-            </h1>
++            <>
++              {pictured && (
++                <CollectionPicture
++                  sources={collectionPictures}
++                  onGone={() => setPictureGone(true)}
++                />
++              )}
++              <h1
++                data-ui="item-title"
++                className={cn(
++                  'text-3xl font-bold leading-tight max-sm:text-center sm:text-4xl lg:text-5xl',
++                  // Still read out, though the picture says it on screen.
++                  pictured && 'max-md:sr-only'
++                )}
++              >
++                {item.Name}
++              </h1>
++            </>
+           )}
+           {item.Taglines?.[0] && (
+             <p
+@@ -447,3 +474,63 @@ function NextAiring({ series }: { series: BaseItemDto }) {
+     </p>
+   );
+ }
++
++/** How far a picture's shape may stray from the frame's 16:9 before it sits inside it instead of filling it. */
++const FRAME_SLACK = 0.12;
++/** Narrower than this, a picture would blur stretched over the frame, so it sits inside it. */
++const FRAME_MIN_WIDTH = 360;
++
++/**
++ * iOS: a collection's picture (its wide card art, or else its poster) in place of its name on a phone,
++ * in the same 16:9 frame for every collection. A picture that doesn't fill the frame, being another
++ * shape or too small, sits whole in the middle over a blurred copy of itself. With no picture that
++ * loads, it goes, and the name shows.
++ */
++function CollectionPicture({
++  sources,
++  onGone,
++}: {
++  sources: string[];
++  onGone(): void;
++}) {
++  const [attempt, setAttempt] = React.useState(0);
++  const [fills, setFills] = React.useState(true);
++  const src = sources[attempt];
++  React.useEffect(() => {
++    if (!src) onGone();
++  }, [src, onGone]);
++  if (!src) return null;
++  return (
++    <div
++      data-ui="item-collection-picture"
++      aria-hidden
++      className="relative mx-auto aspect-video w-[80%] max-w-sm overflow-hidden rounded-2xl shadow-2xl ring-1 ring-white/10 md:hidden"
++    >
++      {!fills && (
++        <CachedImage
++          src={src}
++          alt=""
++          className="absolute inset-0 h-full w-full scale-125 object-cover opacity-80 blur-2xl saturate-150"
++        />
++      )}
++      <CachedImage
++        key={src}
++        src={src}
++        alt=""
++        onLoad={(e) => {
++          const img = e.currentTarget;
++          const shape = img.naturalWidth / Math.max(1, img.naturalHeight);
++          setFills(
++            Math.abs(shape - 16 / 9) <= FRAME_SLACK &&
++              img.naturalWidth >= FRAME_MIN_WIDTH
++          );
++        }}
++        onError={() => setAttempt((a) => a + 1)}
++        className={cn(
++          'relative h-full w-full',
++          fills ? 'object-cover' : 'object-contain'
++        )}
++      />
++    </div>
++  );
++}
 diff --git a/packages/web/src/app/item/_components/trailer.tsx b/packages/web/src/app/item/_components/trailer.tsx
-index c239d4d..88c7e1b 100644
+index c239d4df..88c7e1b0 100644
 --- a/packages/web/src/app/item/_components/trailer.tsx
 +++ b/packages/web/src/app/item/_components/trailer.tsx
 @@ -5,8 +5,10 @@ import { createPortal } from 'react-dom';
@@ -218,7 +339,7 @@ index 95372614..fe3bb8a3 100644
        <div data-page="player" className="fixed inset-0">
          {/* Android draws its own controls over the small window. */}
 diff --git a/packages/web/src/app/settings/about.tsx b/packages/web/src/app/settings/about.tsx
-index e41938f..d8ffaba 100644
+index e41938f9..d8ffaba2 100644
 --- a/packages/web/src/app/settings/about.tsx
 +++ b/packages/web/src/app/settings/about.tsx
 @@ -59,7 +59,11 @@ export function AboutSection() {
@@ -235,7 +356,7 @@ index e41938f..d8ffaba 100644
            ],
            ...(shell.player && !shell.mpv
 diff --git a/packages/web/src/app/settings/downloads.tsx b/packages/web/src/app/settings/downloads.tsx
-index d2ad407..1890854 100644
+index d2ad407a..1890854f 100644
 --- a/packages/web/src/app/settings/downloads.tsx
 +++ b/packages/web/src/app/settings/downloads.tsx
 @@ -9,8 +9,16 @@ import {
@@ -343,7 +464,7 @@ index d2ad407..1890854 100644
    );
  }
 diff --git a/packages/web/src/app/settings/interface.tsx b/packages/web/src/app/settings/interface.tsx
-index 3ca1664..24dc4ae 100644
+index 3ca16645..24dc4ae5 100644
 --- a/packages/web/src/app/settings/interface.tsx
 +++ b/packages/web/src/app/settings/interface.tsx
 @@ -307,6 +307,12 @@ export function InterfaceSection() {
@@ -488,7 +609,7 @@ index 2e7bd378..70e35d15 100644
          name="versions"
          title={t`Versions`}
 diff --git a/packages/web/src/app/settings/subtitles.tsx b/packages/web/src/app/settings/subtitles.tsx
-index 968337d..d6f175e 100644
+index 968337d5..d6f175eb 100644
 --- a/packages/web/src/app/settings/subtitles.tsx
 +++ b/packages/web/src/app/settings/subtitles.tsx
 @@ -1,3 +1,4 @@
@@ -510,7 +631,7 @@ index 968337d..d6f175e 100644
            onValueChange={setOverrideStyled}
          />
 diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
-index 51dba34..beaef18 100644
+index 51dba340..beaef181 100644
 --- a/packages/web/src/components/media/hero.tsx
 +++ b/packages/web/src/components/media/hero.tsx
 @@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
@@ -528,7 +649,7 @@ index 51dba34..beaef18 100644
 -  return { box, shown: !!playing && shown };
 +  return { box, shown: !!playing && shown, active: !!playing };
  }
-
+ 
  /**
 @@ -617,7 +618,9 @@ function HeroTrailer({
        ref={setSpot}
@@ -544,7 +665,7 @@ index 51dba34..beaef18 100644
 @@ -686,12 +689,20 @@ export function Hero({
      if (el && swipeable) return claimSideSwipes(el);
    }, [loading, swipeable]);
-
+ 
 +  const ios = appBridge()?.platform === 'ios';
 +  const trailer = useHeroTrailer(
 +    (ios ? shown && inSight && !dragging : chosen && (focused || paused))
@@ -574,12 +695,12 @@ index 51dba34..beaef18 100644
 @@ -742,10 +755,6 @@ export function Hero({
      if (to && el) focusOn(el);
    }, [index]);
-
+ 
 -  const trailer = useHeroTrailer(
 -    chosen && (focused || paused) ? (featured[index] ?? null) : null,
 -    false
 -  );
-
+ 
    if (loading) return <HeroSkeleton />;
    if (!featured[index]) return null;
 @@ -1032,7 +1041,7 @@ export function FollowHero({
@@ -588,11 +709,11 @@ index 51dba34..beaef18 100644
    const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
 -  const trailer = useHeroTrailer(resting, true);
 +  const trailer = useHeroTrailer(appBridge()?.platform === 'ios' ? item : resting, true);
-
+ 
    return (
      <FollowContext.Provider value={follow}>
 diff --git a/packages/web/src/components/media/item-menu.tsx b/packages/web/src/components/media/item-menu.tsx
-index f7db07b..4a8139e 100644
+index f7db07b6..4a8139e5 100644
 --- a/packages/web/src/components/media/item-menu.tsx
 +++ b/packages/web/src/components/media/item-menu.tsx
 @@ -54,6 +54,7 @@ import { openAddToPlaylist } from '@/features/playlists/playlists';
@@ -612,7 +733,7 @@ index f7db07b..4a8139e 100644
        own(card);
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/layout.tsx b/packages/web/src/components/shell/layout.tsx
-index f9fd24f..5bbd825 100644
+index f9fd24f6..5bbd825f 100644
 --- a/packages/web/src/components/shell/layout.tsx
 +++ b/packages/web/src/components/shell/layout.tsx
 @@ -39,6 +39,7 @@ import { shellHost } from '@/lib/hosts/shell';
@@ -645,7 +766,7 @@ index f9fd24f..5bbd825 100644
  const FLOAT_GUTTER = {
    touch: {
 diff --git a/packages/web/src/features/downloads/download-button.tsx b/packages/web/src/features/downloads/download-button.tsx
-index ebaa516..a9faa60 100644
+index ebaa516c..a9faa606 100644
 --- a/packages/web/src/features/downloads/download-button.tsx
 +++ b/packages/web/src/features/downloads/download-button.tsx
 @@ -1,7 +1,20 @@
@@ -773,7 +894,7 @@ index ebaa516..a9faa60 100644
      <Tooltip trigger={<span className="inline-flex">{menu}</span>}>
        <Trans>Download</Trans>
 diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
-index 87e0d0f..a85c853 100644
+index 87e0d0f5..a85c8531 100644
 --- a/packages/web/src/features/player/controls.tsx
 +++ b/packages/web/src/features/player/controls.tsx
 @@ -13,11 +13,13 @@ import {
@@ -920,7 +1041,7 @@ index 87e0d0f..a85c853 100644
      </div>
    );
 diff --git a/packages/web/src/features/player/feedback.tsx b/packages/web/src/features/player/feedback.tsx
-index 320a9ca..3d978f8 100644
+index 320a9ca4..3d978f83 100644
 --- a/packages/web/src/features/player/feedback.tsx
 +++ b/packages/web/src/features/player/feedback.tsx
 @@ -1,14 +1,26 @@
@@ -930,7 +1051,7 @@ index 320a9ca..3d978f8 100644
  import { PiPauseDuotone, PiPlayDuotone } from 'react-icons/pi';
  import { LuFastForward, LuRotateCcw, LuRotateCw } from 'react-icons/lu';
  import { clock } from '@/lib/format';
-
+ 
 -export function Notice({ text }: { text: string }) {
 +export function Notice({
 +  text,
@@ -952,7 +1073,7 @@ index 320a9ca..3d978f8 100644
        <span className="rounded-full bg-black/70 px-4 py-1.5 text-center text-sm font-medium tabular-nums">
          {text}
 @@ -19,17 +31,19 @@ export function Notice({ text }: { text: string }) {
-
+ 
  export function useNotice(): [
    React.ReactNode,
 -  (text: string, ms?: number) => void,
@@ -972,10 +1093,10 @@ index 320a9ca..3d978f8 100644
 -  return [text && <Notice text={text} />, show];
 +  return [text && <Notice text={text} nearTop={nearTop} />, show];
  }
-
+ 
  export function useToggleFlash(): [React.ReactNode, (paused: boolean) => void] {
 diff --git a/packages/web/src/features/player/gestures.ts b/packages/web/src/features/player/gestures.ts
-index 07a04fb..1c44ca9 100644
+index 07a04fbe..1c44ca92 100644
 --- a/packages/web/src/features/player/gestures.ts
 +++ b/packages/web/src/features/player/gestures.ts
 @@ -1,5 +1,7 @@
@@ -1086,7 +1207,7 @@ index 07a04fb..1c44ca9 100644
    };
  }
 diff --git a/packages/web/src/features/player/mini-player.tsx b/packages/web/src/features/player/mini-player.tsx
-index 15e1133..43b852f 100644
+index 15e11334..43b852fd 100644
 --- a/packages/web/src/features/player/mini-player.tsx
 +++ b/packages/web/src/features/player/mini-player.tsx
 @@ -362,9 +362,14 @@ function CornerPlayer({ item, player, error, onVideoPlace }: MiniPlayerProps) {
@@ -1104,7 +1225,7 @@ index 15e1133..43b852f 100644
 +    );
 +  }, [framed, appDrag, frame, pageDrags, drag]);
    React.useEffect(() => () => latestSetFrame.current?.(null), []);
-
+ 
    const moveTo = React.useCallback(
 @@ -434,7 +439,7 @@ function CornerPlayer({ item, player, error, onVideoPlace }: MiniPlayerProps) {
      if (!start.moved && Math.hypot(dx, dy) < SLOP) return;
@@ -1123,9 +1244,9 @@ index 15e1133..43b852f 100644
 +    if (!setFrame || pageDrags)
        moveTo(nearestCorner(layout.box.x + dx, layout.box.y + dy, layout.box));
    };
-
+ 
 diff --git a/packages/web/src/features/player/next-episode.tsx b/packages/web/src/features/player/next-episode.tsx
-index 3e09df3..a426b2b 100644
+index 3e09df3c..a426b2b8 100644
 --- a/packages/web/src/features/player/next-episode.tsx
 +++ b/packages/web/src/features/player/next-episode.tsx
 @@ -5,6 +5,7 @@ import { toast } from 'sonner';
@@ -1149,7 +1270,7 @@ index 3e09df3..a426b2b 100644
      if (!queues) return;
      if (!canQueue || !next) return void queueNext.current?.(null);
 diff --git a/packages/web/src/features/player/options.tsx b/packages/web/src/features/player/options.tsx
-index 8cc128d..1207b12 100644
+index 8cc128d0..1207b12c 100644
 --- a/packages/web/src/features/player/options.tsx
 +++ b/packages/web/src/features/player/options.tsx
 @@ -1,3 +1,4 @@
@@ -1184,7 +1305,7 @@ index 8cc128d..1207b12 100644
            action={
              player.subtitleFiles && {
 diff --git a/packages/web/src/features/player/segments.ts b/packages/web/src/features/player/segments.ts
-index e3bb77f..53ce70a 100644
+index e3bb77f6..53ce70a9 100644
 --- a/packages/web/src/features/player/segments.ts
 +++ b/packages/web/src/features/player/segments.ts
 @@ -3,6 +3,7 @@ import React from 'react';
@@ -1288,7 +1409,7 @@ index e3bb77f..53ce70a 100644
    };
  }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21..37a3643 100644
+index 4daab21e..37a36435 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
 @@ -261,7 +261,8 @@ export interface TrailerPreviewProps {
@@ -1344,7 +1465,7 @@ index 4daab21..37a3643 100644
      [host, setFrame]
    );
 diff --git a/packages/web/src/lib/downloads/index.ts b/packages/web/src/lib/downloads/index.ts
-index 000b3b2..189d966 100644
+index 000b3b22..189d966d 100644
 --- a/packages/web/src/lib/downloads/index.ts
 +++ b/packages/web/src/lib/downloads/index.ts
 @@ -216,6 +216,40 @@ export function useAddDownloads() {
@@ -1390,7 +1511,7 @@ index 000b3b2..189d966 100644
  }
 diff --git a/packages/web/src/lib/downloads/smart.ts b/packages/web/src/lib/downloads/smart.ts
 new file mode 100644
-index 0000000..7d46a80
+index 00000000..7d46a80f
 --- /dev/null
 +++ b/packages/web/src/lib/downloads/smart.ts
 @@ -0,0 +1,281 @@
@@ -1676,7 +1797,7 @@ index 0000000..7d46a80
 +  }, [host, paused, tick, client, user.Id]);
 +}
 diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
-index f7a92d4..77125c6 100644
+index f7a92d49..77125c6e 100644
 --- a/packages/web/src/lib/hosts/index.ts
 +++ b/packages/web/src/lib/hosts/index.ts
 @@ -87,7 +87,9 @@ export interface Host {
@@ -1716,7 +1837,7 @@ index 39f60cb8..72c75529 100644
    /** The Android app on a TV. */
    tv?: boolean;
 diff --git a/packages/web/src/lib/hosts/shell/index.ts b/packages/web/src/lib/hosts/shell/index.ts
-index 0c2fe1b..6de9d17 100644
+index 0c2fe1b2..6de9d177 100644
 --- a/packages/web/src/lib/hosts/shell/index.ts
 +++ b/packages/web/src/lib/hosts/shell/index.ts
 @@ -10,6 +10,7 @@ import type { Host } from '..';
@@ -1726,7 +1847,7 @@ index 0c2fe1b..6de9d17 100644
 +import { iosHost, setupIos } from './ios';
  import { playerSettings } from './player';
  import { onUpscalingChange } from '@/lib/playback/upscaling';
-
+ 
 @@ -85,7 +86,11 @@ export function ShellSetup() {
      const unsubscribeSettings = onSettingsChange(apply);
      const unsubscribeUpscaling = onUpscalingChange(apply);
@@ -1750,7 +1871,7 @@ index 0c2fe1b..6de9d17 100644
  }
 diff --git a/packages/web/src/lib/hosts/shell/ios-feedback.ts b/packages/web/src/lib/hosts/shell/ios-feedback.ts
 new file mode 100644
-index 0000000..63c99c9
+index 00000000..63c99c9d
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios-feedback.ts
 @@ -0,0 +1,18 @@
@@ -2014,7 +2135,7 @@ index 5112efd0..30c886e7 100644
  };
  
 diff --git a/packages/web/src/lib/jellyfin/client.ts b/packages/web/src/lib/jellyfin/client.ts
-index 03c7dde..030e75e 100644
+index 03c7dded..030e75e5 100644
 --- a/packages/web/src/lib/jellyfin/client.ts
 +++ b/packages/web/src/lib/jellyfin/client.ts
 @@ -28,6 +28,7 @@ function clientName(): string {
@@ -2026,7 +2147,7 @@ index 03c7dde..030e75e 100644
    return shell.tv ? 'AIOStreams Android TV' : 'AIOStreams Android';
  }
 diff --git a/packages/web/src/lib/playback/controller.ts b/packages/web/src/lib/playback/controller.ts
-index 29cb2ae..93e2267 100644
+index 29cb2aef..93e22672 100644
 --- a/packages/web/src/lib/playback/controller.ts
 +++ b/packages/web/src/lib/playback/controller.ts
 @@ -118,7 +118,7 @@ export interface PlayerController {
@@ -2040,19 +2161,19 @@ index 29cb2ae..93e2267 100644
    /** `rows` are the shown page's, for a player that doesn't draw its own. */
 @@ -162,6 +162,7 @@ export interface QueuedItem {
  }
-
+ 
  export interface PlayerOptions {
 +  preview?: boolean;
    client: JellyfinClient;
    item: BaseItemDto;
    source: SourceInfo;
 diff --git a/packages/web/src/lib/playback/engine.ts b/packages/web/src/lib/playback/engine.ts
-index 7064fc8..df4ed7f 100644
+index 7064fc81..df4ed7f7 100644
 --- a/packages/web/src/lib/playback/engine.ts
 +++ b/packages/web/src/lib/playback/engine.ts
 @@ -34,6 +34,8 @@ export interface EngineTrack extends Track {
  }
-
+ 
  export interface EngineFile {
 +  /** Automatic trailer preview; never takes over the screen. */
 +  preview?: boolean;
@@ -2060,7 +2181,7 @@ index 7064fc8..df4ed7f 100644
    headers?: Record<string, string>;
    startMs: number;
 @@ -118,6 +120,8 @@ export interface Thumbnail {
-
+ 
  /** Where the video shows in the mini player, in the page's pixels. */
  export interface VideoFrame {
 +  /** Visible poster/backdrop area when the cover picture extends beyond it. */
@@ -2078,7 +2199,7 @@ index 7064fc8..df4ed7f 100644
    togglePictureInPicture?(): void;
    /** The text of a subtitle file it was given, null for one it can't read; server ones are read from their address. */
 diff --git a/packages/web/src/lib/playback/use-player.ts b/packages/web/src/lib/playback/use-player.ts
-index 0a565dd..5f62c48 100644
+index 0a565dd7..5f62c48b 100644
 --- a/packages/web/src/lib/playback/use-player.ts
 +++ b/packages/web/src/lib/playback/use-player.ts
 @@ -1,3 +1,4 @@
@@ -2177,19 +2298,19 @@ index 9be266c1..38a12983 100644
      fit: device<VideoFit>('aiostreams-web-video-fit', 'fit', VIDEO_FITS),
      hardwareDecoding: device<boolean>(
 diff --git a/packages/web/src/lib/subtitles/style.ts b/packages/web/src/lib/subtitles/style.ts
-index 4623557..6309ce8 100644
+index 46235575..6309ce86 100644
 --- a/packages/web/src/lib/subtitles/style.ts
 +++ b/packages/web/src/lib/subtitles/style.ts
 @@ -11,6 +11,7 @@ import {
  } from '@/lib/settings';
-
+ 
  const SCALE: Record<SubtitleSize, number> = {
 +  smaller: 0.64,
    small: 0.8,
    normal: 1,
    large: 1.25,
 @@ -19,6 +20,7 @@ const SCALE: Record<SubtitleSize, number> = {
-
+ 
  export const subtitleSizeLabel = (size: SubtitleSize) =>
    ({
 +    smaller: t`Smaller`,
@@ -2331,7 +2452,7 @@ index 2014fb0e..ff23473c 100644
 +msgid "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 +msgstr "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99ee..5744a0d 100644
+index 96e99eee..5744a0d1 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
