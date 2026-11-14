@@ -44,6 +44,8 @@ are for personal use. So this folder holds none of its code, only:
   `0121` fixes 0120, which declared a name twice and stopped the app at its logo, loads the picture
   by its load event with a short cap, and keeps the background in an error boundary so it can never
   stop the app again.
+  `0122` starts a new background picture, and its fade over the art, only once the picture has
+  loaded, so the two crossfade together.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
