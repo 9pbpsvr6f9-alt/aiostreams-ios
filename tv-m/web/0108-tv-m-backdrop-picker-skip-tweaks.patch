@@ -1,0 +1,377 @@
+diff --git a/packages/web/src/app/settings/account.tsx b/packages/web/src/app/settings/account.tsx
+index 61eaf83c..6a638542 100644
+--- a/packages/web/src/app/settings/account.tsx
++++ b/packages/web/src/app/settings/account.tsx
+@@ -112,11 +112,11 @@ export function AccountSection() {
+             value={askWho}
+             onValueChange={setAskWho}
+           />
+-          {askWho && (
++          {(
+             <Switch
+               side="right"
+               label={t`Ask every time you come back`}
+-              help={t`Going to the Home Screen and back asks again, not only after half an hour away. A video you left stays as it was. Only on this Apple TV.`}
++              help={t`Asks each time you open the app or come back from the Home Screen, not only after half an hour away. A video you left stays as it was. Only on this Apple TV.`}
+               value={askOnReturn}
+               onValueChange={setAskOnReturn}
+             />
+diff --git a/packages/web/src/app/settings/interface.tsx b/packages/web/src/app/settings/interface.tsx
+index cb128f58..f61054d4 100644
+--- a/packages/web/src/app/settings/interface.tsx
++++ b/packages/web/src/app/settings/interface.tsx
+@@ -28,6 +28,7 @@ import {
+   type HeroMode,
+   type PosterLine,
+   type PosterSize,
++  type TvmBackdrop,
+ } from '@/lib/settings';
+ import { SettingsCard } from './_components/settings-card';
+ import { startPages } from '@/lib/start-page';
+@@ -72,6 +73,7 @@ function NavigationCard() {
+   const [railShape, setRailShape] = useSetting(settings.interface.railShape);
+   const [railNames, setRailNames] = useSetting(settings.interface.railNames);
+   const [hideRail, setHideRail] = useSetting(settings.tvm.hideRail);
++  const [backdrop, setBackdrop] = useSetting(settings.tvm.backdrop);
+   const [background, setBackground] = useSetting(
+     settings.interface.barBackground
+   );
+@@ -153,6 +155,19 @@ function NavigationCard() {
+           onValueChange={(value) => setRailShape(value as RailShape)}
+         />
+       )}
++      {tv && (
++        <Select
++          label={t`Background`}
++          help={t`A frosted background behind the pages, from the hero's picture as it turns, or from whatever you highlight. Off keeps the plain colour.`}
++          options={[
++            { value: 'hero', label: t`Follow the hero` },
++            { value: 'focus', label: t`Follow the highlighted card` },
++            { value: 'off', label: t`Off` },
++          ]}
++          value={backdrop}
++          onValueChange={(value) => setBackdrop(value as TvmBackdrop)}
++        />
++      )}
+       {tv && rail && railShape === 'floating' && (
+         <Switch
+           side="right"
+diff --git a/packages/web/src/app/sign-in/page.tsx b/packages/web/src/app/sign-in/page.tsx
+index 8590a217..95ce90ff 100644
+--- a/packages/web/src/app/sign-in/page.tsx
++++ b/packages/web/src/app/sign-in/page.tsx
+@@ -108,6 +108,7 @@ export function Screen({
+     <div
+       data-page="sign-in"
+       data-name={name}
++      data-ui="sign-in-screen"
+       className="relative flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,rgba(99,102,241,0.18),transparent_60%)] px-4 pb-[max(3rem,env(safe-area-inset-bottom))] pt-[max(3rem,env(safe-area-inset-top))]"
+     >
+       <div className={cn('w-full max-w-3xl space-y-8', className)}>
+diff --git a/packages/web/src/components/shell/layout.tsx b/packages/web/src/components/shell/layout.tsx
+index f9fd24f6..5e7415ec 100644
+--- a/packages/web/src/components/shell/layout.tsx
++++ b/packages/web/src/components/shell/layout.tsx
+@@ -77,6 +77,7 @@ import { SidebarAccount } from './nav/account';
+ import { MobileNav } from './nav/mobile-nav';
+ import { TouchRail } from './nav/touch-rail';
+ import { TvRail } from './nav/tv-rail';
++import { TvmBackdrop } from './tvm-backdrop';
+ import { CornerMenu } from './nav/corner-menu';
+ import { TOP_BAR_HEIGHT, TopTabs } from './nav/top-tabs';
+ 
+@@ -98,8 +99,10 @@ export function PageBackground() {
+     <div
+       aria-hidden
+       data-ui="page-background"
+-      className="page-background pointer-events-none fixed inset-0 -z-10 bg-[--background]"
+-    />
++      className="page-background pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[--background]"
++    >
++      {currentHost().tv && <TvmBackdrop />}
++    </div>
+   );
+ }
+ 
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+new file mode 100644
+index 00000000..68374552
+--- /dev/null
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -0,0 +1,76 @@
++import React from 'react';
++import { settings, useSetting } from '@/lib/settings';
++
++/** The hero's slide on show, and its newest picture. */
++const HERO_PICTURE =
++  "[data-ui='hero-backdrops'] > [data-slide='0'] img[data-ui='hero-backdrop']";
++
++function pictureOf(img: HTMLImageElement | null | undefined): string | null {
++  return (img && (img.currentSrc || img.src)) || null;
++}
++
++/**
++ * tv-m: a frosted background behind the pages, drawn in the page background: the hero's picture
++ * (Settings > Interface > Background: Follow the hero), crossfading as the hero turns, or the
++ * picture of whatever the remote focuses (Follow the highlighted card), blurred and dimmed.
++ */
++export function TvmBackdrop() {
++  const [mode] = useSetting(settings.tvm.backdrop);
++  const [src, setSrc] = React.useState<string | null>(null);
++  const [layers, setLayers] = React.useState<{ id: number; src: string }[]>(
++    []
++  );
++
++  React.useEffect(() => {
++    setSrc(null);
++    if (mode === 'off') return;
++    if (mode === 'hero') {
++      // A light look once a second: the hero turns every several seconds.
++      const look = () => {
++        const all = document.querySelectorAll<HTMLImageElement>(HERO_PICTURE);
++        const found = pictureOf(all[all.length - 1]);
++        if (found) setSrc(found);
++      };
++      look();
++      const timer = window.setInterval(look, 1000);
++      return () => window.clearInterval(timer);
++    }
++    const onFocus = (e: FocusEvent) => {
++      const el = e.target;
++      if (!(el instanceof HTMLElement)) return;
++      const found = pictureOf(el.querySelector('img'));
++      if (found) setSrc(found);
++    };
++    document.addEventListener('focusin', onFocus);
++    return () => document.removeEventListener('focusin', onFocus);
++  }, [mode]);
++
++  React.useEffect(() => {
++    if (!src) return;
++    setLayers((all) =>
++      all.at(-1)?.src === src
++        ? all
++        : [...all.slice(-1), { id: Date.now(), src }]
++    );
++  }, [src]);
++
++  const shown = mode !== 'off' && layers.length > 0;
++  React.useEffect(() => {
++    document.documentElement.toggleAttribute('data-tvm-backdrop', shown);
++    return () =>
++      document.documentElement.removeAttribute('data-tvm-backdrop');
++  }, [shown]);
++
++  if (!shown) return null;
++  return (
++    <>
++      {layers.map((layer) => (
++        <div
++          key={layer.id}
++          data-ui="tvm-backdrop"
++          style={{ backgroundImage: `url(${JSON.stringify(layer.src)})` }}
++        />
++      ))}
++    </>
++  );
++}
+diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
+index 8b91f271..52ccd8c6 100644
+--- a/packages/web/src/features/player/controls.tsx
++++ b/packages/web/src/features/player/controls.tsx
+@@ -375,6 +375,7 @@ export function PlayerControls({
+     onPrevious,
+     onNext,
+     skipSegment: skipping?.skip,
++    counting: () => !!skipping?.countdown,
+     stopCountdown: () => {
+       if (!skipping?.countdown) return false;
+       skipping.countdown.stop();
+diff --git a/packages/web/src/features/player/keys.ts b/packages/web/src/features/player/keys.ts
+index 82017a3f..b7a02aae 100644
+--- a/packages/web/src/features/player/keys.ts
++++ b/packages/web/src/features/player/keys.ts
+@@ -68,6 +68,8 @@ interface PlayerKeys {
+   skipSegment?: () => void;
+   /** tv-m: stops a running skip countdown; true if one ran. */
+   stopCountdown?: () => boolean;
++  /** tv-m: a skip countdown is running. */
++  counting?: () => boolean;
+   speedUp(): (() => void) | false;
+   /** A channel's: digits pick one by its number, and `step` moves along the list. */
+   zap?: { step?: (sign: number) => void; type(digit: string): void };
+@@ -172,6 +174,17 @@ export function usePlayerKeys(keys: PlayerKeys): void {
+     // A remote's own volume keys set a TV's volume, so Up and Down change channel or bring the controls back.
+     const upDown = (sign: number): Outcome => {
+       if (!currentHost().tv) return nudgeVolume(sign);
++      // tv-m: under hidden controls, a running skip countdown's Keep watching takes focus alone;
++      // Select on it keeps watching, and the controls stay hidden.
++      if (!k().visible() && k().counting?.()) {
++        const keep = k().root.current?.querySelector<HTMLElement>(
++          '[data-name=keep-watching]'
++        );
++        if (keep) {
++          focusOn(keep);
++          return 'quiet';
++        }
++      }
+       // Down moves down the list, to the next channel.
+       if (!k().visible() && k().zap?.step) return zapStep(-sign);
+       focusControls();
+diff --git a/packages/web/src/lib/jellyfin/session.tsx b/packages/web/src/lib/jellyfin/session.tsx
+index b76a63cc..f4ddb8d8 100644
+--- a/packages/web/src/lib/jellyfin/session.tsx
++++ b/packages/web/src/lib/jellyfin/session.tsx
+@@ -167,7 +167,12 @@ export function useSessionPhase(base: string) {
+   /** Who to pick from as the app opens, or null to carry on as before. */
+   const askWho = React.useCallback(
+     async (proof: JellyfinClient, left: boolean) => {
+-      if (!left && !settings.account.askWho.read()) return null;
++      if (
++        !left &&
++        !settings.account.askWho.read() &&
++        !settings.tvm.askWhoOnReturn.read()
++      )
++        return null;
+       const users = await proof
+         .get<PickableUser[]>('/AIOStreams/Users')
+         .catch(() => null);
+@@ -221,7 +226,10 @@ export function useSessionPhase(base: string) {
+         // Opens with the saved user at once; the server's answer replaces it.
+         const saved = savedUser(base, stored.userId);
+         const left = storage.get<string>(leftKey(base)) === stored.userId;
+-        const mayAsk = left || settings.account.askWho.read();
++        const mayAsk =
++          left ||
++          settings.account.askWho.read() ||
++          settings.tvm.askWhoOnReturn.read();
+         if (saved && !mayAsk && !cancelled)
+           setPhase({ kind: 'ready', client, user: saved });
+         const [me, asking] = await Promise.all([
+diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
+index b395c503..fa827e4e 100644
+--- a/packages/web/src/lib/settings/index.ts
++++ b/packages/web/src/lib/settings/index.ts
+@@ -350,6 +350,9 @@ const discord = record(DISCORD_EVENTS, (event) =>
+  */
+ /** tv-m: the skip countdown's choices, in seconds; 0 is off. */
+ export const TVM_SKIP_COUNTDOWNS = [0, 3, 5, 10] as const;
++/** tv-m: what the home screen's frosted background follows. */
++export const TVM_BACKDROPS = ['off', 'hero', 'focus'] as const;
++export type TvmBackdrop = (typeof TVM_BACKDROPS)[number];
+ 
+ export const settings = {
+   interface: {
+@@ -561,6 +564,7 @@ export const settings = {
+     hideRail: device<boolean>('tv-m-hide-rail', false),
+     /** With Ask when the app opens: every return to the app asks, not only after half an hour. */
+     askWhoOnReturn: device<boolean>('tv-m-ask-who-on-return', false),
++    backdrop: device<TvmBackdrop>('tv-m-backdrop', 'hero', TVM_BACKDROPS),
+   },
+   controls: {
+     seekStep: device<number>(
+diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
+index 3badca66..8fec7f0d 100644
+--- a/packages/web/src/locales/en-GB.po
++++ b/packages/web/src/locales/en-GB.po
+@@ -5774,3 +5774,15 @@ msgstr "Ask every time you come back"
+ 
+ msgid "Going to the Home Screen and back asks again, not only after half an hour away. A video you left stays as it was. Only on this Apple TV."
+ msgstr "Going to the Home Screen and back asks again, not only after half an hour away. A video you left stays as it was. Only on this Apple TV."
++
++msgid "A frosted background behind the pages, from the hero's picture as it turns, or from whatever you highlight. Off keeps the plain colour."
++msgstr "A frosted background behind the pages, from the hero's picture as it turns, or from whatever you highlight. Off keeps the plain colour."
++
++msgid "Follow the hero"
++msgstr "Follow the hero"
++
++msgid "Follow the highlighted card"
++msgstr "Follow the highlighted card"
++
++msgid "Asks each time you open the app or come back from the Home Screen, not only after half an hour away. A video you left stays as it was. Only on this Apple TV."
++msgstr "Asks each time you open the app or come back from the Home Screen, not only after half an hour away. A video you left stays as it was. Only on this Apple TV."
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index a861a0e0..8c21c3c7 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -831,3 +831,80 @@ html[data-tv] [data-ui='sign-in-links'] button:focus-visible {
+   box-shadow: var(--tvg-edge), var(--tvg-glow) !important;
+   transform: scale(1.08);
+ }
++
++/* ===== tv-m: round three ===== */
++/* A smaller skip button: larger than the app's own, not by half again. */
++html[data-tv] [data-ui='skip-segment'] {
++  gap: 0.75rem !important;
++}
++html[data-tv] [data-ui='skip-segment'] button {
++  min-height: 3.25rem;
++  padding-inline: 1.4rem;
++  font-size: 1.2rem;
++}
++html[data-tv] [data-ui='skip-segment'] [data-name='keep-watching'] {
++  width: 3.25rem;
++  height: 3.25rem;
++  font-size: 1.4rem;
++}
++html[data-tv] [data-ui='skip-segment'] [data-name='countdown'] {
++  font-size: 1.05rem;
++}
++
++/* Who's watching: no rim on faces at rest, only a soft gloss and shadow; a thin bright ring and a
++   glow on the focused one; and a frosted aurora behind them, in place of the dark blue. */
++html[data-tv] [data-ui='user-picker-user'] [data-focus-frame] {
++  box-shadow: 0 18px 38px -20px rgb(0 0 0 / 0.7);
++}
++html[data-tv] [data-ui='user-picker-user'] [data-focus-frame]::after {
++  background: linear-gradient(150deg, rgb(255 255 255 / 0.18) 0%, transparent 40%);
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.35);
++}
++html[data-tv] [data-ui='user-picker-user']:focus-visible [data-focus-frame] {
++  box-shadow:
++    0 0 0 3px rgb(255 255 255 / 0.92),
++    0 0 34px rgb(255 255 255 / 0.3),
++    0 24px 48px -18px rgb(0 0 0 / 0.75);
++}
++html[data-tv] [data-ui='sign-in-screen'] {
++  background:
++    radial-gradient(55% 50% at 78% 28%, rgb(255 150 90 / 0.42), transparent 70%),
++    radial-gradient(45% 45% at 62% 52%, rgb(236 72 153 / 0.3), transparent 70%),
++    radial-gradient(60% 55% at 90% 75%, rgb(59 130 246 / 0.4), transparent 72%),
++    radial-gradient(75% 70% at 15% 20%, rgb(56 78 160 / 0.55), transparent 75%),
++    linear-gradient(160deg, #0d1a33 0%, #1f3157 55%, #2c3854 100%) !important;
++}
++
++/* The frosted background (Settings > Interface > Background): a picture blurred and dimmed behind
++   the page, and the hero fading into it instead of into the plain colour. */
++[data-ui='tvm-backdrop'] {
++  position: absolute;
++  inset: -10%;
++  background-size: cover;
++  background-position: center;
++  filter: blur(64px) saturate(1.5) brightness(0.48);
++  animation: tvm-backdrop-in 0.9s ease-out both;
++}
++@keyframes tvm-backdrop-in {
++  from {
++    opacity: 0;
++  }
++  to {
++    opacity: 1;
++  }
++}
++html[data-tv][data-tvm-backdrop] [data-ui='hero-shade'][data-name='side'] {
++  background-image: linear-gradient(to right, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.25) 35%, transparent) !important;
++}
++html[data-tv][data-tvm-backdrop] [data-ui='hero-shade'][data-name='bottom'] {
++  display: none;
++}
++html[data-tv][data-tvm-backdrop] [data-ui='hero-backdrops'] {
++  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
++  mask-image: linear-gradient(to top, transparent, black 45%);
++}
++@media (prefers-reduced-motion: reduce) {
++  [data-ui='tvm-backdrop'] {
++    animation: none;
++  }
++}

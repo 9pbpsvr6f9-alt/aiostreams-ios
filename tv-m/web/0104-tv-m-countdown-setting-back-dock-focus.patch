@@ -1,0 +1,302 @@
+diff --git a/packages/web/src/app/settings/interface.tsx b/packages/web/src/app/settings/interface.tsx
+index 3ca16645..cb128f58 100644
+--- a/packages/web/src/app/settings/interface.tsx
++++ b/packages/web/src/app/settings/interface.tsx
+@@ -71,6 +71,7 @@ function NavigationCard() {
+   const [tabNames, setTabNames] = useSetting(settings.interface.tabNames);
+   const [railShape, setRailShape] = useSetting(settings.interface.railShape);
+   const [railNames, setRailNames] = useSetting(settings.interface.railNames);
++  const [hideRail, setHideRail] = useSetting(settings.tvm.hideRail);
+   const [background, setBackground] = useSetting(
+     settings.interface.barBackground
+   );
+@@ -152,6 +153,15 @@ function NavigationCard() {
+           onValueChange={(value) => setRailShape(value as RailShape)}
+         />
+       )}
++      {tv && rail && railShape === 'floating' && (
++        <Switch
++          side="right"
++          label={t`Hide the rail while browsing`}
++          help={t`The floating rail slides away while you're on the page, and comes back when you press left at the edge or Back.`}
++          value={hideRail}
++          onValueChange={setHideRail}
++        />
++      )}
+       {rail && railShape !== 'corner' && (
+         <Select
+           label={t`Page names`}
+diff --git a/packages/web/src/app/settings/playback.tsx b/packages/web/src/app/settings/playback.tsx
+index e5b7d34a..8751843c 100644
+--- a/packages/web/src/app/settings/playback.tsx
++++ b/packages/web/src/app/settings/playback.tsx
+@@ -35,6 +35,7 @@ import {
+   SEGMENT_ACTIONS,
+   SEGMENT_TYPES,
+   CACHE_SIZES,
++  TVM_SKIP_COUNTDOWNS,
+   type CacheSize,
+   type PlayerBack,
+   type PlayerEngine,
+@@ -114,6 +115,7 @@ export function PlaybackSection() {
+     settings.controls.showOnPauseAndSkip
+   );
+   const [autoPlay, setAutoPlay] = useSetting(settings.playback.autoPlayFirst);
++  const [skipCountdown, setSkipCountdown] = useSetting(settings.tvm.skipCountdown);
+   const [preload, setPreload] = useSetting(settings.playback.preloadVersions);
+   const [nextPrompt, setNextPrompt] = useSetting(settings.next.prompt);
+   const [nextLead, setNextLead] = useSetting(settings.next.lead);
+@@ -314,6 +316,18 @@ export function PlaybackSection() {
+             onValueChange={setChapterSkips}
+           />
+         )}
++        {appleTv() && (
++          <Select
++            label={t`Skip countdown`}
++            help={t`On this Apple TV, where Skipping is set to Ask, the skip button counts down and then skips by itself. Press Select to skip now, or Back to keep watching. Credits are left to you, as is a watch party's skip.`}
++            options={TVM_SKIP_COUNTDOWNS.map((s) => ({
++              value: String(s),
++              label: s ? seconds(s) : t`Off`,
++            }))}
++            value={String(skipCountdown)}
++            onValueChange={(v) => setSkipCountdown(Number(v))}
++          />
++        )}
+       </SettingsCard>
+       <SettingsCard
+         name="watch-parties"
+diff --git a/packages/web/src/components/shell/theme-styles.tsx b/packages/web/src/components/shell/theme-styles.tsx
+index e395bc88..27964182 100644
+--- a/packages/web/src/components/shell/theme-styles.tsx
++++ b/packages/web/src/components/shell/theme-styles.tsx
+@@ -9,6 +9,11 @@ export function ThemeStyles() {
+   const [colors] = useSetting(settings.theme.colors);
+   const [css] = useSetting(settings.theme.customCss);
+   const [blurSpoilers] = useSetting(settings.interface.blurSpoilers);
++  const [hideRail] = useSetting(settings.tvm.hideRail);
++  // tv-m: the floating rail's own styles slide it away (patches/web 0104).
++  React.useEffect(() => {
++    document.documentElement.toggleAttribute('data-tvm-hide-rail', hideRail);
++  }, [hideRail]);
+   React.useEffect(() => {
+     document.documentElement.toggleAttribute(
+       'data-blur-spoilers',
+diff --git a/packages/web/src/features/player/controls.tsx b/packages/web/src/features/player/controls.tsx
+index 6772fd20..8b91f271 100644
+--- a/packages/web/src/features/player/controls.tsx
++++ b/packages/web/src/features/player/controls.tsx
+@@ -375,6 +375,11 @@ export function PlayerControls({
+     onPrevious,
+     onNext,
+     skipSegment: skipping?.skip,
++    stopCountdown: () => {
++      if (!skipping?.countdown) return false;
++      skipping.countdown.stop();
++      return true;
++    },
+     speedUp: speed.start,
+     zap: channel && { step: channel.step, type: numbers.type },
+   });
+diff --git a/packages/web/src/features/player/keys.ts b/packages/web/src/features/player/keys.ts
+index 61725b70..82017a3f 100644
+--- a/packages/web/src/features/player/keys.ts
++++ b/packages/web/src/features/player/keys.ts
+@@ -66,6 +66,8 @@ interface PlayerKeys {
+   onNext?: () => void;
+   /** Set while the skip button shows. */
+   skipSegment?: () => void;
++  /** tv-m: stops a running skip countdown; true if one ran. */
++  stopCountdown?: () => boolean;
+   speedUp(): (() => void) | false;
+   /** A channel's: digits pick one by its number, and `step` moves along the list. */
+   zap?: { step?: (sign: number) => void; type(digit: string): void };
+@@ -347,6 +349,9 @@ export function usePlayerKeys(keys: PlayerKeys): void {
+     stops.push(
+       onAction('back', () => {
+         if (k().endScrub(false)) return;
++        // tv-m: Back while a skip counts down under hidden controls keeps watching, and leaves
++        // the controls hidden; the next Back leaves as before.
++        if (!k().visible() && k().stopCountdown?.()) return;
+         const el = keyboardFocus();
+         if (el && k().root.current?.contains(el)) {
+           el.blur();
+diff --git a/packages/web/src/features/player/segments.ts b/packages/web/src/features/player/segments.ts
+index 760242d1..a4f89fc9 100644
+--- a/packages/web/src/features/player/segments.ts
++++ b/packages/web/src/features/player/segments.ts
+@@ -56,9 +56,6 @@ const skippedNotice = (s: Segment) =>
+     }) as Record<string, string>
+   )[s.type] ?? t`Skipped segment`;
+ 
+-/** tv-m: seconds an offered intro or recap skip counts down before it skips by itself. */
+-const SKIP_COUNTDOWN_SECONDS = 5;
+-
+ export type SegmentSkip = ReturnType<typeof useSegmentSkip>;
+ 
+ /**
+@@ -128,10 +125,11 @@ export function useSegmentSkip({
+   // watch party's skip, which is everyone's to ask for.
+   const segment = offeringNext ? undefined : offered;
+   const segmentKey = segment ? segmentId(segment) : null;
+-  const countdownSeconds = SKIP_COUNTDOWN_SECONDS;
++  const [countdownSeconds] = useSetting(settings.tvm.skipCountdown);
+   const countsDown =
+     !!segment &&
+     started &&
++    countdownSeconds > 0 &&
+     segment.type !== 'Outro' &&
+     !player.shared;
+   // Each segment counts down once: skipped or dismissed, seeking back offers the plain button.
+diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
+index 4801b39d..6f583d64 100644
+--- a/packages/web/src/lib/settings/index.ts
++++ b/packages/web/src/lib/settings/index.ts
+@@ -348,6 +348,9 @@ const discord = record(DISCORD_EVENTS, (event) =>
+  * follows their account; what suits this device's screen, input, sound or
+  * hardware stays on it.
+  */
++/** tv-m: the skip countdown's choices, in seconds; 0 is off. */
++export const TVM_SKIP_COUNTDOWNS = [0, 3, 5, 10] as const;
++
+ export const settings = {
+   interface: {
+     /** A catalog's locale, or `auto` for the system's language. */
+@@ -549,6 +552,14 @@ export const settings = {
+     reactionSet: syncedList('partyReactionSet', PARTY_REACTIONS),
+     speedSync: syncedFlag('partySpeedSync', true),
+   },
++  /** tv-m: the Apple TV build's own choices, kept on this device. */
++  tvm: {
++    skipCountdown: device<number>('tv-m-skip-countdown', 5, (n) =>
++      (TVM_SKIP_COUNTDOWNS as readonly number[]).includes(n)
++    ),
++    /** A floating rail slides away while the page has focus. */
++    hideRail: device<boolean>('tv-m-hide-rail', false),
++  },
+   controls: {
+     seekStep: device<number>(
+       'aiostreams-web-controls-seek-step',
+diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
+index b78b927e..a7f9be47 100644
+--- a/packages/web/src/locales/en-GB.po
++++ b/packages/web/src/locales/en-GB.po
+@@ -5756,3 +5756,15 @@ msgstr "Your watch history and totals."
+ #. tv-m additions
+ msgid "Keep watching"
+ msgstr "Keep watching"
++
++msgid "Skip countdown"
++msgstr "Skip countdown"
++
++msgid "On this Apple TV, where Skipping is set to Ask, the skip button counts down and then skips by itself. Press Select to skip now, or Back to keep watching. Credits are left to you, as is a watch party's skip."
++msgstr "On this Apple TV, where Skipping is set to Ask, the skip button counts down and then skips by itself. Press Select to skip now, or Back to keep watching. Credits are left to you, as is a watch party's skip."
++
++msgid "Hide the rail while browsing"
++msgstr "Hide the rail while browsing"
++
++msgid "The floating rail slides away while you're on the page, and comes back when you press left at the edge or Back."
++msgstr "The floating rail slides away while you're on the page, and comes back when you press left at the edge or Back."
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index d7f2e99e..bddb5ec4 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -678,3 +678,99 @@ html[data-tv] [data-ui='player-menu-item']:focus-visible {
+     transform: none !important;
+   }
+ }
++
++/* ===== tv-m: a larger skip button, seen from across the room ===== */
++html[data-tv] [data-ui='skip-segment'] {
++  gap: 1rem !important;
++}
++html[data-tv] [data-ui='skip-segment'] button {
++  min-height: 4.25rem;
++  padding-inline: 2rem;
++  font-size: 1.6rem;
++}
++html[data-tv] [data-ui='skip-segment'] [data-name='keep-watching'] {
++  width: 4.25rem;
++  height: 4.25rem;
++  padding: 0;
++  font-size: 1.9rem;
++}
++html[data-tv] [data-ui='skip-segment'] [data-name='countdown'] {
++  min-width: 1.8em;
++  font-size: 1.3rem;
++}
++
++/* ===== tv-m: a glass pill, in place of the plain outline, on whatever else the remote focuses,
++   such as a row's title. A ring of the same tint stands in for padding, so nothing moves. Cards
++   keep their own ring round the picture. ===== */
++html[data-tv]
++  :focus-visible:not([data-focus='own']):not(input):not(textarea):not(#root):not(body):not(
++    :is(
++      [data-ui='player-middle-button'],
++      [data-ui='skip-segment'] button,
++      [data-ui='hero-action'],
++      [data-ui='item-action'],
++      [data-ui='season-pill'],
++      [data-ui='pill-tab'],
++      [data-ui='genre-pill'],
++      [data-ui='item-genre'],
++      [data-ui='player-button'],
++      [data-ui='player-menu-item'],
++      [data-ui='nav-item']
++    )
++  ) {
++  outline: none !important;
++  border-radius: 9999px;
++  background-color: rgb(255 255 255 / 0.16) !important;
++  color: #fff;
++  box-shadow:
++    0 0 0 0.55rem rgb(255 255 255 / 0.16),
++    0 0 0 calc(0.55rem + 1px) rgb(255 255 255 / 0.4),
++    inset 1px 1px 0.5px rgb(255 255 255 / 0.35),
++    0 16px 40px -14px rgb(0 0 0 / 0.65),
++    0 0 30px rgb(255 255 255 / 0.16) !important;
++  transition: background-color 0.2s, box-shadow 0.2s;
++}
++
++/* ===== tv-m: the floating rail as a glass panel ===== */
++html[data-tv] [data-ui='tv-rail'][data-shape='floating'] .bar-surface {
++  background: var(--tvg-sheen), var(--tvg-panel) !important;
++  border: var(--tvg-border) !important;
++  -webkit-backdrop-filter: var(--tvg-panel-filter) !important;
++  backdrop-filter: var(--tvg-panel-filter) !important;
++  box-shadow: var(--tvg-edge), var(--tvg-drop) !important;
++}
++/* The current page: a quiet glass capsule. */
++html[data-tv] [data-ui='tv-rail'] [data-ui='nav-item'][aria-current='page']:not(:focus-visible) {
++  background: rgb(255 255 255 / 0.14) !important;
++  border-radius: 9999px !important;
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.3);
++  color: #fff !important;
++}
++/* The remote's choice: bright glass with dark text. */
++html[data-tv] [data-ui='tv-rail'] [data-ui='nav-item']:focus-visible {
++  background: var(--tvg-sheen), linear-gradient(var(--tvg-focus), var(--tvg-focus)) !important;
++  border-radius: 9999px !important;
++  color: rgb(0 0 0 / 0.9) !important;
++  outline: none !important;
++  box-shadow: var(--tvg-edge), var(--tvg-glow) !important;
++}
++
++/* ===== tv-m: Settings > Interface > Hide the rail while browsing =====
++   The floating rail slides off the edge while the page has focus, and back in when it takes it
++   (left at the edge, or Back). The page keeps only a small margin for it. */
++html[data-tv][data-tvm-hide-rail] [data-ui='tv-rail'][data-shape='floating'] .bar-surface {
++  transition:
++    transform 0.32s cubic-bezier(0.2, 0.7, 0.2, 1),
++    width 0.2s;
++}
++html[data-tv][data-tvm-hide-rail] [data-ui='tv-rail'][data-shape='floating']:not(:focus-within) .bar-surface {
++  transform: translateX(calc(-100% - 3rem));
++}
++html[data-tv][data-tvm-hide-rail] [style*='--side-bar'] {
++  --side-bar: 3rem !important;
++}
++@media (prefers-reduced-motion: reduce) {
++  html[data-tv][data-tvm-hide-rail] [data-ui='tv-rail'][data-shape='floating'] .bar-surface {
++    transition: none;
++  }
++}

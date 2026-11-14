@@ -1,0 +1,120 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 33225e58..eaf9bda3 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -263,6 +263,16 @@ function Backdrop() {
+     };
+   }, [src]);
+ 
++  // A layer starts to fade in only once its picture has loaded, and its fade over the art with it:
++  // a layer that faded in first showed its plain dark colour for a moment, darker than the fade
++  // above the art, which drew the picture at once, and left a line at the art's edge.
++  const [ready, setReady] = React.useState<ReadonlySet<number>>(new Set());
++  const markReady = React.useCallback(
++    (id: number) =>
++      setReady((all) => (all.has(id) ? all : new Set(all).add(id))),
++    []
++  );
++
+   const shown = mode !== 'off' && layers.length > 0;
+   React.useEffect(() => {
+     document.documentElement.toggleAttribute('data-tvm-backdrop', shown);
+@@ -277,10 +287,20 @@ function Backdrop() {
+         <div
+           key={layer.id}
+           data-ui="tvm-backdrop"
+-          style={{ backgroundImage: `url(${JSON.stringify(layer.soft.url)})` }}
+-        />
++          data-ready={ready.has(layer.id) || undefined}
++        >
++          <img
++            src={layer.soft.url}
++            alt=""
++            ref={(img) => {
++              if (img?.complete && img.naturalWidth) markReady(layer.id);
++            }}
++            onLoad={() => markReady(layer.id)}
++            onError={() => markReady(layer.id)}
++          />
++        </div>
+       ))}
+-      <HeroFade layers={layers} />
++      <HeroFade layers={layers} ready={ready} />
+     </>
+   );
+ }
+@@ -299,7 +319,13 @@ const FADE_HOSTS =
+  * background's own picture where the background shows it on the screen, dimmed as it is, and clears
+  * it upward in one smooth ramp. The art then ends in exactly what's below it, with no edge.
+  */
+-function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
++function HeroFade({
++  layers,
++  ready,
++}: {
++  layers: { id: number; soft: Soft }[];
++  ready: ReadonlySet<number>;
++}) {
+   const [host, setHost] = React.useState<HTMLElement | null>(null);
+ 
+   // Found as soon as the page draws it, so its edge never shows before the fade is on.
+@@ -324,7 +350,7 @@ function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
+   return createPortal(
+     <div data-ui="tvm-hero-fade" aria-hidden>
+       {layers.map(({ id, soft }) => (
+-        <FadeCanvas key={id} soft={soft} />
++        <FadeCanvas key={id} soft={soft} ready={ready.has(id)} />
+       ))}
+     </div>,
+     host
+@@ -332,7 +358,7 @@ function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
+ }
+ 
+ /** One background picture's fade, redrawn whenever the art or the background moves on screen. */
+-function FadeCanvas({ soft }: { soft: Soft }) {
++function FadeCanvas({ soft, ready }: { soft: Soft; ready: boolean }) {
+   const canvas = React.useRef<HTMLCanvasElement>(null);
+   const picture = soft.image;
+ 
+@@ -408,5 +434,5 @@ function FadeCanvas({ soft }: { soft: Soft }) {
+     return () => cancelAnimationFrame(frame);
+   }, [picture, soft.width, soft.height]);
+ 
+-  return <canvas ref={canvas} />;
++  return <canvas ref={canvas} data-ready={ready || undefined} />;
+ }
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 3a9fa32f..1ed49191 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1118,3 +1118,30 @@ html[data-tv] :focus-visible > [data-ui='search-input'] {
+   color: rgb(18 18 22) !important;
+   outline: none !important;
+ }
++
++/* A background layer, and its fade over the art, come in together once the layer's picture has
++   loaded; till then neither shows. The picture is an <img>, drawn as the layer's cover. */
++[data-ui='tvm-backdrop'] {
++  animation: none;
++  opacity: 0;
++}
++[data-ui='tvm-backdrop'][data-ready] {
++  animation: tvm-backdrop-in 0.9s ease-out both;
++  opacity: 1;
++}
++[data-ui='tvm-backdrop'] > img {
++  position: absolute;
++  inset: 0;
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++  object-position: center;
++}
++[data-ui='tvm-hero-fade'] > canvas {
++  animation: none;
++  opacity: 0;
++}
++[data-ui='tvm-hero-fade'] > canvas[data-ready] {
++  animation: tvm-backdrop-in 0.9s ease-out both;
++  opacity: 1;
++}

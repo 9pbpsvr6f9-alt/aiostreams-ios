@@ -1,0 +1,34 @@
+diff --git a/packages/web/src/components/shell/watch-next.tsx b/packages/web/src/components/shell/watch-next.tsx
+index a4d6e4d3..5f640feb 100644
+--- a/packages/web/src/components/shell/watch-next.tsx
++++ b/packages/web/src/components/shell/watch-next.tsx
+@@ -2,7 +2,7 @@ import React from 'react';
+ import { playLink } from '@/lib/app-links';
+ import { itemTitle, ticksToMs } from '@/lib/format';
+ import { currentHost, type WatchNextItem } from '@/lib/hosts';
+-import { landscapeUrl } from '@/lib/artwork/urls';
++import { landscapeUrl, posterUrl } from '@/lib/artwork/urls';
+ import {
+   mergeRows,
+   useNextUp,
+@@ -36,6 +36,7 @@ export function WatchNextSync() {
+           episode: (episode && item.IndexNumber) || undefined,
+           description: item.Overview || undefined,
+           image: landscapeUrl(client, item, { maxWidth: 400 }) ?? undefined,
++          poster: posterUrl(client, item, { maxWidth: 400 }) ?? undefined,
+           positionMs,
+           durationMs: ticksToMs(item.RunTimeTicks) || undefined,
+           playedAt: playedAt || undefined,
+diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
+index f7a92d49..cc7c3641 100644
+--- a/packages/web/src/lib/hosts/index.ts
++++ b/packages/web/src/lib/hosts/index.ts
+@@ -34,6 +34,8 @@ export interface WatchNextItem {
+   description?: string;
+   /** Landscape, which the row shows. */
+   image?: string;
++  /** tv-m: a portrait poster, an episode's its show's, for the Apple TV's Top Shelf. */
++  poster?: string;
+   positionMs: number;
+   durationMs?: number;
+   playedAt?: number;

@@ -1,0 +1,48 @@
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index eb92f14b..dcd40519 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -534,3 +534,43 @@ html[data-blur-spoilers]:not([data-tv])
+     transform: scaleX(1);
+   }
+ }
++
++/* ===== tv-m: spoiler blur on the Apple TV =====
++   With Settings > Interface > Spoilers > "Blur episodes you haven't started" on, only unwatched
++   episode pictures on a show's page blur, and stay blurred while the remote highlights one.
++   Titles and descriptions stay clear, and so do Home's rows, the player's list and the calendar. */
++html[data-tv][data-blur-spoilers]
++  :is([data-row='next-up'], [data-row='upcoming'], [data-row='resume'])
++  [data-ui='wide-card']
++  :is([data-ui='artwork'], [data-ui='wide-card-subtitle']) {
++  filter: none !important;
++}
++html[data-tv][data-blur-spoilers]
++  :is(
++    [data-ui='episode-card'],
++    [data-ui='episode-list-item'],
++    [data-ui='player-episode'],
++    [data-ui='calendar-entry'][data-episode]
++  )
++  :is(
++    [data-ui='episode-title'] > span,
++    p[data-ui='episode-title'],
++    [data-ui='episode-synopsis'],
++    [data-ui='calendar-entry-subtitle']
++  ) {
++  filter: none !important;
++}
++html[data-tv][data-blur-spoilers]
++  :is(
++    [data-ui='player-episode'],
++    [data-ui='calendar-entry'][data-episode],
++    [data-ui='calendar-day-art'][data-episode]
++  )
++  [data-ui='artwork'] {
++  filter: none !important;
++}
++html[data-tv][data-blur-spoilers]
++  :is([data-ui='episode-card'], [data-ui='episode-list-item']):not([data-watched], [data-in-progress], [data-current])
++  [data-ui='artwork'] {
++  filter: blur(12px) !important;
++}

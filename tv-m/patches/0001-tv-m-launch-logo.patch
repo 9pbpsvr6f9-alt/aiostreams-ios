@@ -1,0 +1,127 @@
+diff --git a/App/MainViewController.swift b/App/MainViewController.swift
+index b686351..dec41f1 100644
+--- a/App/MainViewController.swift
++++ b/App/MainViewController.swift
+@@ -15,6 +15,8 @@ final class MainViewController: UIViewController, RemoteReceiver {
+     private lazy var stage = VideoStage(video: videoView, subtitles: subtitleView)
+     private var web: AIOWebView?
+     private let status = UILabel()
++    /// tv-m: the logo over everything until the page's splash shows it.
++    private var launchLogo: LaunchLogo?
+     private var engine: AetherPlayer?
+     private var player: PlayerChannel?
+     private var pip: PictureInPicture?
+@@ -59,6 +61,10 @@ final class MainViewController: UIViewController, RemoteReceiver {
+         web.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+         view.addSubview(web)
+         view.addSubview(status)
++        let logo = LaunchLogo(frame: view.bounds)
++        logo.autoresizingMask = [.flexibleWidth, .flexibleHeight]
++        view.addSubview(logo)
++        launchLogo = logo
+         self.web = web
+         stage.web = web
+         guard web.available else {
+@@ -502,6 +508,10 @@ final class MainViewController: UIViewController, RemoteReceiver {
+             web?.focusPage()
+             pipButtonShown = false
+             updatePipButton()
++        case "splash-shown":
++            launchLogo?.lift(width: message.number("logoWidth"), x: message.number("logoX"),
++                             y: message.number("logoY"))
++            launchLogo = nil
+         case "tvos-pip":
+             // The player's picture-in-picture button, which the bridge script adds.
+             pip?.start()
+diff --git a/App/Support/LaunchLogo.swift b/App/Support/LaunchLogo.swift
+new file mode 100644
+index 0000000..ad220d1
+--- /dev/null
++++ b/App/Support/LaunchLogo.swift
+@@ -0,0 +1,86 @@
++import UIKit
++
++/**
++ * tv-m: the web app's launch logo, drawn natively from the app's first frame until the page's own
++ * splash shows it, so the app opens on the logo, not on black. The page says `splash-shown`, with its
++ * logo's place as shares of the screen (patches/web 0103), and the cover settles on it and fades
++ * into the identical logo beneath. That place is kept, and the next launch starts on it. A timeout lifts it if the page never says.
++ */
++@MainActor
++final class LaunchLogo: UIView {
++    private let logo = CAShapeLayer()
++    private var lifted = false
++    /// The page's logo as shares of the screen (centre and width), once it reports them. Until then the
++    /// splash's own size, 288 points (the page keeps its logo 288 of its first layout's pixels, which on
++    /// tvOS are points, in vmin through its later 1280-wide layout), in the middle.
++    private var target: (x: CGFloat, y: CGFloat, width: CGFloat)? = LaunchLogo.remembered
++    /// Where the page drew its logo last time, which this launch starts on: its size on this TV
++    /// can't be known before the page has drawn it once.
++    private static let rememberedKey = "tvmLaunchLogoPlace"
++    private static var remembered: (x: CGFloat, y: CGFloat, width: CGFloat)? {
++        guard let place = UserDefaults.standard.array(forKey: rememberedKey) as? [Double], place.count == 3
++        else { return nil }
++        return (CGFloat(place[0]), CGFloat(place[1]), CGFloat(place[2]))
++    }
++    private static let side: CGFloat = 288
++    private static let timeout: TimeInterval = 4
++
++    override init(frame: CGRect) {
++        super.init(frame: frame)
++        backgroundColor = .black
++        isUserInteractionEnabled = false
++        accessibilityElementsHidden = true
++        logo.fillColor = UIColor.white.cgColor
++        layer.addSublayer(logo)
++        Task { @MainActor [weak self] in
++            try? await Task.sleep(nanoseconds: UInt64(Self.timeout * 1_000_000_000))
++            self?.lift()
++        }
++    }
++
++    required init?(coder: NSCoder) { fatalError("not used") }
++
++    override func layoutSubviews() {
++        super.layoutSubviews()
++        place()
++    }
++
++    private func place() {
++        let side = target.map { $0.width * bounds.width } ?? Self.side
++        let centre = target.map { CGPoint(x: $0.x * bounds.width, y: $0.y * bounds.height) }
++            ?? CGPoint(x: bounds.midX, y: bounds.midY)
++        logo.frame = CGRect(x: centre.x - side / 2, y: centre.y - side / 2, width: side, height: side)
++        logo.path = Self.path(scale: side / 1080)
++    }
++
++    /// Fades out over the page's identical logo, settling on its place first; once only.
++    func lift(width: Double? = nil, x: Double? = nil, y: Double? = nil) {
++        guard !lifted, superview != nil else { return }
++        lifted = true
++        if let width, let x, let y, width > 0.02, width < 0.9, (0...1).contains(x), (0...1).contains(y) {
++            target = (CGFloat(x), CGFloat(y), CGFloat(width))
++            UserDefaults.standard.set([x, y, width], forKey: Self.rememberedKey)
++            CATransaction.begin()
++            CATransaction.setDisableActions(true)
++            place()
++            CATransaction.commit()
++        }
++        UIView.animate(withDuration: 0.2, animations: { self.alpha = 0 }, completion: { _ in self.removeFromSuperview() })
++    }
++
++    /// The splash SVG's two shapes (viewBox 0 0 1080 1080), its relative path commands made absolute.
++    private static func path(scale: CGFloat) -> CGPath {
++        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * scale, y: y * scale) }
++        let path = UIBezierPath()
++        path.move(to: p(508.34, 338.5))
++        path.addLine(to: p(511.48, 338.5))
++        path.addCurve(to: p(584.87, 465.62), controlPoint1: p(576.72, 338.5), controlPoint2: p(617.49, 409.12))
++        path.addLine(to: p(424.43, 743.5))
++        path.addCurve(to: p(349.47, 613.67), controlPoint1: p(357.80, 743.5), controlPoint2: p(316.16, 671.37))
++        path.addLine(to: p(508.34, 338.5))
++        path.close()
++        path.append(UIBezierPath(ovalIn: CGRect(x: 547.53 * scale, y: 545.5 * scale,
++                                                width: 194.72 * scale, height: 198 * scale)))
++        return path.cgPath
++    }
++}

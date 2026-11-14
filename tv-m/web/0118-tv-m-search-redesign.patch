@@ -1,0 +1,170 @@
+diff --git a/packages/web/src/app/search/page.tsx b/packages/web/src/app/search/page.tsx
+index a495441e..b8f52499 100644
+--- a/packages/web/src/app/search/page.tsx
++++ b/packages/web/src/app/search/page.tsx
+@@ -142,7 +142,7 @@ export function SearchPage({ initialTerm }: { initialTerm: string }) {
+       <h1 data-ui="page-title" className="text-3xl font-bold">
+         <Trans>Search</Trans>
+       </h1>
+-      <div className="flex max-w-xl items-center gap-2">
++      <div data-ui="search-bar" className="flex max-w-xl items-center gap-2">
+         {voiceFirst && voice.button}
+         <TextInput
+           autoFocus={!voiceFirst}
+@@ -163,7 +163,7 @@ export function SearchPage({ initialTerm }: { initialTerm: string }) {
+         />
+         {!voiceFirst && voice?.button}
+       </div>
+-      {hints.length > 0 && (
++      {hints.length > 0 && !currentHost().tv && (
+         <ul data-ui="search-suggestions" className="-mx-2 max-w-xl">
+           {hints.map((hint) => (
+             <li
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 78de8060..4a27eaa1 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -134,9 +134,11 @@ function soften(src: string): Promise<Soft | null> {
+ }
+ 
+ /**
+- * tv-m: a frosted background behind the pages, drawn in the page background: the hero's picture
+- * (Settings > Interface > Background: Follow the hero), crossfading as the hero turns, or the
+- * picture of whatever the remote focuses (Follow the highlighted card), softened and dimmed.
++ * tv-m: a frosted background behind the pages, drawn in the page background, softened and dimmed:
++ * a title's or collection's own picture on its page; on Home the hero's picture (Settings >
++ * Interface > Background: Follow the hero), or the highlighted card's once the hero is out of view
++ * (Follow the highlighted card); on Search the highlighted result's. A page with nothing to follow
++ * shows the plain background, so no other page's colours stay on it.
+  */
+ export function TvmBackdrop() {
+   const [mode] = useSetting(settings.tvm.backdrop);
+@@ -148,47 +150,65 @@ export function TvmBackdrop() {
+   React.useEffect(() => {
+     setSrc(null);
+     if (mode === 'off') return;
++    /** The page's path, from the router's hash address. */
++    const path = () => location.hash.slice(1).split('?')[0] || '/';
+     /** A title's or collection's page: its own picture, whichever way the background follows. */
+     const itemPicture = () =>
+       document.querySelector<HTMLElement>("[data-ui='item-backdrop'][data-src]")
+         ?.dataset.src ?? null;
+-    if (mode === 'hero') {
+-      // A light look once a second: the hero turns every several seconds.
+-      const look = () => {
+-        const all = document.querySelectorAll<HTMLImageElement>(HERO_PICTURE);
+-        const found = itemPicture() ?? pictureOf(all[all.length - 1]);
+-        if (found) setSrc(found);
+-      };
+-      look();
+-      const timer = window.setInterval(look, 1000);
+-      return () => window.clearInterval(timer);
+-    }
+-    /** Home's hero, while any of it is on screen: the background then matches it, not a card below. */
++    /**
++     * Home's hero. Following the hero, it leads the whole of Home; following the highlighted card,
++     * only while some of it is on screen, so the background matches what's in view.
++     */
+     const heroPicture = () => {
+       const hero = document.querySelector<HTMLElement>(
+         "[data-ui='hero']:not([data-loading]):not([data-follow])"
+       );
+-      if (!hero || hero.getBoundingClientRect().bottom <= 0) return null;
++      if (!hero) return null;
++      if (mode !== 'hero' && hero.getBoundingClientRect().bottom <= 0) return null;
+       const all = document.querySelectorAll<HTMLImageElement>(HERO_PICTURE);
+       return pictureOf(all[all.length - 1]);
+     };
+-    const look = () => {
+-      const found = itemPicture() ?? heroPicture();
+-      if (found) setSrc(found);
++    /** The picture of what the remote is on, if it shows one. */
++    const focusedPicture = () => {
++      const el = document.activeElement;
++      if (!(el instanceof HTMLElement) || el === document.body) return null;
++      return pictureOf(el.querySelector('img'));
+     };
+-    const onFocus = (e: FocusEvent) => {
+-      if (itemPicture() || heroPicture()) return;
+-      const el = e.target;
+-      if (!(el instanceof HTMLElement)) return;
+-      const found = pictureOf(el.querySelector('img'));
+-      if (found) setSrc(found);
++    let page = path();
++    /**
++     * The picture for now: a string to show, null for the plain background (a page with nothing to
++     * follow yet, so another page's colours don't stay on), or undefined to keep what's shown.
++     */
++    const decide = (): string | null | undefined => {
++      const now = path();
++      const moved = now !== page;
++      page = now;
++      const item = itemPicture();
++      if (item) return item;
++      const hero = heroPicture();
++      if (hero) return hero;
++      // Search follows the result the remote is on, and starts plain.
++      if (now.startsWith('/search')) {
++        const inResults = document.activeElement?.closest?.("[data-ui='search-results']");
++        return (inResults && focusedPicture()) || (moved ? null : undefined);
++      }
++      if (mode === 'focus') return focusedPicture() ?? (moved ? null : undefined);
++      // Following the hero, a page without one is plain.
++      return null;
++    };
++    const look = () => {
++      const found = decide();
++      if (found === undefined) return;
++      setSrc(found);
++      if (found === null) setLayers((all) => (all.length ? [] : all));
+     };
+     look();
+     const timer = window.setInterval(look, 1000);
+-    document.addEventListener('focusin', onFocus);
++    document.addEventListener('focusin', look);
+     return () => {
+       window.clearInterval(timer);
+-      document.removeEventListener('focusin', onFocus);
++      document.removeEventListener('focusin', look);
+     };
+   }, [mode]);
+ 
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index a16964b8..a0b8bd89 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1090,3 +1090,34 @@ html[data-tv][data-tvm-backdrop] [data-ui='item-backdrop-shade'][data-name='side
+ html[data-tv][data-tvm-backdrop] [data-ui='item-backdrop-shade'][data-name='bottom'] {
+   background-image: linear-gradient(to top, rgb(8 10 16 / 0.5), rgb(8 10 16 / 0.2) 45%, transparent) !important;
+ }
++
++/* ===== tv-m: Search, laid out as tvOS lays out its own =====
++   The keyboard sits at the top as the only search field; the page's title and field step aside while
++   it's up, and the results start just below it. With the keyboard down, the term shows in one glass
++   pill above the results, which opens the keyboard again. The keyboard offers the suggestions above
++   its keys, so the page no longer lists them. */
++html[data-tv] :has(> [data-ui='search-bar']) > [data-ui='page-title'] {
++  display: none;
++}
++html[data-tv][data-tv-keyboard] [data-ui='search-bar'] {
++  display: none;
++}
++html[data-tv][data-tv-keyboard] :has(> [data-ui='search-bar']) {
++  padding-top: 46vh !important;
++}
++html[data-tv] [data-ui='search-bar'] {
++  max-width: 32rem;
++  margin-top: 1rem;
++}
++html[data-tv] [data-ui='search-input'] {
++  border-radius: 9999px !important;
++  background: rgb(255 255 255 / 0.1) !important;
++  border: 1px solid rgb(255 255 255 / 0.14) !important;
++  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16) !important;
++}
++html[data-tv] [data-ui='search-input']:focus-visible,
++html[data-tv] :focus-visible > [data-ui='search-input'] {
++  background: rgb(236 236 240) !important;
++  color: rgb(18 18 22) !important;
++  outline: none !important;
++}

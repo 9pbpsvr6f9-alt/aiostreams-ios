@@ -1,0 +1,73 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index d2a5c4d8..ea4f834c 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -55,11 +55,12 @@ function boxPass(
+   }
+ }
+ 
+-/** A softened picture, and its size in pixels. */
++/** A softened picture, its size in pixels, and itself decoded, ready to draw at once. */
+ interface Soft {
+   url: string;
+   width: number;
+   height: number;
++  image: HTMLImageElement;
+ }
+ 
+ const softened = new Map<string, Promise<Soft | null>>();
+@@ -117,11 +118,13 @@ function soften(src: string): Promise<Soft | null> {
+           px[i + 2] = grey + (px[i + 2] - grey) * 1.4;
+         }
+         big.putImageData(smooth, 0, 0);
+-        return {
+-          url: shown.toDataURL('image/jpeg', 0.9),
+-          width: shown.width,
+-          height: shown.height,
+-        };
++        const url = shown.toDataURL('image/jpeg', 0.9);
++        // Decoded before it's shown, so the hero's fade can draw it in the same frame the
++        // background shows it: a fade drawn a moment late showed the old picture over the new.
++        const image = new Image();
++        image.src = url;
++        await image.decode().catch(() => undefined);
++        return { url, width: shown.width, height: shown.height, image };
+       } catch {
+         return null;
+       }
+@@ -299,17 +302,14 @@ function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
+ /** One background picture's fade, redrawn whenever the art or the background moves on screen. */
+ function FadeCanvas({ soft }: { soft: Soft }) {
+   const canvas = React.useRef<HTMLCanvasElement>(null);
+-  const picture = React.useMemo(() => {
+-    const img = new Image();
+-    img.src = soft.url;
+-    return img;
+-  }, [soft.url]);
++  const picture = soft.image;
+ 
+-  React.useEffect(() => {
++  // Drawn once before the first paint, then whenever the art moves: the fade comes in with the
++  // background's own layer, never after it.
++  React.useLayoutEffect(() => {
+     let frame = 0;
+     let last = '';
+     const draw = () => {
+-      frame = requestAnimationFrame(draw);
+       const el = canvas.current;
+       const page = document.querySelector<HTMLElement>("[data-ui='page-background']");
+       if (!el || !page || !picture.complete || !picture.naturalWidth) return;
+@@ -359,7 +359,12 @@ function FadeCanvas({ soft }: { soft: Soft }) {
+       ctx.fillRect(0, 0, width, height);
+       ctx.globalCompositeOperation = 'source-over';
+     };
+-    frame = requestAnimationFrame(draw);
++    const tick = () => {
++      draw();
++      frame = requestAnimationFrame(tick);
++    };
++    draw();
++    frame = requestAnimationFrame(tick);
+     return () => cancelAnimationFrame(frame);
+   }, [picture, soft.width, soft.height]);
+ 

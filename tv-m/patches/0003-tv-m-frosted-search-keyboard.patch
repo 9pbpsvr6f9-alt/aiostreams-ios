@@ -1,0 +1,81 @@
+diff --git a/App/Input/SearchKeyboard.swift b/App/Input/SearchKeyboard.swift
+index 0d45927..84e8efa 100644
+--- a/App/Input/SearchKeyboard.swift
++++ b/App/Input/SearchKeyboard.swift
+@@ -390,7 +390,7 @@ private final class KeyboardHost: UIViewController {
+ 
+ /**
+  * Reports when it goes, however it was closed: Menu, moving off the keyboard,
+- * or return. Draws a solid backdrop behind the keyboard, so the page doesn't
++ * or return. Draws a frosted backdrop behind the keyboard (tv-m: in place of solid black), so the page doesn't
+  * show through its keys; the page still shows where tvOS puts the results.
+  * With the linear keyboard that's below it; with the grid keyboard (Settings →
+  * General → Keyboard), beside it, and the backdrop then covers the keyboard's
+@@ -402,14 +402,21 @@ private final class Container: UISearchContainerViewController {
+     var showsBackdrop = true {
+         didSet { backdrop.isHidden = !showsBackdrop }
+     }
+-    private let backdrop = UIView()
++    /// tv-m: frosted glass, as tvOS's own search draws behind its keyboard, rather than solid black:
++    /// the standard frost, lighter than .dark, over the page's colour.
++    private let backdrop = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
+     private let cutOut = CAShapeLayer()
++    /// A blur is masked by a view, not by its layer's mask, which would turn the blur off.
++    private let maskView = UIView()
++    /// tv-m: with the results below the keyboard, the frost fades out above them instead of ending in a line.
++    private let fade = CAGradientLayer()
++    private static let fadeHeight: CGFloat = 160
+ 
+     override func viewDidLoad() {
+         super.viewDidLoad()
+-        // tvOS has no systemBackground; the app's dark style is black.
+-        backdrop.backgroundColor = .black
+         backdrop.isUserInteractionEnabled = false
++        cutOut.fillColor = UIColor.black.cgColor
++        maskView.layer.addSublayer(cutOut)
+         backdrop.isHidden = !showsBackdrop
+         cutOut.fillRule = .evenOdd
+         view.insertSubview(backdrop, at: 0)
+@@ -422,20 +429,39 @@ private final class Container: UISearchContainerViewController {
+         // The whole screen, less the results' space once tvOS shows it, wherever it puts it.
+         guard let below = searchController.searchResultsController?.view, below.window != nil,
+               !below.isHidden, below.alpha > 0 else {
+-            backdrop.layer.mask = nil
++            backdrop.mask = nil
+             return
+         }
+         let results = below.convert(below.bounds, to: view).intersection(view.bounds)
+         // Nothing left to show the keyboard over: leave the screen covered.
+         guard !results.isNull, !results.isEmpty, results != view.bounds else {
+-            backdrop.layer.mask = nil
++            backdrop.mask = nil
+             return
+         }
++        maskView.frame = view.bounds
++        let underKeyboard = results.minY > 0 && results.minX <= view.bounds.minX + 1
++            && results.maxX >= view.bounds.maxX - 1 && results.maxY >= view.bounds.maxY - 1
++        if underKeyboard {
++            // The results fill the screen under the keyboard: frost down to just above them, then fade.
++            cutOut.removeFromSuperlayer()
++            let end = results.minY / view.bounds.height
++            let start = max(0, results.minY - Self.fadeHeight) / view.bounds.height
++            fade.frame = view.bounds
++            fade.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
++            fade.locations = [0, NSNumber(value: Double(start)), NSNumber(value: Double(end))]
++            fade.startPoint = CGPoint(x: 0.5, y: 0)
++            fade.endPoint = CGPoint(x: 0.5, y: 1)
++            if fade.superlayer == nil { maskView.layer.addSublayer(fade) }
++            backdrop.mask = maskView
++            return
++        }
++        fade.removeFromSuperlayer()
++        if cutOut.superlayer == nil { maskView.layer.addSublayer(cutOut) }
+         let path = UIBezierPath(rect: view.bounds)
+         path.append(UIBezierPath(rect: results))
+         cutOut.frame = view.bounds
+         cutOut.path = path.cgPath
+-        backdrop.layer.mask = cutOut
++        backdrop.mask = maskView
+     }
+ 
+     override func viewDidDisappear(_ animated: Bool) {

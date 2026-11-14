@@ -1,0 +1,71 @@
+diff --git a/packages/web/src/app/settings/account.tsx b/packages/web/src/app/settings/account.tsx
+index 59739c45..61eaf83c 100644
+--- a/packages/web/src/app/settings/account.tsx
++++ b/packages/web/src/app/settings/account.tsx
+@@ -23,6 +23,7 @@ export function AccountSection() {
+   const avatar = useOwnAvatar();
+   const several = (users.data?.length ?? 0) > 1;
+   const [askWho, setAskWho] = useSetting(settings.account.askWho);
++  const [askOnReturn, setAskOnReturn] = useSetting(settings.tvm.askWhoOnReturn);
+   const configure = configureUrl(client.base, info);
+   const confirmSignOut = useConfirmationDialog({
+     title: t`Sign out`,
+@@ -111,6 +112,15 @@ export function AccountSection() {
+             value={askWho}
+             onValueChange={setAskWho}
+           />
++          {askWho && (
++            <Switch
++              side="right"
++              label={t`Ask every time you come back`}
++              help={t`Going to the Home Screen and back asks again, not only after half an hour away. A video you left stays as it was. Only on this Apple TV.`}
++              value={askOnReturn}
++              onValueChange={setAskOnReturn}
++            />
++          )}
+         </SettingsCard>
+       )}
+       <ConfirmationDialog {...confirmSignOut} />
+diff --git a/packages/web/src/lib/jellyfin/session.tsx b/packages/web/src/lib/jellyfin/session.tsx
+index cdbf38e8..b76a63cc 100644
+--- a/packages/web/src/lib/jellyfin/session.tsx
++++ b/packages/web/src/lib/jellyfin/session.tsx
+@@ -347,7 +347,10 @@ export function useSessionPhase(base: string) {
+     let hiddenAt = 0;
+     const onVisibility = () => {
+       if (document.hidden) return void (hiddenAt = Date.now());
+-      const away = hiddenAt > 0 && Date.now() - hiddenAt >= AWAY_MS;
++      // tv-m: Ask every time you come back counts any time away.
++      const away =
++        hiddenAt > 0 &&
++        (settings.tvm.askWhoOnReturn.read() || Date.now() - hiddenAt >= AWAY_MS);
+       hiddenAt = 0;
+       const { phase, pick, askWho } = latest.current;
+       if (
+diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
+index 6f583d64..b395c503 100644
+--- a/packages/web/src/lib/settings/index.ts
++++ b/packages/web/src/lib/settings/index.ts
+@@ -559,6 +559,8 @@ export const settings = {
+     ),
+     /** A floating rail slides away while the page has focus. */
+     hideRail: device<boolean>('tv-m-hide-rail', false),
++    /** With Ask when the app opens: every return to the app asks, not only after half an hour. */
++    askWhoOnReturn: device<boolean>('tv-m-ask-who-on-return', false),
+   },
+   controls: {
+     seekStep: device<number>(
+diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
+index a7f9be47..3badca66 100644
+--- a/packages/web/src/locales/en-GB.po
++++ b/packages/web/src/locales/en-GB.po
+@@ -5768,3 +5768,9 @@ msgstr "Hide the rail while browsing"
+ 
+ msgid "The floating rail slides away while you're on the page, and comes back when you press left at the edge or Back."
+ msgstr "The floating rail slides away while you're on the page, and comes back when you press left at the edge or Back."
++
++msgid "Ask every time you come back"
++msgstr "Ask every time you come back"
++
++msgid "Going to the Home Screen and back asks again, not only after half an hour away. A video you left stays as it was. Only on this Apple TV."
++msgstr "Going to the Home Screen and back asks again, not only after half an hour away. A video you left stays as it was. Only on this Apple TV."

@@ -1,0 +1,45 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 3023011f..241d76bd 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -212,7 +212,7 @@ const FADE_STEPS = 24;
+ const FADE_SHARE = 0.5;
+ 
+ /**
+- * The hero's bottom half fading into the frosted background. The TV turns masks off, so the fade is
++ * The bottom half of the page's art (Home's hero, or a title's backdrop) fading into the frosted background. The TV turns masks off, so the fade is
+  * drawn: strips of the background's own picture over the hero, each lined up with where the
+  * background shows it on the screen, and each a little more opaque than the one above it, the last
+  * fully so. The hero then ends in exactly what's below it, with no edge.
+@@ -225,7 +225,9 @@ function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
+   React.useEffect(() => {
+     const look = () =>
+       setHero(
+-        document.querySelector<HTMLElement>("[data-ui='hero']:not([data-loading])")
++        document.querySelector<HTMLElement>(
++          "[data-ui='hero']:not([data-loading]):not([data-follow]), [data-ui='item-backdrop']"
++        )
+       );
+     look();
+     const timer = window.setInterval(look, 500);
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 90b27a15..e2d3cab3 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1064,6 +1064,15 @@ html[data-tv] [data-ui='media-row-title'] :focus-visible {
+ 
+ /* A shorter hero on the TV, so the first row's cards show at the bottom of the screen, as a peek of
+    what's below. Its height was set in rem, which the TV enlarges, so it filled nearly the screen. */
+-html[data-tv] [data-ui='hero'] {
++html[data-tv] [data-ui='hero']:not([data-follow]) {
+   height: 74vh !important;
+ }
++
++/* ===== tv-m: round six ===== */
++/* Every page's art reaches the screen's left edge, as Home's hero does: a title's or collection's
++   backdrop, and the backdrop of the hero that follows the focused card. Each sits inside the page's
++   gutter, which --side-bar measures. */
++html[data-tv] [data-ui='item-backdrop'],
++html[data-tv] div:has(> [data-ui='hero'][data-follow]) > div:first-child {
++  left: calc(-1 * var(--side-bar, 0px)) !important;
++}

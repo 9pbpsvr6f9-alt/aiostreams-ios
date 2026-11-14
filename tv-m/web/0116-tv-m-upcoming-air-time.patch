@@ -1,0 +1,24 @@
+diff --git a/packages/web/src/app/home/page.tsx b/packages/web/src/app/home/page.tsx
+index a6a7dc59..25f700c3 100644
+--- a/packages/web/src/app/home/page.tsx
++++ b/packages/web/src/app/home/page.tsx
+@@ -26,6 +26,7 @@ import {
+   animatedPosterOf,
+ } from '@/lib/artwork/urls';
+ import {
++  airTime,
+   dayLabel,
+   libraryLabel,
+   duration,
+@@ -322,7 +323,10 @@ function UpcomingRow() {
+             badge={
+               item.PremiereDate ? (
+                 <Badge size="sm" intent="gray-solid">
+-                  {dayLabel(item.PremiereDate)}
++                  {/* The day, and the time too where the listing gives one. */}
++                  {[dayLabel(item.PremiereDate), airTime(item.PremiereDate)]
++                    .filter(Boolean)
++                    .join(' · ')}
+                 </Badge>
+               ) : undefined
+             }

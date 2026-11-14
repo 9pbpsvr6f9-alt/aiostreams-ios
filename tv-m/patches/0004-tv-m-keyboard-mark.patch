@@ -1,0 +1,21 @@
+diff --git a/App/Web/BridgeScript.swift b/App/Web/BridgeScript.swift
+index 4f9d8f6..6a1bd75 100644
+--- a/App/Web/BridgeScript.swift
++++ b/App/Web/BridgeScript.swift
+@@ -585,6 +585,8 @@ enum BridgeScript {
+   /** The app's keyboard for `el`, typing into it as it goes (`input`), until it closes (`done`). */
+   const openKeyboard = (el) => {
+     editing = el;
++    // tv-m: marked while the keyboard is up, so a page can lay itself out under it.
++    document.documentElement.setAttribute('data-tv-keyboard', '');
+     send({
+       type: 'tvos-keyboard',
+       value: el.value || '',
+@@ -720,6 +722,7 @@ enum BridgeScript {
+       done(submit) {
+         const el = editing;
+         editing = null;
++        document.documentElement.removeAttribute('data-tv-keyboard');
+         // The key that opened the keyboard was let go over it, out of the page's sight.
+         swallowed = null;
+         if (!el || !el.isConnected) return;

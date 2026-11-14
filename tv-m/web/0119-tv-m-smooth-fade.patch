@@ -1,0 +1,224 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 4a27eaa1..d2a5c4d8 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -250,96 +250,118 @@ export function TvmBackdrop() {
+   );
+ }
+ 
+-/** Steps in the hero's fade, and the share of its height the fade takes. */
+-const FADE_STEPS = 24;
++/** The share of the art's height that fades into the background. */
+ const FADE_SHARE = 0.5;
++/** Pixels across the fade's canvas; the picture it draws is softened, so a few hundred suffice. */
++const FADE_WIDTH = 320;
++/** The art the fade covers: Home's hero, or a title's backdrop. */
++const FADE_HOSTS =
++  "[data-ui='hero']:not([data-loading]):not([data-follow]), [data-ui='item-backdrop']";
+ 
+ /**
+- * The bottom half of the page's art (Home's hero, or a title's backdrop) fading into the frosted background. The TV turns masks off, so the fade is
+- * drawn: strips of the background's own picture over the hero, each lined up with where the
+- * background shows it on the screen, and each a little more opaque than the one above it, the last
+- * fully so. The hero then ends in exactly what's below it, with no edge.
++ * The bottom half of the page's art (Home's hero, or a title's backdrop) fading into the frosted
++ * background. The TV turns masks off, so the fade is drawn: a canvas over the art paints the
++ * background's own picture where the background shows it on the screen, dimmed as it is, and clears
++ * it upward in one smooth ramp. The art then ends in exactly what's below it, with no edge.
+  */
+ function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
+-  const [hero, setHero] = React.useState<HTMLElement | null>(null);
+-  const [height, setHeight] = React.useState(0);
+-  const box = React.useRef<HTMLDivElement>(null);
++  const [host, setHost] = React.useState<HTMLElement | null>(null);
+ 
++  // Found as soon as the page draws it, so its edge never shows before the fade is on.
+   React.useEffect(() => {
+-    const look = () =>
+-      setHero(
+-        document.querySelector<HTMLElement>(
+-          "[data-ui='hero']:not([data-loading]):not([data-follow]), [data-ui='item-backdrop']"
+-        )
+-      );
+-    look();
+-    const timer = window.setInterval(look, 500);
+-    return () => window.clearInterval(timer);
++    let frame = 0;
++    const find = () => {
++      frame = 0;
++      setHost(document.querySelector<HTMLElement>(FADE_HOSTS));
++    };
++    find();
++    const watch = new MutationObserver(() => {
++      if (!frame) frame = requestAnimationFrame(find);
++    });
++    watch.observe(document.body, { childList: true, subtree: true });
++    return () => {
++      watch.disconnect();
++      cancelAnimationFrame(frame);
++    };
+   }, []);
+ 
+-  // Where the hero is on the screen, every frame: it scrolls and slides with the page.
++  if (!host) return null;
++  return createPortal(
++    <div data-ui="tvm-hero-fade" aria-hidden>
++      {layers.map(({ id, soft }) => (
++        <FadeCanvas key={id} soft={soft} />
++      ))}
++    </div>,
++    host
++  );
++}
++
++/** One background picture's fade, redrawn whenever the art or the background moves on screen. */
++function FadeCanvas({ soft }: { soft: Soft }) {
++  const canvas = React.useRef<HTMLCanvasElement>(null);
++  const picture = React.useMemo(() => {
++    const img = new Image();
++    img.src = soft.url;
++    return img;
++  }, [soft.url]);
++
+   React.useEffect(() => {
+-    if (!hero) return;
+     let frame = 0;
+     let last = '';
+-    const tick = () => {
+-      const el = box.current;
+-      if (el) {
+-        const r = el.getBoundingClientRect();
+-        const at = `${r.left.toFixed(1)} ${r.top.toFixed(1)}`;
+-        if (at !== last) {
+-          last = at;
+-          el.style.setProperty('--x', `${r.left}px`);
+-          el.style.setProperty('--y', `${r.top}px`);
+-        }
+-        const h = Math.round(r.height);
+-        setHeight((was) => (was === h ? was : h));
+-      }
+-      frame = requestAnimationFrame(tick);
++    const draw = () => {
++      frame = requestAnimationFrame(draw);
++      const el = canvas.current;
++      const page = document.querySelector<HTMLElement>("[data-ui='page-background']");
++      if (!el || !page || !picture.complete || !picture.naturalWidth) return;
++      const art = el.getBoundingClientRect();
++      const screen = page.getBoundingClientRect();
++      if (art.width < 1 || art.height < 1) return;
++      const at = [art.left, art.top, art.width, art.height, screen.width, screen.height]
++        .map((n) => n.toFixed(1))
++        .join(' ');
++      if (at === last) return;
++      last = at;
++      const width = FADE_WIDTH;
++      const height = Math.max(1, Math.round((width * art.height) / art.width));
++      if (el.width !== width) el.width = width;
++      if (el.height !== height) el.height = height;
++      const ctx = el.getContext('2d');
++      if (!ctx) return;
++      // Where the background draws the picture: covering the screen, centred.
++      const scale = Math.max(screen.width / soft.width, screen.height / soft.height);
++      const shownW = soft.width * scale;
++      const shownH = soft.height * scale;
++      const shownX = screen.left + (screen.width - shownW) / 2;
++      const shownY = screen.top + (screen.height - shownH) / 2;
++      const kx = width / art.width;
++      const ky = height / art.height;
++      ctx.globalCompositeOperation = 'source-over';
++      ctx.clearRect(0, 0, width, height);
++      ctx.imageSmoothingEnabled = true;
++      ctx.imageSmoothingQuality = 'high';
++      ctx.drawImage(
++        picture,
++        (shownX - art.left) * kx,
++        (shownY - art.top) * ky,
++        shownW * kx,
++        shownH * ky
++      );
++      // The background's dimming layer.
++      ctx.fillStyle = 'rgba(8, 10, 16, 0.5)';
++      ctx.fillRect(0, 0, width, height);
++      // Clear from the fade's top, where the art shows whole, down to its bottom, where it's gone.
++      const ramp = ctx.createLinearGradient(0, height * (1 - FADE_SHARE), 0, height);
++      ramp.addColorStop(0, 'rgba(0, 0, 0, 0)');
++      ramp.addColorStop(0.5, 'rgba(0, 0, 0, 0.4)');
++      ramp.addColorStop(1, 'rgba(0, 0, 0, 1)');
++      ctx.globalCompositeOperation = 'destination-in';
++      ctx.fillStyle = ramp;
++      ctx.fillRect(0, 0, width, height);
++      ctx.globalCompositeOperation = 'source-over';
+     };
+-    frame = requestAnimationFrame(tick);
++    frame = requestAnimationFrame(draw);
+     return () => cancelAnimationFrame(frame);
+-  }, [hero]);
++  }, [picture, soft.width, soft.height]);
+ 
+-  if (!hero) return null;
+-  const screenW = window.innerWidth;
+-  const screenH = window.innerHeight;
+-  const start = height * (1 - FADE_SHARE);
+-  const edges = Array.from({ length: FADE_STEPS + 1 }, (_, i) =>
+-    Math.round(start + ((height - start) * i) / FADE_STEPS)
+-  );
+-  return createPortal(
+-    <div ref={box} data-ui="tvm-hero-fade" aria-hidden>
+-      {height > 0 &&
+-        layers.map(({ id, soft }) => {
+-          // Laid out as the background lays it: covering the screen, centred.
+-          const scale = Math.max(screenW / soft.width, screenH / soft.height);
+-          const w = soft.width * scale;
+-          const h = soft.height * scale;
+-          const x = (screenW - w) / 2;
+-          const y = (screenH - h) / 2;
+-          return (
+-            <div key={id}>
+-              {edges.slice(0, -1).map((top, i) => (
+-                <div
+-                  key={i}
+-                  style={{
+-                    top,
+-                    // A pixel over the next strip, and the last past the bottom, so rounding leaves no line.
+-                    ...(i === FADE_STEPS - 1
+-                      ? { bottom: -2 }
+-                      : { height: edges[i + 1] - top + 1 }),
+-                    opacity: (i + 1) / FADE_STEPS,
+-                    backgroundImage: `linear-gradient(rgb(8 10 16 / 0.5), rgb(8 10 16 / 0.5)), url(${JSON.stringify(soft.url)})`,
+-                    backgroundSize: `100% 100%, ${w}px ${h}px`,
+-                    backgroundPosition: `0 0, calc(${x}px - var(--x)) calc(${y - top}px - var(--y))`,
+-                  }}
+-                />
+-              ))}
+-            </div>
+-          );
+-        })}
+-    </div>,
+-    hero
+-  );
++  return <canvas ref={canvas} />;
+ }
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index a0b8bd89..3a9fa32f 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -996,16 +996,13 @@ html[data-tv] [style*='--top-bar'] {
+   pointer-events: none;
+   z-index: 0;
+ }
+-[data-ui='tvm-hero-fade'] > div {
++[data-ui='tvm-hero-fade'] > canvas {
+   position: absolute;
+   inset: 0;
++  width: 100%;
++  height: 100%;
+   animation: tvm-backdrop-in 0.9s ease-out both;
+ }
+-[data-ui='tvm-hero-fade'] > div > div {
+-  position: absolute;
+-  inset-inline: 0;
+-  background-repeat: no-repeat;
+-}
+ html[data-tv] [data-ui='hero'] :is([data-ui='hero-content'], [data-ui='hero-dots']) {
+   z-index: 1;
+ }

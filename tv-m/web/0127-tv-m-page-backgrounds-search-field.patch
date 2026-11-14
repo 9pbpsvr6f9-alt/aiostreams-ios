@@ -1,0 +1,74 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index b7deacf8..94dbbe8b 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -219,14 +219,17 @@ function Backdrop() {
+       const now = path();
+       const moved = now !== page;
+       page = now;
+-      const item = itemPicture();
+-      if (item) return item;
+-      const hero = heroPicture();
+-      if (hero) return hero;
+-      // Discover follows the card the remote is on, as Home's rows can.
+-      if (now.startsWith('/discover'))
++      // By the page that's open: Home stays mounted under the others, so its hero is always found.
++      if (now.startsWith('/item/')) return itemPicture() ?? (moved ? null : undefined);
++      if (now === '/' || now === '') {
++        const hero = heroPicture();
++        if (hero) return hero;
++        return mode === 'focus' ? focusedPicture() ?? undefined : undefined;
++      }
++      // Discover and a library follow the card the remote is on.
++      if (now.startsWith('/discover') || now.startsWith('/library'))
+         return focusedPicture() ?? (moved ? null : undefined);
+-      // Search follows the result the remote is on, and starts plain.
++      // Search follows the result the remote is on, and starts on the aurora.
+       if (now.startsWith('/search')) {
+         const inResults = document.activeElement?.closest?.("[data-ui='search-results']");
+         return (inResults && focusedPicture()) || (moved ? null : undefined);
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 42a87b1a..9359dc7f 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1243,7 +1243,7 @@ html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-header']:
+ }
+ html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='tvm-poster-edges'] {
+   display: block;
+-  width: min(48rem, 70vw);
++  width: min(30rem, 42vw);
+   height: auto;
+   flex: none;
+ }
+@@ -1262,3 +1262,31 @@ html[data-tv][data-tvm-aurora]:not([data-tvm-backdrop]) [data-ui='page-backgroun
+     radial-gradient(75% 70% at 15% 20%, rgb(56 78 160 / 0.55), transparent 75%),
+     linear-gradient(160deg, #1d2c4f 0%, #33497a 55%, #3c4a6c 100%) !important;
+ }
++
++/* A collection's page opens with its first row of posters in view: a smaller picture, and less room
++   above it than a title's page keeps for its backdrop. */
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-body'] {
++  padding-top: 1.5rem !important;
++}
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-body'] > * + * {
++  margin-top: 1.5rem !important;
++}
++/* Search's field, with the keyboard down: wider and taller, and Liquid Glass under the remote, a
++   brighter tint with a bright rim, not solid white. */
++html[data-tv] [data-ui='search-bar'] {
++  max-width: min(60rem, 72vw);
++}
++html[data-tv] [data-ui='search-input'] {
++  min-height: 3.75rem;
++  font-size: 1.3rem;
++}
++html[data-tv] [data-ui='search-input']:focus-visible,
++html[data-tv] :focus-visible > [data-ui='search-input'] {
++  background: rgb(255 255 255 / 0.24) !important;
++  color: #fff !important;
++  border-color: rgb(255 255 255 / 0.75) !important;
++  box-shadow:
++    inset 0 1px 0 rgb(255 255 255 / 0.5),
++    0 0 0 2px rgb(255 255 255 / 0.55),
++    0 0 28px rgb(255 255 255 / 0.18) !important;
++}

@@ -1,0 +1,207 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 68374552..4efaad7d 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -4,20 +4,132 @@ import { settings, useSetting } from '@/lib/settings';
+ /** The hero's slide on show, and its newest picture. */
+ const HERO_PICTURE =
+   "[data-ui='hero-backdrops'] > [data-slide='0'] img[data-ui='hero-backdrop']";
++/** Pixels across the first, heavy blur: small, so it costs next to nothing. */
++const SOFT_WIDTH = 64;
++/**
++ * Pixels across what the page stretches over the screen: the small blur enlarged smoothly and
++ * blurred again here, as a 64-pixel picture stretched thirty times over shows its pixels as blocks.
++ */
++const SHOWN_WIDTH = 256;
+ 
+ function pictureOf(img: HTMLImageElement | null | undefined): string | null {
+   return (img && (img.currentSrc || img.src)) || null;
+ }
+ 
++/** One pass of a box blur of `radius` along rows (`horizontal`) or columns, in place. */
++function boxPass(
++  data: Uint8ClampedArray,
++  width: number,
++  height: number,
++  radius: number,
++  horizontal: boolean
++) {
++  const lines = horizontal ? height : width;
++  const length = horizontal ? width : height;
++  const line = new Float32Array(length * 3);
++  for (let l = 0; l < lines; l++) {
++    const at = (i: number) =>
++      (horizontal ? l * width + i : i * width + l) * 4;
++    for (let i = 0; i < length; i++) {
++      let r = 0;
++      let g = 0;
++      let b = 0;
++      for (let k = -radius; k <= radius; k++) {
++        const p = at(Math.min(length - 1, Math.max(0, i + k)));
++        r += data[p];
++        g += data[p + 1];
++        b += data[p + 2];
++      }
++      const n = radius * 2 + 1;
++      line[i * 3] = r / n;
++      line[i * 3 + 1] = g / n;
++      line[i * 3 + 2] = b / n;
++    }
++    for (let i = 0; i < length; i++) {
++      const p = at(i);
++      data[p] = line[i * 3];
++      data[p + 1] = line[i * 3 + 1];
++      data[p + 2] = line[i * 3 + 2];
++    }
++  }
++}
++
++const softened = new Map<string, Promise<string | null>>();
++
++/**
++ * The picture shrunk to SOFT_WIDTH pixels and box-blurred there, as a data URL. The Apple TV app
++ * turns CSS filters off (WebKit drew each into a screen-sized surface, and the memory got the app
++ * killed), so the blur is done once on a picture this small, which costs next to nothing.
++ */
++function soften(src: string): Promise<string | null> {
++  let known = softened.get(src);
++  if (!known) {
++    known = (async () => {
++      try {
++        const response = await fetch(src);
++        if (!response.ok) return null;
++        const bitmap = await createImageBitmap(await response.blob());
++        const width = SOFT_WIDTH;
++        const height = Math.max(
++          1,
++          Math.round((SOFT_WIDTH * bitmap.height) / bitmap.width)
++        );
++        const canvas = document.createElement('canvas');
++        canvas.width = width;
++        canvas.height = height;
++        const context = canvas.getContext('2d');
++        if (!context) return null;
++        context.drawImage(bitmap, 0, 0, width, height);
++        bitmap.close();
++        const image = context.getImageData(0, 0, width, height);
++        for (let pass = 0; pass < 3; pass++) {
++          boxPass(image.data, width, height, 4, true);
++          boxPass(image.data, width, height, 4, false);
++        }
++        context.putImageData(image, 0, 0);
++        const shown = document.createElement('canvas');
++        shown.width = SHOWN_WIDTH;
++        shown.height = Math.max(1, Math.round((SHOWN_WIDTH * height) / width));
++        const big = shown.getContext('2d');
++        if (!big) return null;
++        big.imageSmoothingEnabled = true;
++        big.imageSmoothingQuality = 'high';
++        big.drawImage(canvas, 0, 0, shown.width, shown.height);
++        const smooth = big.getImageData(0, 0, shown.width, shown.height);
++        for (let pass = 0; pass < 2; pass++) {
++          boxPass(smooth.data, shown.width, shown.height, 6, true);
++          boxPass(smooth.data, shown.width, shown.height, 6, false);
++        }
++        // Richer colour, as a frosted wash shows it, in place of the saturate() filter the TV turns off.
++        const px = smooth.data;
++        for (let i = 0; i < px.length; i += 4) {
++          const grey = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
++          px[i] = grey + (px[i] - grey) * 1.4;
++          px[i + 1] = grey + (px[i + 1] - grey) * 1.4;
++          px[i + 2] = grey + (px[i + 2] - grey) * 1.4;
++        }
++        big.putImageData(smooth, 0, 0);
++        return shown.toDataURL('image/jpeg', 0.9);
++      } catch {
++        return null;
++      }
++    })();
++    softened.set(src, known);
++    // A few dozen at most: the hero turns through a handful, and cards come and go.
++    if (softened.size > 40) softened.delete(softened.keys().next().value!);
++  }
++  return known;
++}
++
+ /**
+  * tv-m: a frosted background behind the pages, drawn in the page background: the hero's picture
+  * (Settings > Interface > Background: Follow the hero), crossfading as the hero turns, or the
+- * picture of whatever the remote focuses (Follow the highlighted card), blurred and dimmed.
++ * picture of whatever the remote focuses (Follow the highlighted card), softened and dimmed.
+  */
+ export function TvmBackdrop() {
+   const [mode] = useSetting(settings.tvm.backdrop);
+   const [src, setSrc] = React.useState<string | null>(null);
+-  const [layers, setLayers] = React.useState<{ id: number; src: string }[]>(
++  const [layers, setLayers] = React.useState<{ id: number; soft: string }[]>(
+     []
+   );
+ 
+@@ -47,11 +159,18 @@ export function TvmBackdrop() {
+ 
+   React.useEffect(() => {
+     if (!src) return;
+-    setLayers((all) =>
+-      all.at(-1)?.src === src
+-        ? all
+-        : [...all.slice(-1), { id: Date.now(), src }]
+-    );
++    let live = true;
++    void soften(src).then((soft) => {
++      if (!live || !soft) return;
++      setLayers((all) =>
++        all.at(-1)?.soft === soft
++          ? all
++          : [...all.slice(-1), { id: Date.now(), soft }]
++      );
++    });
++    return () => {
++      live = false;
++    };
+   }, [src]);
+ 
+   const shown = mode !== 'off' && layers.length > 0;
+@@ -68,7 +187,7 @@ export function TvmBackdrop() {
+         <div
+           key={layer.id}
+           data-ui="tvm-backdrop"
+-          style={{ backgroundImage: `url(${JSON.stringify(layer.src)})` }}
++          style={{ backgroundImage: `url(${JSON.stringify(layer.soft)})` }}
+         />
+       ))}
+     </>
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 8c21c3c7..1d5b5dfa 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -908,3 +908,30 @@ html[data-tv][data-tvm-backdrop] [data-ui='hero-backdrops'] {
+     animation: none;
+   }
+ }
++
++/* ===== tv-m: the frosted background without filters =====
++   The Apple TV app turns filters and masks off, so the picture comes already softened (a tiny,
++   box-blurred copy, stretched here), dimmed by a plain layer, and the hero fades into it through
++   a tall plain gradient in that same tint, ending where Continue watching begins. */
++[data-ui='tvm-backdrop'] {
++  inset: 0;
++  filter: none;
++  background-color: #0b0e16;
++}
++[data-ui='tvm-backdrop']::after {
++  content: '';
++  position: absolute;
++  inset: 0;
++  background: rgb(8 10 16 / 0.5);
++}
++html[data-tv][data-tvm-backdrop] [data-ui='hero-shade'][data-name='bottom'] {
++  display: block;
++  height: 75%;
++  background-image: linear-gradient(
++    to top,
++    rgb(8 10 16 / 0.5) 0%,
++    rgb(8 10 16 / 0.36) 28%,
++    rgb(8 10 16 / 0.14) 55%,
++    transparent 100%
++  ) !important;
++}

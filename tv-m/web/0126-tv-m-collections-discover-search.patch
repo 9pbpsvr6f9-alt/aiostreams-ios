@@ -1,0 +1,181 @@
+diff --git a/packages/web/src/app/item/_components/collection.tsx b/packages/web/src/app/item/_components/collection.tsx
+index 6f00debd..413d9522 100644
+--- a/packages/web/src/app/item/_components/collection.tsx
++++ b/packages/web/src/app/item/_components/collection.tsx
+@@ -85,9 +85,14 @@ export function Members({ parent }: { parent: BaseItemDto }) {
+     <Section
+       name="collection"
+       title={t`In this collection`}
+-      action={<KindTabs types={types} onChange={setTypes} />}
++      // tv-m: the remote starts on the kinds, so the page opens at its top with the picture in view.
++      action={
++        <div data-nav-start>
++          <KindTabs types={types} onChange={setTypes} />
++        </div>
++      }
+     >
+-      <div data-nav-start>
++      <div>
+         <MixedGrid items={items} client={client} loading={pages.isLoading} />
+       </div>
+       {!pages.isLoading && !items.length && (
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index efacfe30..b7deacf8 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -223,6 +223,9 @@ function Backdrop() {
+       if (item) return item;
+       const hero = heroPicture();
+       if (hero) return hero;
++      // Discover follows the card the remote is on, as Home's rows can.
++      if (now.startsWith('/discover'))
++        return focusedPicture() ?? (moved ? null : undefined);
+       // Search follows the result the remote is on, and starts plain.
+       if (now.startsWith('/search')) {
+         const inResults = document.activeElement?.closest?.("[data-ui='search-results']");
+@@ -233,6 +236,11 @@ function Backdrop() {
+       return null;
+     };
+     const look = () => {
++      // Search shows a soft aurora behind it until a result's picture takes over.
++      document.documentElement.toggleAttribute(
++        'data-tvm-aurora',
++        path().startsWith('/search')
++      );
+       const found = decide();
+       if (found === undefined) return;
+       setSrc(found);
+@@ -244,6 +252,7 @@ function Backdrop() {
+     return () => {
+       window.clearInterval(timer);
+       document.removeEventListener('focusin', look);
++      document.documentElement.removeAttribute('data-tvm-aurora');
+     };
+   }, [mode]);
+ 
+@@ -301,6 +310,7 @@ function Backdrop() {
+         </div>
+       ))}
+       <HeroFade layers={layers} ready={ready} />
++      <PosterEdges />
+     </>
+   );
+ }
+@@ -435,3 +445,77 @@ function FadeCanvas({ soft, ready }: { soft: Soft; ready: boolean }) {
+ 
+   return <canvas ref={canvas} data-ready={ready || undefined} />;
+ }
++
++/** How far in from each side a collection's picture fades into the page, as a share of its size. */
++const EDGE_FADE = 0.22;
++
++/**
++ * A collection's picture without edges: drawn on a canvas in its place, fading out toward each side
++ * into the frosted background, which is that same picture softened, so the two read as one. The TV
++ * turns masks off, so the fade is drawn. The picture itself stays in the page, hidden, so it still
++ * loads and is read out as before.
++ */
++function PosterEdges() {
++  React.useEffect(() => {
++    let frame = 0;
++    let drawn = '';
++    let canvas: HTMLCanvasElement | null = null;
++    const tick = () => {
++      frame = requestAnimationFrame(tick);
++      try {
++        const img = document.querySelector<HTMLImageElement>(
++          "[data-ui='item-page'][data-type='BoxSet'] img[data-ui='item-poster']"
++        );
++        if (!img) {
++          canvas?.remove();
++          canvas = null;
++          drawn = '';
++          return;
++        }
++        if (!img.complete || !img.naturalWidth) return;
++        const src = img.currentSrc || img.src;
++        if (canvas && canvas.previousElementSibling === img && drawn === src) return;
++        canvas?.remove();
++        canvas = document.createElement('canvas');
++        canvas.dataset.ui = 'tvm-poster-edges';
++        canvas.setAttribute('aria-hidden', 'true');
++        const w = img.naturalWidth;
++        const h = img.naturalHeight;
++        canvas.width = w;
++        canvas.height = h;
++        canvas.style.aspectRatio = `${w} / ${h}`;
++        const ctx = canvas.getContext('2d');
++        if (!ctx) return;
++        ctx.drawImage(img, 0, 0, w, h);
++        ctx.globalCompositeOperation = 'destination-in';
++        const across = ctx.createLinearGradient(0, 0, w, 0);
++        across.addColorStop(0, 'rgba(0, 0, 0, 0)');
++        across.addColorStop(EDGE_FADE, 'rgba(0, 0, 0, 1)');
++        across.addColorStop(1 - EDGE_FADE, 'rgba(0, 0, 0, 1)');
++        across.addColorStop(1, 'rgba(0, 0, 0, 0)');
++        ctx.fillStyle = across;
++        ctx.fillRect(0, 0, w, h);
++        const down = ctx.createLinearGradient(0, 0, 0, h);
++        down.addColorStop(0, 'rgba(0, 0, 0, 0)');
++        down.addColorStop(EDGE_FADE, 'rgba(0, 0, 0, 1)');
++        down.addColorStop(1 - EDGE_FADE, 'rgba(0, 0, 0, 1)');
++        down.addColorStop(1, 'rgba(0, 0, 0, 0)');
++        ctx.fillStyle = down;
++        ctx.fillRect(0, 0, w, h);
++        ctx.globalCompositeOperation = 'source-over';
++        img.after(canvas);
++        drawn = src;
++      } catch {
++        // A decoration: the picture shows as it was.
++        canvas?.remove();
++        canvas = null;
++      }
++    };
++    frame = requestAnimationFrame(tick);
++    return () => {
++      cancelAnimationFrame(frame);
++      canvas?.remove();
++    };
++  }, []);
++  return null;
++}
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index a1a9701e..42a87b1a 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1230,3 +1230,35 @@ html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-poster']
+     0 0 0 1px rgb(255 255 255 / 0.14),
+     0 24px 48px -20px rgb(0 0 0 / 0.75) !important;
+ }
++
++/* ===== tv-m: collections, Discover and Search, from feedback ===== */
++/* A collection's page: its picture centred, with no frame, its edges fading into the background (the
++   canvas drawn in its place), and the name, which the picture shows, left out. */
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-header'] {
++  flex-direction: column !important;
++  align-items: center !important;
++}
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-header']:has([data-ui='tvm-poster-edges']) img[data-ui='item-poster'] {
++  display: none !important;
++}
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='tvm-poster-edges'] {
++  display: block;
++  width: min(48rem, 70vw);
++  height: auto;
++  flex: none;
++}
++/* Posters in a collection as large as Home's. */
++html[data-tv] [data-ui='item-page'] [data-ui='card-grid'][data-shape='poster'] {
++  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
++  gap: 1.5rem !important;
++}
++/* Search: a soft aurora behind it until a result's picture takes over, so the frosted keyboard band
++   is light glass over colour rather than over near-black. */
++html[data-tv][data-tvm-aurora]:not([data-tvm-backdrop]) [data-ui='page-background'] {
++  background:
++    radial-gradient(55% 50% at 78% 28%, rgb(255 150 90 / 0.42), transparent 70%),
++    radial-gradient(45% 45% at 62% 52%, rgb(236 72 153 / 0.3), transparent 70%),
++    radial-gradient(60% 55% at 90% 75%, rgb(59 130 246 / 0.4), transparent 72%),
++    radial-gradient(75% 70% at 15% 20%, rgb(56 78 160 / 0.55), transparent 75%),
++    linear-gradient(160deg, #1d2c4f 0%, #33497a 55%, #3c4a6c 100%) !important;
++}

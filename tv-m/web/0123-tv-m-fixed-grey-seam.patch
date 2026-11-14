@@ -1,0 +1,52 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index eaf9bda3..efacfe30 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -309,9 +309,8 @@ function Backdrop() {
+ const FADE_SHARE = 0.5;
+ /** Pixels across the fade's canvas; the picture it draws is softened, so a few hundred suffice. */
+ const FADE_WIDTH = 320;
+-/** The art the fade covers: Home's hero, or a title's backdrop. */
+-const FADE_HOSTS =
+-  "[data-ui='hero']:not([data-loading]):not([data-follow]), [data-ui='item-backdrop']";
++/** The art the fade covers: a title's backdrop. Home's hero meets the rows through a fixed grey. */
++const FADE_HOSTS = "[data-ui='item-backdrop']";
+ 
+ /**
+  * The bottom half of the page's art (Home's hero, or a title's backdrop) fading into the frosted
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 1ed49191..517e8c36 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1145,3 +1145,31 @@ html[data-tv] :focus-visible > [data-ui='search-input'] {
+   animation: tvm-backdrop-in 0.9s ease-out both;
+   opacity: 1;
+ }
++
++/* ===== tv-m: Home's hero meets the rows through a fixed grey =====
++   Matching the hero's edge to a background that changes left a line whenever it changed. Now the
++   hero's bottom fades into one fixed grey, solid at its edge, and the rows start in that same grey,
++   fading into the frosted background below. Both sides of the edge are always the same colour, and
++   both scroll with the page, so there is nothing to keep in step. */
++html[data-tv][data-tvm-backdrop] [data-ui='hero'] [data-ui='hero-shade'][data-name='bottom'] {
++  display: block;
++  height: 60% !important;
++  background-image: linear-gradient(
++    to top,
++    rgb(22 22 26) 0%,
++    rgb(22 22 26 / 0.85) 18%,
++    rgb(22 22 26 / 0.45) 50%,
++    transparent 100%
++  ) !important;
++}
++html[data-tv][data-tvm-backdrop] [data-ui='hero'] + [data-ui='home-rows']::before {
++  content: '';
++  position: absolute;
++  top: 0;
++  left: calc(-1 * var(--side-bar, 0px));
++  right: 0;
++  height: 32vh;
++  z-index: -1;
++  pointer-events: none;
++  background-image: linear-gradient(to bottom, rgb(22 22 26) 0%, rgb(22 22 26 / 0.6) 40%, transparent 100%);
++}

@@ -1,0 +1,37 @@
+diff --git a/packages/web/src/app/item/_components/header.tsx b/packages/web/src/app/item/_components/header.tsx
+index 97578415..304713b7 100644
+--- a/packages/web/src/app/item/_components/header.tsx
++++ b/packages/web/src/app/item/_components/header.tsx
+@@ -146,7 +146,10 @@ export function Header({
+   const nextUpPending = item.Type === 'Series' && nextUp.isPending;
+   const logo = logoUrl(client, item, { maxWidth: 416 });
+   const [logoFailed, setLogoFailed] = React.useState(false);
+-  const poster = posterUrl(client, item, { maxWidth: 320 });
++  // tv-m: a collection's picture is shown large on the TV, so it's fetched at full size there.
++  const poster = posterUrl(client, item, {
++    maxWidth: currentHost().tv && item.Type === 'BoxSet' ? 1280 : 320,
++  });
+   const links = React.useMemo(() => linksFor(item, season), [item, season]);
+   const overviewImage = React.useMemo(
+     () => landscapeUrls(client, item, { maxWidth: 480 }),
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 9359dc7f..24254ff8 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1274,11 +1274,13 @@ html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-body'] >
+ /* Search's field, with the keyboard down: wider and taller, and Liquid Glass under the remote, a
+    brighter tint with a bright rim, not solid white. */
+ html[data-tv] [data-ui='search-bar'] {
+-  max-width: min(60rem, 72vw);
++  max-width: none;
++  width: 100%;
+ }
+ html[data-tv] [data-ui='search-input'] {
+-  min-height: 3.75rem;
+-  font-size: 1.3rem;
++  min-height: 4.75rem;
++  font-size: 1.6rem;
++  padding-inline-start: 3.5rem !important;
+ }
+ html[data-tv] [data-ui='search-input']:focus-visible,
+ html[data-tv] :focus-visible > [data-ui='search-input'] {

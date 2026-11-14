@@ -1,0 +1,112 @@
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index dcd40519..d7f2e99e 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -574,3 +574,107 @@ html[data-tv][data-blur-spoilers]
+   [data-ui='artwork'] {
+   filter: blur(12px) !important;
+ }
++
++/* ===== tv-m: Liquid Glass on the Apple TV =====
++   Clear glass on buttons and pills, bright glass with a glow and a lift on the one the remote
++   focuses, and glass panels for menus and dialogs. Posters and rows are left alone, as a blur
++   behind each would slow scrolling. */
++html[data-tv] {
++  --tvg-tint: rgb(255 255 255 / 0.09);
++  --tvg-shade: rgb(0 0 0 / 0.18);
++  --tvg-focus: rgb(255 255 255 / 0.92);
++  --tvg-sheen: linear-gradient(135deg, rgb(255 255 255 / 0.18) 0%, rgb(255 255 255 / 0.03) 45%, rgb(255 255 255 / 0.08) 100%);
++  --tvg-panel: rgb(18 18 22 / 0.42);
++  --tvg-filter: blur(14px) saturate(1.8) brightness(1.06);
++  --tvg-panel-filter: blur(28px) saturate(1.8);
++  --tvg-edge: inset 1.5px 1.5px 1px rgb(255 255 255 / 0.45), inset -1px -1px 1px rgb(255 255 255 / 0.12),
++    inset 0 0 20px rgb(255 255 255 / 0.06);
++  --tvg-border: 1px solid rgb(255 255 255 / 0.14);
++  --tvg-drop: 0 14px 36px -14px rgb(0 0 0 / 0.6);
++  --tvg-glow: 0 0 0 2px rgb(255 255 255 / 0.6), 0 20px 44px -12px rgb(0 0 0 / 0.65), 0 0 32px rgb(255 255 255 / 0.22);
++}
++html[data-tv]
++  :is(
++    [data-ui='player-middle-button'],
++    [data-ui='skip-segment'] button,
++    [data-ui='hero-action'],
++    [data-ui='item-action'],
++    [data-ui='season-pill'],
++    [data-ui='pill-tab'],
++    [data-ui='genre-pill'],
++    [data-ui='item-genre']
++  ) {
++  background: var(--tvg-sheen), linear-gradient(var(--tvg-tint), var(--tvg-tint)), var(--tvg-shade) !important;
++  border: var(--tvg-border) !important;
++  border-radius: 9999px !important;
++  -webkit-backdrop-filter: var(--tvg-filter);
++  backdrop-filter: var(--tvg-filter);
++  box-shadow: var(--tvg-edge), var(--tvg-drop);
++  color: rgb(255 255 255 / 0.95) !important;
++  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, background 0.2s ease-out, color 0.2s;
++}
++/* The remote's choice: bright glass, a glow and a lift, in place of the outline. */
++html[data-tv]
++  :is(
++    [data-ui='player-middle-button'],
++    [data-ui='skip-segment'] button,
++    [data-ui='hero-action'],
++    [data-ui='item-action'],
++    [data-ui='season-pill'],
++    [data-ui='pill-tab'],
++    [data-ui='genre-pill'],
++    [data-ui='item-genre'],
++    [data-ui='player-button']
++  ):focus-visible {
++  background: var(--tvg-sheen), linear-gradient(var(--tvg-focus), var(--tvg-focus)) !important;
++  border-color: rgb(255 255 255 / 0.9) !important;
++  border-radius: 9999px !important;
++  color: rgb(0 0 0 / 0.9) !important;
++  outline: none !important;
++  box-shadow: var(--tvg-edge), var(--tvg-glow) !important;
++  transform: scale(1.08);
++}
++/* Selected season or tab, while the remote is elsewhere. */
++html[data-tv] :is([data-ui='pill-tab'], [data-ui='season-pill'])[data-selected]:not(:focus-visible) {
++  background: var(--tvg-sheen), linear-gradient(rgb(255 255 255 / 0.24), rgb(255 255 255 / 0.24)), var(--tvg-shade) !important;
++}
++/* The player's bottom row of icons stays plain until focused. */
++html[data-tv] [data-ui='player-button'] {
++  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, background 0.2s ease-out, color 0.2s;
++}
++/* Menus, dialogs and sheets. */
++html[data-tv]
++  :is(
++    [data-ui='player-menu'],
++    [data-ui='next-episode-card'],
++    .UI-Modal__content,
++    .UI-Drawer__content,
++    .UI-DropdownMenu__root,
++    .UI-Select__content
++  ) {
++  background: var(--tvg-sheen), var(--tvg-panel) !important;
++  border: var(--tvg-border) !important;
++  -webkit-backdrop-filter: var(--tvg-panel-filter) !important;
++  backdrop-filter: var(--tvg-panel-filter) !important;
++  box-shadow: var(--tvg-edge), var(--tvg-drop) !important;
++}
++html[data-tv] :is([data-ui='player-menu'], [data-ui='next-episode-card'], .UI-Modal__content, .UI-DropdownMenu__root, .UI-Select__content) {
++  border-radius: 1.75rem !important;
++}
++html[data-tv] [data-ui='player-menu-item']:focus-visible {
++  background: rgb(255 255 255 / 0.9) !important;
++  color: rgb(0 0 0 / 0.9) !important;
++  border-radius: 1rem;
++  outline: none !important;
++}
++@media (prefers-reduced-transparency: reduce) {
++  html[data-tv] {
++    --tvg-tint: rgb(40 40 46 / 0.92);
++    --tvg-panel: rgb(18 18 22 / 0.96);
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  html[data-tv] [data-ui]:focus-visible {
++    transform: none !important;
++  }
++}
