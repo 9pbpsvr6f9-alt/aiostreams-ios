@@ -1,0 +1,72 @@
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index e371fb1a..a1a9701e 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -714,7 +714,12 @@ html[data-tv]
+       [data-ui='item-genre'],
+       [data-ui='player-button'],
+       [data-ui='player-menu-item'],
+-      [data-ui='nav-item']
++      [data-ui='nav-item'],
++      [data-ui='catalog-picker'],
++      [data-ui='genre-picker'],
++      .UI-Combobox__root,
++      [data-ui='media-row-action'] button,
++      [data-ui='media-row-action'] a
+     )
+   ) {
+   outline: none !important;
+@@ -1175,3 +1180,53 @@ html[data-tv][data-tvm-backdrop] [data-ui='hero'] + [data-ui='home-rows']::befor
+   pointer-events: none;
+   background-image: linear-gradient(to bottom, rgb(22 22 26) 0%, rgb(22 22 26 / 0.6) 40%, transparent 100%);
+ }
++
++/* ===== tv-m: Liquid Glass, everywhere it was missing =====
++   The TV turns blur off, so this glass is drawn as the rest is: a clear tint, a top light, a thin rim
++   and a soft shadow; bright white with dark text where the remote is. */
++/* A row of pills (All, Movies, Shows; Movies, Shows, Collections; All, Unwatched): separate glass
++   pills, with no dark capsule round them. */
++html[data-tv] [data-ui='pill-tabs'] {
++  background: transparent !important;
++  border: 0 !important;
++  box-shadow: none !important;
++  gap: 0.6rem;
++  padding: 0.25rem;
++}
++/* Discover's catalog and filter pickers, and any picker field: a glass capsule, not a dark bar. */
++html[data-tv] :is([data-ui='catalog-picker'], [data-ui='genre-picker'], .UI-Combobox__root),
++html[data-tv] [data-ui='media-row-action'] :is(button, a) {
++  border-radius: 9999px !important;
++  background: var(--tvg-sheen), linear-gradient(var(--tvg-tint), var(--tvg-tint)), var(--tvg-shade) !important;
++  border: var(--tvg-border) !important;
++  box-shadow: var(--tvg-edge), var(--tvg-drop) !important;
++  color: rgb(255 255 255 / 0.95) !important;
++  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, background 0.2s ease-out, color 0.2s;
++}
++html[data-tv] :is([data-ui='catalog-picker'], [data-ui='genre-picker'], .UI-Combobox__root):is(:focus-visible, :focus-within),
++html[data-tv] [data-ui='media-row-action'] :is(button, a):focus-visible {
++  background: var(--tvg-sheen), linear-gradient(var(--tvg-focus), var(--tvg-focus)) !important;
++  color: rgb(0 0 0 / 0.9) !important;
++  outline: none !important;
++  box-shadow: var(--tvg-edge), var(--tvg-glow) !important;
++}
++/* Date pills on cards (Upcoming): frosted dark glass with a thin rim. */
++html[data-tv] .UI-Badge__root {
++  background: rgb(20 22 30 / 0.55) !important;
++  border: 1px solid rgb(255 255 255 / 0.18) !important;
++  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), 0 6px 16px -8px rgb(0 0 0 / 0.6) !important;
++  color: #fff !important;
++}
++/* A collection's page: its picture says its name (Disney+, Pixar), so the name isn't written again
++   beside it, and the picture is larger. */
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-header']:has([data-ui='item-poster']) [data-ui='item-title'] {
++  display: none;
++}
++html[data-tv] [data-ui='item-page'][data-type='BoxSet'] [data-ui='item-poster'] {
++  width: 30rem !important;
++  border-radius: 1.5rem !important;
++  box-shadow:
++    inset 0 1px 0 rgb(255 255 255 / 0.25),
++    0 0 0 1px rgb(255 255 255 / 0.14),
++    0 24px 48px -20px rgb(0 0 0 / 0.75) !important;
++}

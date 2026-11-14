@@ -49,6 +49,9 @@ are for personal use. So this folder holds none of its code, only:
   `0123` joins Home's hero to the rows through one fixed grey, the hero fading into it and the rows
   out of it, so the edge never changes with the background.
   `0124` starts the rows' grey two pixels over the hero's edge, so no background shows between them.
+  `0125` brings Liquid Glass to what was still flat: rows of pills as separate glass pills, the
+  catalog and filter pickers and row buttons as glass capsules, frosted date pills, and a collection's
+  picture standing in for its name.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
