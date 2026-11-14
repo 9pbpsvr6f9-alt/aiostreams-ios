@@ -2821,7 +2821,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..db19cc16 100644
+index 96e99eee..1875f362 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2895,7 +2895,7 @@ index 96e99eee..db19cc16 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,123 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,120 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -3013,9 +3013,6 @@ index 96e99eee..db19cc16 100644
 +  background-repeat: no-repeat;
 +  -webkit-mask-image: linear-gradient(to bottom, transparent, black 75%);
 +  mask-image: linear-gradient(to bottom, transparent, black 75%);
-+  opacity: 0;
-+  transition: opacity 0.5s;
 +}
-+html[data-video-hole] [data-ui='ios-hero-fade'] {
-+  opacity: 1;
-+}
++/* Always on, not only while a trailer plays: it matches the background behind the hero's own fade
++   anyway, and coming in as a trailer began left the edge showing for that moment. */
