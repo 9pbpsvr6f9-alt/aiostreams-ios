@@ -33,6 +33,10 @@ are for personal use. So this folder holds none of its code, only:
   `0116` adds the air time beside the day on Upcoming's cards, where the listing gives one.
   `0117` makes the hero taller again (84% of the screen), closes the line under it, and keeps Home's
   background on the hero's picture while the hero is on screen.
+  `0118` lays Search out as tvOS does: the keyboard at the top as the only field, results just below,
+  the term in a glass pill once the keyboard closes, and no second list of suggestions. The background
+  follows the highlighted result there, and pages with nothing to follow stay plain. Native `0004`
+  marks the page while the keyboard is up, for this.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
