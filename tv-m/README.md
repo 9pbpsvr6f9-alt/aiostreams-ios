@@ -28,6 +28,8 @@ are for personal use. So this folder holds none of its code, only:
   the results.
   `0114` takes title, collection and follow-hero backdrops to the left edge too, and fades a title's
   backdrop into the frosted background as Home's hero does.
+  `0115` has the frosted background soften a title's or collection's own picture on its page, so a
+  collection with no backdrop is one blurred copy of its picture, edge to edge.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no

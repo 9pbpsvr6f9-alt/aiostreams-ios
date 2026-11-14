@@ -1,0 +1,81 @@
+diff --git a/packages/web/src/app/item/_components/backdrop.tsx b/packages/web/src/app/item/_components/backdrop.tsx
+index 897a6f56..815541d9 100644
+--- a/packages/web/src/app/item/_components/backdrop.tsx
++++ b/packages/web/src/app/item/_components/backdrop.tsx
+@@ -105,6 +105,8 @@ export function Backdrop({
+     <div
+       aria-hidden
+       data-ui="item-backdrop"
++      // tv-m: the picture shown, for the frosted background behind the page to soften.
++      data-src={src || undefined}
+       // Fades out at its edge, where some GPUs draw the art's last row past the shade.
+       className={cn(
+         'pointer-events-none absolute inset-x-0 top-[calc(var(--top-bar,0px)*-1)] h-[calc(55vh+var(--top-bar,0px))] overflow-hidden transition-opacity duration-500 [mask-image:linear-gradient(to_top,transparent,black_2px)] landscape:h-[calc(85vh+var(--top-bar,0px))] lg:h-[calc(85vh+var(--top-bar,0px))]',
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 241d76bd..685e6e51 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -148,25 +148,39 @@ export function TvmBackdrop() {
+   React.useEffect(() => {
+     setSrc(null);
+     if (mode === 'off') return;
++    /** A title's or collection's page: its own picture, whichever way the background follows. */
++    const itemPicture = () =>
++      document.querySelector<HTMLElement>("[data-ui='item-backdrop'][data-src]")
++        ?.dataset.src ?? null;
+     if (mode === 'hero') {
+       // A light look once a second: the hero turns every several seconds.
+       const look = () => {
+         const all = document.querySelectorAll<HTMLImageElement>(HERO_PICTURE);
+-        const found = pictureOf(all[all.length - 1]);
++        const found = itemPicture() ?? pictureOf(all[all.length - 1]);
+         if (found) setSrc(found);
+       };
+       look();
+       const timer = window.setInterval(look, 1000);
+       return () => window.clearInterval(timer);
+     }
++    const look = () => {
++      const found = itemPicture();
++      if (found) setSrc(found);
++    };
+     const onFocus = (e: FocusEvent) => {
++      if (itemPicture()) return;
+       const el = e.target;
+       if (!(el instanceof HTMLElement)) return;
+       const found = pictureOf(el.querySelector('img'));
+       if (found) setSrc(found);
+     };
++    look();
++    const timer = window.setInterval(look, 1000);
+     document.addEventListener('focusin', onFocus);
+-    return () => document.removeEventListener('focusin', onFocus);
++    return () => {
++      window.clearInterval(timer);
++      document.removeEventListener('focusin', onFocus);
++    };
+   }, [mode]);
+ 
+   React.useEffect(() => {
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index e2d3cab3..d5b670c3 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1076,3 +1076,17 @@ html[data-tv] [data-ui='item-backdrop'],
+ html[data-tv] div:has(> [data-ui='hero'][data-follow]) > div:first-child {
+   left: calc(-1 * var(--side-bar, 0px)) !important;
+ }
++
++/* A title's or collection's page under the frosted background, which softens the page's own picture.
++   Past a backdrop, the catalog picture's colour wash steps aside, so the softened picture fills the
++   screen; with a backdrop, its shading dims to black instead of the plain colour, as Home's hero's
++   does, so the art melts into its own frosted copy. */
++html[data-tv][data-tvm-backdrop] [data-ui='item-backdrop']:has([data-wash]) {
++  display: none;
++}
++html[data-tv][data-tvm-backdrop] [data-ui='item-backdrop-shade'][data-name='side'] {
++  background-image: linear-gradient(to right, rgb(0 0 0 / 0.55), rgb(0 0 0 / 0.25) 35%, transparent) !important;
++}
++html[data-tv][data-tvm-backdrop] [data-ui='item-backdrop-shade'][data-name='bottom'] {
++  background-image: linear-gradient(to top, rgb(8 10 16 / 0.5), rgb(8 10 16 / 0.2) 45%, transparent) !important;
++}
