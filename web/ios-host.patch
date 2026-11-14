@@ -792,10 +792,10 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..18ba3b29
+index 00000000..d6ab3c10
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,273 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
 +
@@ -997,6 +997,7 @@ index 00000000..18ba3b29
 +  if (!shown) return null;
 +  return (
 +    <>
++      <TrailerFade soft={layers.at(-1)?.soft} />
 +      {layers.map((layer) => (
 +        <div
 +          key={layer.id}
@@ -1006,6 +1007,67 @@ index 00000000..18ba3b29
 +      ))}
 +    </>
 +  );
++}
++
++/**
++ * The hero's bottom while its trailer plays. The trailer is the app's own video beneath the page,
++ * shown through a hole cut in the page's background, where no mask on the page can fade it. So the
++ * page paints over it: the background's own picture, lined up with where the background shows it
++ * and dimmed as it is, coming in over the hero's lower half (CSS shows it only while a trailer
++ * plays). It sits just after the hero's picture, so the hero's shading, text and buttons stay over it.
++ */
++function TrailerFade({ soft }: { soft: Soft | undefined }) {
++  React.useEffect(() => {
++    if (!soft) return;
++    let el: HTMLDivElement | null = null;
++    let frame = 0;
++    let last = '';
++    const tick = () => {
++      frame = requestAnimationFrame(tick);
++      try {
++        const still = document.querySelector<HTMLElement>(
++          "[data-ui='hero'] div:has(> [data-ui='hero-backdrops'])"
++        );
++        if (!still) {
++          el?.remove();
++          el = null;
++          return;
++        }
++        if (!el || el.previousElementSibling !== still) {
++          el?.remove();
++          el = document.createElement('div');
++          el.dataset.ui = 'ios-hero-fade';
++          el.setAttribute('aria-hidden', 'true');
++          still.after(el);
++          last = '';
++        }
++        const page = document.querySelector<HTMLElement>("[data-ui='page-background']");
++        if (!page) return;
++        const box = el.getBoundingClientRect();
++        const view = page.getBoundingClientRect();
++        // Where the background draws the picture: covering the screen, centred.
++        const scale = Math.max(view.width / soft.width, view.height / soft.height);
++        const w = soft.width * scale;
++        const h = soft.height * scale;
++        const x = view.left + (view.width - w) / 2 - box.left;
++        const y = view.top + (view.height - h) / 2 - box.top;
++        const at = `${w.toFixed(1)} ${h.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}`;
++        if (at === last) return;
++        last = at;
++        el.style.backgroundImage = `linear-gradient(rgba(8, 10, 16, 0.5), rgba(8, 10, 16, 0.5)), url(${JSON.stringify(soft.url)})`;
++        el.style.backgroundSize = `100% 100%, ${w}px ${h}px`;
++        el.style.backgroundPosition = `0 0, ${x}px ${y}px`;
++      } catch {
++        // A decoration: nothing drawn this frame.
++      }
++    };
++    frame = requestAnimationFrame(tick);
++    return () => {
++      cancelAnimationFrame(frame);
++      el?.remove();
++    };
++  }, [soft]);
++  return null;
 +}
 diff --git a/packages/web/src/components/shell/layout.tsx b/packages/web/src/components/shell/layout.tsx
 index f9fd24f6..b23084fe 100644
@@ -2759,7 +2821,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..debf57bf 100644
+index 96e99eee..db19cc16 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2833,7 +2895,7 @@ index 96e99eee..debf57bf 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,105 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,123 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2938,4 +3000,22 @@ index 96e99eee..debf57bf 100644
 +/* Past a backdrop, a collection's colour wash steps aside for the softened picture. */
 +html[data-ios-backdrop] [data-ui='item-backdrop']:has([data-wash]) {
 +  display: none;
++}
++
++/* iOS: over the hero's lower half while its trailer plays beneath the page, the frosted background's
++   own picture, fading in downward, so the video melts into the background as the art does. */
++[data-ui='ios-hero-fade'] {
++  position: absolute;
++  inset-inline: 0;
++  bottom: 0;
++  height: 55%;
++  pointer-events: none;
++  background-repeat: no-repeat;
++  -webkit-mask-image: linear-gradient(to bottom, transparent, black 75%);
++  mask-image: linear-gradient(to bottom, transparent, black 75%);
++  opacity: 0;
++  transition: opacity 0.5s;
++}
++html[data-video-hole] [data-ui='ios-hero-fade'] {
++  opacity: 1;
 +}
