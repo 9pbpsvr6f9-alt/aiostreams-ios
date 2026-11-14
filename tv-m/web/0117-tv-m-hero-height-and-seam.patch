@@ -1,0 +1,53 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index 685e6e51..78de8060 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -163,12 +163,21 @@ export function TvmBackdrop() {
+       const timer = window.setInterval(look, 1000);
+       return () => window.clearInterval(timer);
+     }
++    /** Home's hero, while any of it is on screen: the background then matches it, not a card below. */
++    const heroPicture = () => {
++      const hero = document.querySelector<HTMLElement>(
++        "[data-ui='hero']:not([data-loading]):not([data-follow])"
++      );
++      if (!hero || hero.getBoundingClientRect().bottom <= 0) return null;
++      const all = document.querySelectorAll<HTMLImageElement>(HERO_PICTURE);
++      return pictureOf(all[all.length - 1]);
++    };
+     const look = () => {
+-      const found = itemPicture();
++      const found = itemPicture() ?? heroPicture();
+       if (found) setSrc(found);
+     };
+     const onFocus = (e: FocusEvent) => {
+-      if (itemPicture()) return;
++      if (itemPicture() || heroPicture()) return;
+       const el = e.target;
+       if (!(el instanceof HTMLElement)) return;
+       const found = pictureOf(el.querySelector('img'));
+@@ -296,7 +305,10 @@ function HeroFade({ layers }: { layers: { id: number; soft: Soft }[] }) {
+                   key={i}
+                   style={{
+                     top,
+-                    height: edges[i + 1] - top,
++                    // A pixel over the next strip, and the last past the bottom, so rounding leaves no line.
++                    ...(i === FADE_STEPS - 1
++                      ? { bottom: -2 }
++                      : { height: edges[i + 1] - top + 1 }),
+                     opacity: (i + 1) / FADE_STEPS,
+                     backgroundImage: `linear-gradient(rgb(8 10 16 / 0.5), rgb(8 10 16 / 0.5)), url(${JSON.stringify(soft.url)})`,
+                     backgroundSize: `100% 100%, ${w}px ${h}px`,
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index d5b670c3..a16964b8 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1065,7 +1065,7 @@ html[data-tv] [data-ui='media-row-title'] :focus-visible {
+ /* A shorter hero on the TV, so the first row's cards show at the bottom of the screen, as a peek of
+    what's below. Its height was set in rem, which the TV enlarges, so it filled nearly the screen. */
+ html[data-tv] [data-ui='hero']:not([data-follow]) {
+-  height: 74vh !important;
++  height: 84vh !important;
+ }
+ 
+ /* ===== tv-m: round six ===== */

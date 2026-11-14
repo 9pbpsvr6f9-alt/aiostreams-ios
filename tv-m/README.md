@@ -31,6 +31,8 @@ are for personal use. So this folder holds none of its code, only:
   `0115` has the frosted background soften a title's or collection's own picture on its page, so a
   collection with no backdrop is one blurred copy of its picture, edge to edge.
   `0116` adds the air time beside the day on Upcoming's cards, where the listing gives one.
+  `0117` makes the hero taller again (84% of the screen), closes the line under it, and keeps Home's
+  background on the hero's picture while the hero is on screen.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
