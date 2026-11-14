@@ -1,5 +1,5 @@
 diff --git a/App/Input/SearchKeyboard.swift b/App/Input/SearchKeyboard.swift
-index 0d45927..71e12d3 100644
+index 0d45927..84e8efa 100644
 --- a/App/Input/SearchKeyboard.swift
 +++ b/App/Input/SearchKeyboard.swift
 @@ -390,7 +390,7 @@ private final class KeyboardHost: UIViewController {
@@ -11,13 +11,14 @@ index 0d45927..71e12d3 100644
   * show through its keys; the page still shows where tvOS puts the results.
   * With the linear keyboard that's below it; with the grid keyboard (Settings →
   * General → Keyboard), beside it, and the backdrop then covers the keyboard's
-@@ -402,14 +402,20 @@ private final class Container: UISearchContainerViewController {
+@@ -402,14 +402,21 @@ private final class Container: UISearchContainerViewController {
      var showsBackdrop = true {
          didSet { backdrop.isHidden = !showsBackdrop }
      }
 -    private let backdrop = UIView()
-+    /// tv-m: frosted glass, as tvOS's own search draws behind its keyboard, rather than solid black.
-+    private let backdrop = UIVisualEffectView(effect: UIBlurEffect(style: .dark))
++    /// tv-m: frosted glass, as tvOS's own search draws behind its keyboard, rather than solid black:
++    /// the standard frost, lighter than .dark, over the page's colour.
++    private let backdrop = UIVisualEffectView(effect: UIBlurEffect(style: .regular))
      private let cutOut = CAShapeLayer()
 +    /// A blur is masked by a view, not by its layer's mask, which would turn the blur off.
 +    private let maskView = UIView()
@@ -35,7 +36,7 @@ index 0d45927..71e12d3 100644
          backdrop.isHidden = !showsBackdrop
          cutOut.fillRule = .evenOdd
          view.insertSubview(backdrop, at: 0)
-@@ -422,20 +428,39 @@ private final class Container: UISearchContainerViewController {
+@@ -422,20 +429,39 @@ private final class Container: UISearchContainerViewController {
          // The whole screen, less the results' space once tvOS shows it, wherever it puts it.
          guard let below = searchController.searchResultsController?.view, below.window != nil,
                !below.isHidden, below.alpha > 0 else {

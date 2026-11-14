@@ -52,6 +52,9 @@ are for personal use. So this folder holds none of its code, only:
   `0125` brings Liquid Glass to what was still flat: rows of pills as separate glass pills, the
   catalog and filter pickers and row buttons as glass capsules, frosted date pills, and a collection's
   picture standing in for its name.
+  `0126` centres a collection's picture and fades its edges into the background, shows a
+  collection's posters as large as Home's and opens it at the top, has Discover's background follow the
+  highlighted card, and puts a soft aurora behind Search, whose keyboard (`0003`) now has a lighter frost.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
