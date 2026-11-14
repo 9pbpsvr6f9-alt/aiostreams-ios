@@ -2867,7 +2867,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..8afa0cd0 100644
+index 96e99eee..e6368039 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2941,7 +2941,7 @@ index 96e99eee..8afa0cd0 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,259 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,577 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2952,6 +2952,260 @@ index 96e99eee..8afa0cd0 100644
 +@media (max-width: 767px) {
 +  [data-ui='item-page'] [data-ui='item-body']:has([data-ui='item-collection-picture']) {
 +    padding-top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
++  }
++}
++
++
++/* ===== iOS: Liquid Glass base (formerly the custom CSS) =====
++   The newer iOS rules below come after it, and win where they differ: the chosen pill, Search's
++   field and the rest. */
++/* ===== Liquid Glass v2: tweak the whole look here ===== */
++:root {
++  /* Clear glass (buttons, pills) */
++  --lg-tint: rgb(255 255 255 / 0.07);
++  --lg-tint-on: rgb(255 255 255 / 0.2);
++  --lg-tint-press: rgb(255 255 255 / 0.26);
++  /* A faint dark layer under clear glass so white text reads over bright art. 0 = off */
++  --lg-shade: rgb(0 0 0 / 0.1);
++  /* Panels (menus, dialogs, bars) */
++  --lg-panel-tint: rgb(18 18 22 / 0.32);
++  /* Versions and other reading-heavy sheets */
++  --lg-read-tint: rgb(14 14 18 / 0.62);
++  --lg-sheen: linear-gradient(135deg, rgb(255 255 255 / 0.16) 0%, rgb(255 255 255 / 0.02) 45%, rgb(255 255 255 / 0.06) 100%);
++  --lg-filter: blur(8px) saturate(2.2) brightness(1.08);
++  --lg-panel-filter: blur(16px) saturate(2) brightness(1.05);
++  --lg-read-filter: blur(40px) saturate(1.6);
++  --lg-edge: inset 1px 1px 0.5px rgb(255 255 255 / 0.45),
++    inset -1px -1px 0.5px rgb(255 255 255 / 0.12),
++    inset 0 0 16px rgb(255 255 255 / 0.06);
++  --lg-drop: 0 12px 32px -12px rgb(0 0 0 / 0.55);
++  --lg-border: 1px solid rgb(255 255 255 / 0.1);
++  --lg-text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
++  --lg-dim: rgb(0 0 0 / 0.35);
++  --lg-panel-radius: 1.75rem;
++  --lg-card-radius: 1rem;
++  --lg-press-scale: 0.96;
++}
++
++/* iOS only. Built in from the Liquid Glass custom CSS, so it needs no custom CSS any more. */
++html[data-host='ios-app'] {
++
++  /* ===== Clear glass: buttons, pills, small pop-ups ===== */
++  & :is(
++    [data-ui='player-middle-button'],
++    [data-ui='skip-segment'],
++    [data-ui='player-unlock'],
++    [data-ui='player-notice'] > *,
++    [data-ui='player-scrub'] > *,
++    [data-ui='player-held-speed'] > *,
++    [data-ui='hero-action']:not([data-name='play']),
++    [data-ui='item-action']:not([data-name='play']),
++    [data-ui='pill-tab'],
++    [data-ui='season-pill'],
++    [data-ui='genre-pill'],
++    [data-ui='item-genre'],
++    [data-ui='search-input']
++  ) {
++    background: var(--lg-sheen), linear-gradient(var(--lg-tint), var(--lg-tint)), var(--lg-shade) !important;
++    border: var(--lg-border) !important;
++    border-radius: 9999px !important;
++    backdrop-filter: var(--lg-filter);
++    -webkit-backdrop-filter: var(--lg-filter);
++    box-shadow: var(--lg-edge), var(--lg-drop);
++    text-shadow: var(--lg-text-shadow);
++  }
++
++
++  /* Pressed: brighten and dip, like iOS */
++  & :is(
++    [data-ui='player-middle-button'],
++    [data-ui='skip-segment'],
++    [data-ui='player-unlock'],
++    [data-ui='hero-action'],
++    [data-ui='item-action'],
++    [data-ui='pill-tab'],
++    [data-ui='season-pill'],
++    [data-ui='genre-pill'],
++    [data-ui='item-genre'],
++    [data-ui='mobile-nav-item']
++  ) {
++    transition: opacity 0.3s, color 0.2s, background-color 0.2s, box-shadow 0.2s, scale 0.15s ease-out;
++  }
++  & :is(
++    [data-ui='player-middle-button'],
++    [data-ui='skip-segment'],
++    [data-ui='player-unlock'],
++    [data-ui='hero-action'],
++    [data-ui='item-action'],
++    [data-ui='pill-tab'],
++    [data-ui='season-pill'],
++    [data-ui='genre-pill'],
++    [data-ui='item-genre'],
++    [data-ui='mobile-nav-item']
++  ):active:not(:disabled) {
++    scale: var(--lg-press-scale);
++  }
++  & :is(
++    [data-ui='player-middle-button'],
++    [data-ui='skip-segment'],
++    [data-ui='player-unlock'],
++    [data-ui='hero-action']:not([data-name='play']),
++    [data-ui='item-action']:not([data-name='play']),
++    [data-ui='pill-tab'],
++    [data-ui='season-pill'],
++    [data-ui='genre-pill'],
++    [data-ui='item-genre']
++  ):active:not(:disabled) {
++    background: var(--lg-sheen), linear-gradient(var(--lg-tint-press), var(--lg-tint-press)), var(--lg-shade) !important;
++  }
++
++  /* ===== Bottom bar: invisible holder, glass on the pill ===== */
++  & [data-ui='mobile-nav'] {
++    background: transparent !important;
++    border: none !important;
++    box-shadow: none !important;
++    backdrop-filter: none !important;
++    -webkit-backdrop-filter: none !important;
++  }
++  /* iPad landscape side rail: same idea, the outer part is a full-height holder */
++  & [data-ui='touch-rail'][data-shape='floating'] {
++    background: transparent !important;
++    border: none !important;
++    box-shadow: none !important;
++  }
++  & :is([data-ui='mobile-nav'], [data-ui='touch-rail'][data-shape='floating']) > * {
++    background: var(--lg-sheen), var(--lg-panel-tint) !important;
++    border: var(--lg-border) !important;
++    backdrop-filter: var(--lg-panel-filter) !important;
++    -webkit-backdrop-filter: var(--lg-panel-filter) !important;
++    box-shadow: var(--lg-edge), var(--lg-drop) !important;
++  }
++  & [data-ui='mobile-nav'] > * {
++    border-radius: 9999px !important;
++  }
++  /* Current tab: a lighter lozenge inside the bar */
++  & :is([data-ui='mobile-nav-item'], [data-ui='nav-item'])[aria-current='page'] {
++    background: rgb(255 255 255 / 0.16) !important;
++    border-radius: 9999px !important;
++    box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.3);
++  }
++
++  /* ===== Glass panels: menus, sheets, dialogs, mini player, messages ===== */
++  & :is(
++    [data-ui='player-menu'],
++    [data-ui='next-episode-card'],
++    [data-ui='mini-player'],
++    .UI-Modal__content,
++    .UI-Drawer__content,
++    .UI-DropdownMenu__root,
++    .UI-DropdownMenu__subContent,
++    .UI-ContextMenu__root,
++    .UI-Popover__root,
++    .UI-Select__content,
++    [data-sonner-toast]
++  ) {
++    background: var(--lg-sheen), var(--lg-panel-tint) !important;
++    border: var(--lg-border) !important;
++    backdrop-filter: var(--lg-panel-filter) !important;
++    -webkit-backdrop-filter: var(--lg-panel-filter) !important;
++    box-shadow: var(--lg-edge), var(--lg-drop) !important;
++  }
++  & :is(
++    [data-ui='player-menu'],
++    [data-ui='next-episode-card'],
++    [data-ui='mini-player'],
++    .UI-Modal__content,
++    .UI-DropdownMenu__root,
++    .UI-DropdownMenu__subContent,
++    .UI-ContextMenu__root,
++    .UI-Popover__root,
++    .UI-Select__content
++  ) {
++    border-radius: var(--lg-panel-radius) !important;
++  }
++  /* Sheets: round only the corners that face the screen */
++  & .UI-Drawer__content[data-side='right'] {
++    border-radius: var(--lg-panel-radius) 0 0 var(--lg-panel-radius) !important;
++  }
++  & .UI-Drawer__content[data-side='left'] {
++    border-radius: 0 var(--lg-panel-radius) var(--lg-panel-radius) 0 !important;
++  }
++  & .UI-Drawer__content[data-side='bottom'] {
++    border-radius: var(--lg-panel-radius) var(--lg-panel-radius) 0 0 !important;
++  }
++
++  /* Selected row in the player's audio and subtitle menus */
++  & [data-ui='player-menu-item'][data-selected] {
++    background: rgb(255 255 255 / 0.12);
++    border-radius: 0.875rem;
++  }
++
++  /* Dim behind dialogs and sheets. No blur here on purpose: a blur on the
++     overlay stops the dialog's own glass from seeing the page behind it. */
++  & :is(.UI-Modal__overlay, .UI-Drawer__overlay) {
++    background: var(--lg-dim) !important;
++    backdrop-filter: none !important;
++    -webkit-backdrop-filter: none !important;
++  }
++
++  /* ===== Versions: frosted and darker, for reading ===== */
++  & :is(.UI-Modal__content, .UI-Drawer__content)[data-name='versions'],
++  & [data-ui='dialog'][data-name='versions'] {
++    background: var(--lg-sheen), var(--lg-read-tint) !important;
++    backdrop-filter: var(--lg-read-filter) !important;
++    -webkit-backdrop-filter: var(--lg-read-filter) !important;
++  }
++  /* Filter versions box. It sits inside the frosted sheet, so it gets
++     glass edges and a light fill but no blur of its own. */
++  & [data-ui='versions-filter'] {
++    background: rgb(255 255 255 / 0.08) !important;
++    border: var(--lg-border) !important;
++    border-radius: 9999px !important;
++    box-shadow: var(--lg-edge);
++  }
++  & [data-ui='versions-filter']:focus {
++    background: rgb(255 255 255 / 0.12) !important;
++  }
++
++  /* ===== Long lists: glass edges, no blur (keeps scrolling smooth) ===== */
++  & :is([data-ui='version'], [data-ui='settings-card-body']) {
++    background: rgb(255 255 255 / 0.04) !important;
++    border: var(--lg-border) !important;
++    border-radius: 1.25rem !important;
++    box-shadow: var(--lg-edge);
++  }
++
++  /* ===== Timeline ===== */
++  & [data-ui='seek-bar-track'] {
++    border-radius: 9999px;
++    background: rgb(255 255 255 / 0.25);
++  }
++
++  /* ===== Rounder posters and cards ===== */
++  & :is([data-ui='poster-card-image'], [data-ui='wide-card-image'], [data-ui='episode-image']) {
++    border-radius: var(--lg-card-radius);
++  }
++
++  /* ===== Accessibility ===== */
++  /* Settings > Accessibility > Display & Text Size > Increase Contrast:
++     solid, darker surfaces and stronger edges. */
++  @media (prefers-contrast: more) {
++    --lg-tint: rgb(40 40 46 / 0.85);
++    --lg-tint-on: rgb(80 80 90 / 0.95);
++    --lg-tint-press: rgb(90 90 100 / 0.95);
++    --lg-panel-tint: rgb(18 18 22 / 0.94);
++    --lg-read-tint: rgb(14 14 18 / 0.96);
++    --lg-border: 1px solid rgb(255 255 255 / 0.35);
++  }
++  /* Reduce Transparency, where the system passes it to web pages */
++  @media (prefers-reduced-transparency: reduce) {
++    --lg-tint: rgb(40 40 46 / 0.92);
++    --lg-panel-tint: rgb(18 18 22 / 0.96);
++    --lg-read-tint: rgb(14 14 18 / 0.98);
++  }
++  /* Reduce Motion: no press dip */
++  @media (prefers-reduced-motion: reduce) {
++    --lg-press-scale: 1;
 +  }
 +}
 +
@@ -3200,4 +3454,68 @@ index 96e99eee..8afa0cd0 100644
 +  -webkit-backdrop-filter: blur(20px) saturate(1.8);
 +  backdrop-filter: blur(20px) saturate(1.8);
 +  color: #fff !important;
++}
++
++/* ===== iOS: Liquid Glass, round three ===== */
++/* Dropdown fields (Settings' Skip countdown and the like): a glass capsule, not a dark bar. */
++html[data-host='ios-app'] .UI-Select__root {
++  background-color: rgb(255 255 255 / 0.08) !important;
++  border: 1px solid rgb(255 255 255 / 0.14) !important;
++  border-radius: 9999px !important;
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.35), inset -1px -1px 0.5px rgb(255 255 255 / 0.1) !important;
++  -webkit-backdrop-filter: blur(20px) saturate(1.8);
++  backdrop-filter: blur(20px) saturate(1.8);
++}
++/* Cards in long lists (Activity, episodes, calendar, downloads): glass edges on a light tint, without
++   a blur of their own, so scrolling stays smooth. */
++html[data-host='ios-app']
++  :is(
++    [data-ui='history-entry'],
++    [data-ui='history-tile'],
++    [data-ui='episode-list-item'],
++    [data-ui='calendar-entry'],
++    [data-ui='download']
++  ) {
++  background-color: rgb(255 255 255 / 0.05) !important;
++  border: 1px solid rgb(255 255 255 / 0.1) !important;
++  border-radius: 1.25rem !important;
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.3), inset -1px -1px 0.5px rgb(255 255 255 / 0.08) !important;
++}
++html[data-host='ios-app'] [data-ui='calendar-day'] {
++  background-color: rgb(255 255 255 / 0.04) !important;
++  border-color: rgb(255 255 255 / 0.08) !important;
++}
++/* Activity's grid and list toggle: a glass capsule, the chosen view solid white. */
++html[data-host='ios-app'] [data-ui='history-view'] {
++  background-color: rgb(255 255 255 / 0.08) !important;
++  border: 1px solid rgb(255 255 255 / 0.14) !important;
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.35) !important;
++  -webkit-backdrop-filter: blur(20px) saturate(1.8);
++  backdrop-filter: blur(20px) saturate(1.8);
++}
++/* A card's preview and Random pick: frosted glass panels. */
++html[data-host='ios-app'] :is([data-ui='card-preview'], [data-ui='random-card']) {
++  background: linear-gradient(135deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.03) 45%, rgb(255 255 255 / 0.06)), rgb(18 18 22 / 0.5) !important;
++  border: 1px solid rgb(255 255 255 / 0.12) !important;
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.4), 0 12px 32px -12px rgb(0 0 0 / 0.55) !important;
++  -webkit-backdrop-filter: blur(24px) saturate(1.8);
++  backdrop-filter: blur(24px) saturate(1.8);
++}
++/* Live TV: the chosen channel is a glass capsule, the preview gets a glass rim. */
++html[data-host='ios-app'] [data-ui='channel-row'] > div {
++  border: 1px solid transparent;
++  border-radius: 1rem !important;
++}
++html[data-host='ios-app'] [data-ui='channel-row'][data-active] > div {
++  background-color: rgb(255 255 255 / 0.1) !important;
++  border-color: rgb(255 255 255 / 0.16);
++  box-shadow: inset 1px 1px 0.5px rgb(255 255 255 / 0.35), inset -1px -1px 0.5px rgb(255 255 255 / 0.1);
++}
++html[data-host='ios-app'] [data-ui='live-preview'] {
++  border-radius: 1.25rem !important;
++  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14), 0 12px 32px -12px rgb(0 0 0 / 0.6);
++}
++/* Person pages: the photo sits in a glass rim. */
++html[data-host='ios-app'] [data-ui='person-photo'] {
++  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16), inset 1px 1px 0.5px rgb(255 255 255 / 0.35), 0 12px 32px -12px rgb(0 0 0 / 0.6) !important;
 +}
