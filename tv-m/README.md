@@ -58,6 +58,8 @@ are for personal use. So this folder holds none of its code, only:
   `0127` picks the background by the page that's open (Home stays mounted under the others, so its
   hero was always found), opens a collection with its first row in view, and makes Search's field
   wider glass that brightens under the remote instead of turning white.
+  `0128` fetches a collection's picture at full size, so it's sharp at its size on the TV, and makes
+  Search's field taller and nearly as wide as the screen.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
