@@ -22,6 +22,10 @@ are for personal use. So this folder holds none of its code, only:
   `0112` marks the current tab with a dot in place of a capsule, takes the hero to the left edge
   and fades its bottom into the frosted background, keeps the watch party sheet's shape, and draws
   a row title's focus pill inside its box.
+  `0113` draws the top tabs as tvOS does (a solid white focused tab, a grey capsule for the page
+  you're on), calms the glass, thins the focus ring, fits a row title's pill in its own box, and
+  shortens the hero so the first row peeks in. `0003` also fades the search keyboard's frost out above
+  the results.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
