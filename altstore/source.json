@@ -29,6 +29,15 @@
       ],
       "versions": [
         {
+          "version": "0.2.117",
+          "buildVersion": "117",
+          "date": "2026-11-14T09:11:38.227977+00:00",
+          "localizedDescription": "What's new\n\u2022 iPhone: melt a title's trailer into the frosted background\n\nFull notes: https://github.com/hyperionyxdev/aiostreams-ios/releases/tag/v0.2.117",
+          "downloadURL": "https://github.com/hyperionyxdev/aiostreams-ios/releases/download/v0.2.117/AIOStreams.ipa",
+          "size": 17437975,
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "0.2.116",
           "buildVersion": "116",
           "date": "2026-11-14T08:43:06.405350+00:00",
@@ -141,6 +150,16 @@
     }
   ],
   "news": [
+    {
+      "identifier": "release-v0.2.117",
+      "title": "AIOStreams 0.2.117",
+      "caption": "iPhone: melt a title's trailer into the frosted background",
+      "date": "2026-11-14T09:11:38.227977+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/hyperionyxdev/aiostreams-ios/releases/tag/v0.2.117",
+      "notify": false
+    },
     {
       "identifier": "release-v0.2.116",
       "title": "AIOStreams 0.2.116",
