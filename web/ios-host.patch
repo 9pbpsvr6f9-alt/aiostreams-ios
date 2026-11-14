@@ -702,7 +702,7 @@ index 968337d5..d6f175eb 100644
            onValueChange={setOverrideStyled}
          />
 diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
-index 51dba340..6969f723 100644
+index 51dba340..4f4daf01 100644
 --- a/packages/web/src/components/media/hero.tsx
 +++ b/packages/web/src/components/media/hero.tsx
 @@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
@@ -713,7 +713,7 @@ index 51dba340..6969f723 100644
  import { usePageShown } from '@/lib/page-shown';
  import { useFetchNextUp, useItem } from '@/lib/jellyfin/queries';
  import { focusOn, keyboardFocus, useAction } from '@/lib/input';
-@@ -566,19 +567,82 @@ function dotLabel(item: BaseItemDto): string {
+@@ -566,19 +567,81 @@ function dotLabel(item: BaseItemDto): string {
  }
  
  /** Starts `item`'s trailer once it rests; one played out waits for another item. */
@@ -738,9 +738,8 @@ index 51dba340..6969f723 100644
 +      "[data-ui='hero']:not([data-loading])"
 +    );
 +    if (!hero) return true;
-+    // By how far the page has scrolled over it: on iOS the hero stays pinned while the rows slide
-+    // up over it, so its own box doesn't move.
-+    return window.scrollY < hero.offsetHeight * (1 - TRAILER_HERO_SHARE);
++    const r = hero.getBoundingClientRect();
++    return r.bottom > r.height * TRAILER_HERO_SHARE;
 +  };
 +  const [inView, setInView] = React.useState(() => !ios || near());
 +  React.useEffect(() => {
@@ -798,7 +797,7 @@ index 51dba340..6969f723 100644
    React.useEffect(() => {
      if (!playing) setShown(false);
    }, [playing]);
-@@ -591,7 +655,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
+@@ -591,7 +654,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
        onEnded={() => setPlaying(null)}
      />
    );
@@ -807,7 +806,7 @@ index 51dba340..6969f723 100644
  }
  
  /**
-@@ -617,7 +681,9 @@ function HeroTrailer({
+@@ -617,7 +680,9 @@ function HeroTrailer({
        ref={setSpot}
        data-ui="hero-trailer"
        // Wide, so a trailer's own bars are cropped away, even where that runs past the hero's start.
@@ -818,16 +817,7 @@ index 51dba340..6969f723 100644
      >
        <div className="absolute -inset-px">
          {fades && (
-@@ -634,6 +700,8 @@ function HeroTrailer({
-           item={item}
-           spot={spot}
-           within={spot.parentElement ?? undefined}
-+          // iOS: moves with the page as it scrolls; the hero's own stop point fades it out.
-+          follows={appBridge()?.platform === 'ios'}
-           onShown={(on) => {
-             setShown(on);
-             onShown(on);
-@@ -686,12 +754,20 @@ export function Hero({
+@@ -686,12 +751,20 @@ export function Hero({
      if (el && swipeable) return claimSideSwipes(el);
    }, [loading, swipeable]);
  
@@ -848,7 +838,7 @@ index 51dba340..6969f723 100644
        !shown ||
        !inSight ||
        featured.length < 2
-@@ -707,6 +783,8 @@ export function Hero({
+@@ -707,6 +780,8 @@ export function Hero({
      paused,
      focused,
      dragging,
@@ -857,7 +847,7 @@ index 51dba340..6969f723 100644
      shown,
      inSight,
      featured.length,
-@@ -742,10 +820,6 @@ export function Hero({
+@@ -742,10 +817,6 @@ export function Hero({
      if (to && el) focusOn(el);
    }, [index]);
  
@@ -868,7 +858,7 @@ index 51dba340..6969f723 100644
  
    if (loading) return <HeroSkeleton />;
    if (!featured[index]) return null;
-@@ -1032,7 +1106,7 @@ export function FollowHero({
+@@ -1032,7 +1103,7 @@ export function FollowHero({
      };
    }, [scroller]);
    const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
@@ -899,37 +889,12 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..1197bd78
+index 00000000..9efad620
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
-@@ -0,0 +1,261 @@
+@@ -0,0 +1,212 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
-+
-+/*
-+ * Diagnostic (experimental builds): on the iPhone, any error the page hits is shown on screen, over
-+ * everything, so a blank screen can be read off a screenshot. Remove before main.
-+ */
-+// This patch's page runs only in the iPhone app; installed at once, before the page marks its host.
-+if (typeof window !== 'undefined') {
-+  const show = (what: string) => {
-+    let box = document.getElementById('ios-diagnostic');
-+    if (!box) {
-+      box = document.createElement('pre');
-+      box.id = 'ios-diagnostic';
-+      box.style.cssText =
-+        'position:fixed;left:8px;right:8px;top:60px;z-index:2147483647;max-height:70vh;overflow:auto;' +
-+        'margin:0;padding:12px;border-radius:12px;background:#300;color:#fff;font:12px/1.4 ui-monospace,monospace;' +
-+        'white-space:pre-wrap;pointer-events:none';
-+      document.body.appendChild(box);
-+    }
-+    box.textContent = (box.textContent ? box.textContent + '\n\n' : 'Diagnostic: page error\n\n') + what;
-+  };
-+  const text = (e: unknown) =>
-+    e instanceof Error ? `${e.name}: ${e.message}\n${(e.stack ?? '').split('\n').slice(0, 8).join('\n')}` : String(e);
-+  window.addEventListener('error', (e) => show(text(e.error ?? e.message)));
-+  window.addEventListener('unhandledrejection', (e) => show(text(e.reason)));
-+}
 +
 +/** The hero's slide on show, and its newest picture. */
 +const HERO_PICTURE =
@@ -1119,30 +1084,6 @@ index 00000000..1197bd78
 +      live = false;
 +    };
 +  }, [src]);
-+
-+  // How much of Home's hero the rows have slid over (0 to 1), as --hero-covered, for its fade.
-+  React.useEffect(() => {
-+    if (mode === 'off') return;
-+    let frame = 0;
-+    const root = document.documentElement;
-+    const update = () => {
-+      cancelAnimationFrame(frame);
-+      frame = requestAnimationFrame(() => {
-+        const hero = document.querySelector<HTMLElement>("[data-ui='hero']:not([data-loading])");
-+        const covered = hero ? Math.min(1, Math.max(0, window.scrollY / hero.offsetHeight)) : 0;
-+        root.style.setProperty('--hero-covered', covered.toFixed(3));
-+      });
-+    };
-+    update();
-+    window.addEventListener('scroll', update, { passive: true });
-+    window.addEventListener('resize', update);
-+    return () => {
-+      cancelAnimationFrame(frame);
-+      window.removeEventListener('scroll', update);
-+      window.removeEventListener('resize', update);
-+      root.style.removeProperty('--hero-covered');
-+    };
-+  }, [mode]);
 +
 +  const shown = mode !== 'off' && layers.length > 0;
 +  React.useEffect(() => {
@@ -1862,142 +1803,10 @@ index e3bb77f6..53ce70a9 100644
    };
  }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21e..aec6d844 100644
+index 4daab21e..37a36435 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
-@@ -146,22 +146,32 @@ function useOnlyOne(stop: () => void) {
-   }, [latest]);
- }
- 
--/** Where `spot` was as the trailer began; any move ends it, as an app's video can't follow. */
--function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
--  const [box] = React.useState(() => boxOf(spot));
-+/**
-+ * Where `spot` was as the trailer began; any move ends it, as an app's video can't follow. With
-+ * `follows` (iOS: Home's hero), the box follows the spot instead, so the app's video moves with the
-+ * page as it scrolls, and only the spot leaving the page ends it.
-+ */
-+function useSpotBox(spot: HTMLElement, onMoved: () => void, follows = false): Box {
-+  const [box, setBox] = React.useState(() => boxOf(spot));
-   const latest = useLatest(onMoved);
-+  const shown = React.useRef(box);
-+  shown.current = box;
-   React.useEffect(() => {
-     let frame = 0;
-     const check = () => {
-       cancelAnimationFrame(frame);
-       frame = requestAnimationFrame(() => {
--        if (!spot.isConnected || moved(boxOf(spot), box)) latest.current();
-+        if (!spot.isConnected) return latest.current();
-+        const now = boxOf(spot);
-+        if (!moved(now, shown.current)) return;
-+        if (follows) setBox(now);
-+        else latest.current();
-       });
-     };
-     // A glide eases a scroll's jump back, so the spot can still be drawn in place.
-     const scroll = (e: Event) => {
-       const box = e.target === document ? document.scrollingElement : e.target;
--      if (box instanceof Node && box.contains(spot)) latest.current();
-+      if (!follows && box instanceof Node && box.contains(spot)) latest.current();
-       else check();
-     };
-     const observer = new ResizeObserver(check);
-@@ -177,12 +187,42 @@ function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
-       document.removeEventListener('scroll', scroll, { capture: true });
-       removeEventListener('resize', check);
-     };
--  }, [spot, box, latest]);
-+  }, [spot, latest, follows]);
-   return box;
- }
- 
- const MASK = ['mask-image', '-webkit-mask-image'];
- 
-+/**
-+ * iOS: where the rows beneath Home's hero begin on screen, as they slide up over the pinned hero
-+ * while the page scrolls; the hole over its trailer ends there, so the trailer doesn't show
-+ * between the rows' cards. Null where nothing covers it.
-+ */
-+function useCoverTop(follows: boolean): number | null {
-+  const look = () =>
-+    document
-+      .querySelector<HTMLElement>("[data-ui='hero'] + [data-ui='home-rows']")
-+      ?.getBoundingClientRect().top ?? null;
-+  const [top, setTop] = React.useState<number | null>(() => (follows ? look() : null));
-+  React.useEffect(() => {
-+    if (!follows) return;
-+    let frame = 0;
-+    const update = () => {
-+      cancelAnimationFrame(frame);
-+      frame = requestAnimationFrame(() => setTop(look()));
-+    };
-+    update();
-+    window.addEventListener('scroll', update, { passive: true });
-+    window.addEventListener('resize', update);
-+    return () => {
-+      cancelAnimationFrame(frame);
-+      window.removeEventListener('scroll', update);
-+      window.removeEventListener('resize', update);
-+    };
-+  }, [follows]);
-+  return top;
-+}
-+
- /**
-  * The app's video lies beneath the page, which the page's background covers
-  * but in `box`: what the page draws there itself still shows over it.
-@@ -198,6 +238,32 @@ function useVideoHole(box: Box | null, radius: number) {
-     const y = box.y - view.top;
-     const { width: w, height: h } = box;
-     const r = Math.min(radius, w / 2, h / 2);
-+    const html = document.documentElement;
-+    if (r <= 0) {
-+      // Square corners: the hole is two plain layers, the page less the box, with nothing to load,
-+      // so moving it as a trailer follows the page (iOS: Home's hero) can't flicker. A new SVG
-+      // image each frame showed the background whole for a frame while it loaded.
-+      /* eslint-disable lingui/no-unlocalized-strings -- CSS values */
-+      const plain: [string, string][] = [
-+        ['mask-image', 'linear-gradient(#000, #000), linear-gradient(#000, #000)'],
-+        ['-webkit-mask-image', 'linear-gradient(#000, #000), linear-gradient(#000, #000)'],
-+        ['mask-size', `${view.width}px ${view.height}px, ${w}px ${h}px`],
-+        ['-webkit-mask-size', `${view.width}px ${view.height}px, ${w}px ${h}px`],
-+        ['mask-position', `0 0, ${x}px ${y}px`],
-+        ['-webkit-mask-position', `0 0, ${x}px ${y}px`],
-+        ['mask-repeat', 'no-repeat'],
-+        ['-webkit-mask-repeat', 'no-repeat'],
-+        ['mask-composite', 'exclude'],
-+        ['-webkit-mask-composite', 'xor'],
-+      ];
-+      /* eslint-enable lingui/no-unlocalized-strings */
-+      for (const [name, value] of plain) background.style.setProperty(name, value);
-+      html.setAttribute('data-video-hole', '');
-+      return () => {
-+        for (const [name] of plain) background.style.removeProperty(name);
-+        html.removeAttribute('data-video-hole');
-+      };
-+    }
-     /* eslint-disable lingui/no-unlocalized-strings -- SVG path data */
-     const arc = (dx: number, dy: number) => `A${r} ${r} 0 0 1 ${dx} ${dy}`;
-     const path =
-@@ -208,7 +274,6 @@ function useVideoHole(box: Box | null, radius: number) {
-     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${view.width}" height="${view.height}"><path fill-rule="evenodd" d="${path}"/></svg>`;
-     const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-     for (const name of MASK) background.style.setProperty(name, mask);
--    const html = document.documentElement;
-     html.setAttribute('data-video-hole', '');
-     return () => {
-       for (const name of MASK) background.style.removeProperty(name);
-@@ -249,6 +314,8 @@ export interface TrailerPreviewProps {
-   full?: boolean;
-   /** Whether the picture shows, so what covers it can fade. */
-   onShown?: (shown: boolean, trailer: Trailer) => void;
-+  /** iOS: follow the spot as the page scrolls, rather than stop as it moves. */
-+  follows?: boolean;
-   onEnded(end: TrailerEnd): void;
-   onExitFull?: () => void;
- }
-@@ -261,7 +328,8 @@ export interface TrailerPreviewProps {
+@@ -261,7 +261,8 @@ export interface TrailerPreviewProps {
  export function TrailerPreview(props: TrailerPreviewProps) {
    const { item, spot, full = false } = props;
    const details = useItem(item.Id ?? '');
@@ -2007,29 +1816,7 @@ index 4daab21e..aec6d844 100644
    const trailers = React.useMemo(
      () => (known ? trailersOf(known) : []),
      [known]
-@@ -273,9 +341,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
-   const muted = !full && !sound;
-   const ended = useLatest(props.onEnded);
-   useOnlyOne(() => ended.current('stopped'));
--  const box = useSpotBox(spot, () => !full && ended.current('stopped'));
--  const [clip] = React.useState(() =>
--    props.within ? boxOf(props.within) : null
-+  const box = useSpotBox(
-+    spot,
-+    () => !full && ended.current('stopped'),
-+    !!props.follows
-+  );
-+  const within = props.within;
-+  const follows = !!props.follows;
-+  const [firstClip] = React.useState(() => (within ? boxOf(within) : null));
-+  // Following, the clip moves with the spot; else it holds where it was.
-+  const clip = React.useMemo(
-+    () => (follows && within ? boxOf(within) : firstClip),
-+    [follows, within, firstClip, box]
-   );
-   const frame = React.useMemo(() => coverOf(box), [box]);
-   const hole = React.useMemo(
-@@ -409,6 +486,7 @@ function PlayedPreview({
+@@ -409,6 +410,7 @@ function PlayedPreview({
      fit: full ? undefined : 'crop',
      muted,
      thumbnails: full,
@@ -2037,7 +1824,7 @@ index 4daab21e..aec6d844 100644
    });
    const { started, error } = player.state;
    const flowing = usePlayhead(
-@@ -428,6 +506,7 @@ function PlayedPreview({
+@@ -428,6 +430,7 @@ function PlayedPreview({
        full
          ? null
          : {
@@ -2045,7 +1832,7 @@ index 4daab21e..aec6d844 100644
              x: frame.x - 1,
              y: frame.y - 1,
              width: frame.width + 2,
-@@ -436,23 +515,30 @@ function PlayedPreview({
+@@ -436,19 +439,19 @@ function PlayedPreview({
              // Over the page only once it plays, as it shows black until then.
              hidden: !over || !shown,
              animate: false,
@@ -2071,18 +1858,6 @@ index 4daab21e..aec6d844 100644
      },
      [host, setFrame]
    );
--  useVideoHole(host && shown && !full && !over ? hole : null, radius);
-+  // iOS, Home's hero: the hole stops where the rows have covered it, two pixels under their grey.
-+  const coverTop = useCoverTop(!!props.follows);
-+  const pageHole = React.useMemo(() => {
-+    if (coverTop === null) return hole;
-+    const bottom = Math.min(hole.y + hole.height, coverTop + 2);
-+    return { ...hole, height: Math.max(0, bottom - hole.y) };
-+  }, [hole, coverTop]);
-+  useVideoHole(host && shown && !full && !over ? pageHole : null, radius);
-   usePlayerPage(full);
-   React.useEffect(() => {
-     if (!full) return;
 diff --git a/packages/web/src/lib/downloads/index.ts b/packages/web/src/lib/downloads/index.ts
 index 000b3b22..189d966d 100644
 --- a/packages/web/src/lib/downloads/index.ts
@@ -3082,7 +2857,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..1336af1e 100644
+index 96e99eee..8ce40c0f 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -3156,7 +2931,7 @@ index 96e99eee..1336af1e 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,154 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,139 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -3295,19 +3070,4 @@ index 96e99eee..1336af1e 100644
 +    0 8px 24px -12px rgb(0 0 0 / 0.6) !important;
 +  -webkit-backdrop-filter: blur(24px) saturate(1.8);
 +  backdrop-filter: blur(24px) saturate(1.8);
-+}
-+
-+/* iOS: Home's hero stays pinned at the top while the rows slide up over it, led by their grey, and it
-+   fades as they cover it. Its trailer, the app's own video beneath the page, then never moves while
-+   the page scrolls, so it can't trail behind the page; the page's hole over it ends where the rows
-+   have covered it. The hero's picture no longer drifts at half speed. */
-+html[data-ios-backdrop] [data-page='home'] [data-ui='hero']:not([data-follow]):not([data-loading]) {
-+  position: sticky !important;
-+  top: 0;
-+  z-index: 0;
-+  opacity: calc(1 - var(--hero-covered, 0));
-+}
-+html[data-ios-backdrop] [data-page='home'] [data-ui='hero-backdrops'] {
-+  animation: none !important;
-+  transform: none !important;
 +}
