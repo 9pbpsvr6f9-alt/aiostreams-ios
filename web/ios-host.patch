@@ -2476,7 +2476,7 @@ index 2014fb0e..ff23473c 100644
 +msgid "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 +msgstr "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..5744a0d1 100644
+index 96e99eee..75893768 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2550,3 +2550,16 @@ index 96e99eee..5744a0d1 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
+@@ -524,3 +588,12 @@ html[data-blur-spoilers]:not([data-tv])
+     opacity: 0;
+   }
+ }
++
++/* iOS: a collection's page on a phone, with its picture in place of its name, starts near the top.
++   The usual gap above is room for a title's backdrop to show; a collection's picture is the art
++   here, so the gap would only be empty. */
++@media (max-width: 767px) {
++  [data-ui='item-page'] [data-ui='item-body']:has([data-ui='item-collection-picture']) {
++    padding-top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
++  }
++}
