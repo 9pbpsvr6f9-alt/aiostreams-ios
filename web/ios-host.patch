@@ -702,7 +702,7 @@ index 968337d5..d6f175eb 100644
            onValueChange={setOverrideStyled}
          />
 diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
-index 51dba340..d118dbfb 100644
+index 51dba340..4f4daf01 100644
 --- a/packages/web/src/components/media/hero.tsx
 +++ b/packages/web/src/components/media/hero.tsx
 @@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
@@ -713,7 +713,7 @@ index 51dba340..d118dbfb 100644
  import { usePageShown } from '@/lib/page-shown';
  import { useFetchNextUp, useItem } from '@/lib/jellyfin/queries';
  import { focusOn, keyboardFocus, useAction } from '@/lib/input';
-@@ -566,19 +567,71 @@ function dotLabel(item: BaseItemDto): string {
+@@ -566,19 +567,81 @@ function dotLabel(item: BaseItemDto): string {
  }
  
  /** Starts `item`'s trailer once it rests; one played out waits for another item. */
@@ -723,14 +723,24 @@ index 51dba340..d118dbfb 100644
 + * while the hero is mostly in view, fades out once you've scrolled well past it, and waits to start
 + * again once you're back.
 + */
-+/** How far down, as a share of the screen's height, the hero's trailer keeps playing. */
-+const TRAILER_SCROLL_SHARE = 0.4;
++/**
++ * How much of the hero's height has to stay on screen for its trailer to keep playing: it fades out
++ * only once you've scrolled most of the hero away, so stopping sits well into the scroll.
++ */
++const TRAILER_HERO_SHARE = 0.3;
 +/** How long the hero's picture takes to cover a trailer before it stops; as its CSS transition. */
 +const TRAILER_FADE_OUT_MS = 900;
 +
 +function useHeroInView(): boolean {
 +  const ios = appBridge()?.platform === 'ios';
-+  const near = () => window.scrollY < window.innerHeight * TRAILER_SCROLL_SHARE;
++  const near = () => {
++    const hero = document.querySelector<HTMLElement>(
++      "[data-ui='hero']:not([data-loading])"
++    );
++    if (!hero) return true;
++    const r = hero.getBoundingClientRect();
++    return r.bottom > r.height * TRAILER_HERO_SHARE;
++  };
 +  const [inView, setInView] = React.useState(() => !ios || near());
 +  React.useEffect(() => {
 +    if (!ios) return;
@@ -787,7 +797,7 @@ index 51dba340..d118dbfb 100644
    React.useEffect(() => {
      if (!playing) setShown(false);
    }, [playing]);
-@@ -591,7 +644,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
+@@ -591,7 +654,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
        onEnded={() => setPlaying(null)}
      />
    );
@@ -796,7 +806,7 @@ index 51dba340..d118dbfb 100644
  }
  
  /**
-@@ -617,7 +670,9 @@ function HeroTrailer({
+@@ -617,7 +680,9 @@ function HeroTrailer({
        ref={setSpot}
        data-ui="hero-trailer"
        // Wide, so a trailer's own bars are cropped away, even where that runs past the hero's start.
@@ -807,7 +817,7 @@ index 51dba340..d118dbfb 100644
      >
        <div className="absolute -inset-px">
          {fades && (
-@@ -686,12 +741,20 @@ export function Hero({
+@@ -686,12 +751,20 @@ export function Hero({
      if (el && swipeable) return claimSideSwipes(el);
    }, [loading, swipeable]);
  
@@ -828,7 +838,7 @@ index 51dba340..d118dbfb 100644
        !shown ||
        !inSight ||
        featured.length < 2
-@@ -707,6 +770,8 @@ export function Hero({
+@@ -707,6 +780,8 @@ export function Hero({
      paused,
      focused,
      dragging,
@@ -837,7 +847,7 @@ index 51dba340..d118dbfb 100644
      shown,
      inSight,
      featured.length,
-@@ -742,10 +807,6 @@ export function Hero({
+@@ -742,10 +817,6 @@ export function Hero({
      if (to && el) focusOn(el);
    }, [index]);
  
@@ -848,7 +858,7 @@ index 51dba340..d118dbfb 100644
  
    if (loading) return <HeroSkeleton />;
    if (!featured[index]) return null;
-@@ -1032,7 +1093,7 @@ export function FollowHero({
+@@ -1032,7 +1103,7 @@ export function FollowHero({
      };
    }, [scroller]);
    const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
