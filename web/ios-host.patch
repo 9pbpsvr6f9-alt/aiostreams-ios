@@ -792,10 +792,10 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..1913081c
+index 00000000..18ba3b29
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
-@@ -0,0 +1,204 @@
+@@ -0,0 +1,211 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
 +
@@ -954,14 +954,21 @@ index 00000000..1913081c
 +      const all = document.querySelectorAll<HTMLImageElement>(HERO_PICTURE);
 +      return pictureOf(all[all.length - 1]);
 +    };
-+    // A light look twice a second: the hero turns every several seconds, and pages change.
++    // A light look four times a second: the hero turns every several seconds, and pages change.
 +    const look = () => {
++      // The hero's next and previous pictures, softened ahead, so the background turns with it.
++      for (const img of document.querySelectorAll<HTMLImageElement>(
++        "[data-ui='hero-backdrops'] img[data-ui='hero-backdrop']"
++      )) {
++        const next = pictureOf(img);
++        if (next) void soften(next);
++      }
 +      const found = decide();
 +      setSrc(found);
 +      if (!found) setLayers((all) => (all.length ? [] : all));
 +    };
 +    look();
-+    const timer = window.setInterval(look, 500);
++    const timer = window.setInterval(look, 250);
 +    return () => window.clearInterval(timer);
 +  }, [mode]);
 +
@@ -2752,7 +2759,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..d76147d0 100644
+index 96e99eee..354e47fe 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2826,7 +2833,7 @@ index 96e99eee..d76147d0 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,93 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,99 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2896,7 +2903,9 @@ index 96e99eee..d76147d0 100644
 +    animation: none;
 +  }
 +}
-+html[data-ios-backdrop] [data-ui='hero-backdrops'] {
++/* On the hero's still box, not its art, which scrolls at half the page's speed: WebKit drops a mask
++   on the moving art, and one that held would slide away with it. */
++html[data-ios-backdrop] [data-ui='hero'] div:has(> [data-ui='hero-backdrops']) {
 +  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
 +  mask-image: linear-gradient(to top, transparent, black 45%);
 +}
@@ -2906,7 +2915,11 @@ index 96e99eee..d76147d0 100644
 +html[data-ios-backdrop] [data-ui='hero-shade'][data-name='side'] {
 +  background-image: linear-gradient(to right, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.2) 35%, transparent) !important;
 +}
++/* A title's backdrop is itself the box that scrolls at half speed, so it scrolls with the page while
++   it fades into the frosted background, and its mask holds. */
 +html[data-ios-backdrop] [data-ui='item-backdrop'] {
++  animation: none !important;
++  transform: none !important;
 +  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
 +  mask-image: linear-gradient(to top, transparent, black 45%);
 +}
