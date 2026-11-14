@@ -689,7 +689,7 @@ index 968337d5..d6f175eb 100644
            onValueChange={setOverrideStyled}
          />
 diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
-index 51dba340..beaef181 100644
+index 51dba340..6ba191d8 100644
 --- a/packages/web/src/components/media/hero.tsx
 +++ b/packages/web/src/components/media/hero.tsx
 @@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
@@ -700,7 +700,38 @@ index 51dba340..beaef181 100644
  import { usePageShown } from '@/lib/page-shown';
  import { useFetchNextUp, useItem } from '@/lib/jellyfin/queries';
  import { focusOn, keyboardFocus, useAction } from '@/lib/input';
-@@ -591,7 +592,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
+@@ -566,8 +567,29 @@ function dotLabel(item: BaseItemDto): string {
+ }
+ 
+ /** Starts `item`'s trailer once it rests; one played out waits for another item. */
++/**
++ * iOS: whether the page is at its top. The app draws a trailer as its own video beneath the page,
++ * which follows the page a beat behind as it scrolls; so on iOS the hero's trailer plays only at
++ * the top, stops as you scroll, and waits to start again once you're back, as the TV app's do.
++ */
++function useAtTop(): boolean {
++  const ios = appBridge()?.platform === 'ios';
++  const [atTop, setAtTop] = React.useState(() => !ios || window.scrollY < 8);
++  React.useEffect(() => {
++    if (!ios) return;
++    const look = () => setAtTop(window.scrollY < 8);
++    look();
++    window.addEventListener('scroll', look, { passive: true });
++    return () => window.removeEventListener('scroll', look);
++  }, [ios]);
++  return atTop;
++}
++
+ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
+-  const on = useTrailersOn('hero');
++  // Both hooks run on every render, as React requires.
++  const trailersOn = useTrailersOn('hero');
++  const atTop = useAtTop();
++  const on = trailersOn && atTop;
+   const [playing, setPlaying] = React.useState<BaseItemDto | null>(null);
+   const [shown, setShown] = React.useState(false);
+   // By id: a refetch hands the same title over as a new object.
+@@ -591,7 +613,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
        onEnded={() => setPlaying(null)}
      />
    );
@@ -709,7 +740,7 @@ index 51dba340..beaef181 100644
  }
  
  /**
-@@ -617,7 +618,9 @@ function HeroTrailer({
+@@ -617,7 +639,9 @@ function HeroTrailer({
        ref={setSpot}
        data-ui="hero-trailer"
        // Wide, so a trailer's own bars are cropped away, even where that runs past the hero's start.
@@ -720,7 +751,7 @@ index 51dba340..beaef181 100644
      >
        <div className="absolute -inset-px">
          {fades && (
-@@ -686,12 +689,20 @@ export function Hero({
+@@ -686,12 +710,20 @@ export function Hero({
      if (el && swipeable) return claimSideSwipes(el);
    }, [loading, swipeable]);
  
@@ -741,7 +772,7 @@ index 51dba340..beaef181 100644
        !shown ||
        !inSight ||
        featured.length < 2
-@@ -707,6 +718,8 @@ export function Hero({
+@@ -707,6 +739,8 @@ export function Hero({
      paused,
      focused,
      dragging,
@@ -750,7 +781,7 @@ index 51dba340..beaef181 100644
      shown,
      inSight,
      featured.length,
-@@ -742,10 +755,6 @@ export function Hero({
+@@ -742,10 +776,6 @@ export function Hero({
      if (to && el) focusOn(el);
    }, [index]);
  
@@ -761,7 +792,7 @@ index 51dba340..beaef181 100644
  
    if (loading) return <HeroSkeleton />;
    if (!featured[index]) return null;
-@@ -1032,7 +1041,7 @@ export function FollowHero({
+@@ -1032,7 +1062,7 @@ export function FollowHero({
      };
    }, [scroller]);
    const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
@@ -2821,7 +2852,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..1875f362 100644
+index 96e99eee..27e8f60a 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2895,7 +2926,7 @@ index 96e99eee..1875f362 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,120 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,126 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -3016,3 +3047,9 @@ index 96e99eee..1875f362 100644
 +}
 +/* Always on, not only while a trailer plays: it matches the background behind the hero's own fade
 +   anyway, and coming in as a trailer began left the edge showing for that moment. */
++
++/* iOS: the hero's picture leaves a starting trailer slowly, so the app's video, drawn beneath the
++   page, is in place under the fade before it shows. */
++html[data-host='ios-app'] [data-ui='hero-backdrops'] {
++  transition-duration: 1.4s !important;
++}
