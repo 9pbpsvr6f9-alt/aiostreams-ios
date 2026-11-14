@@ -702,7 +702,7 @@ index 968337d5..d6f175eb 100644
            onValueChange={setOverrideStyled}
          />
 diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
-index 51dba340..9680d49f 100644
+index 51dba340..6969f723 100644
 --- a/packages/web/src/components/media/hero.tsx
 +++ b/packages/web/src/components/media/hero.tsx
 @@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
@@ -713,7 +713,7 @@ index 51dba340..9680d49f 100644
  import { usePageShown } from '@/lib/page-shown';
  import { useFetchNextUp, useItem } from '@/lib/jellyfin/queries';
  import { focusOn, keyboardFocus, useAction } from '@/lib/input';
-@@ -566,19 +567,81 @@ function dotLabel(item: BaseItemDto): string {
+@@ -566,19 +567,82 @@ function dotLabel(item: BaseItemDto): string {
  }
  
  /** Starts `item`'s trailer once it rests; one played out waits for another item. */
@@ -738,8 +738,9 @@ index 51dba340..9680d49f 100644
 +      "[data-ui='hero']:not([data-loading])"
 +    );
 +    if (!hero) return true;
-+    const r = hero.getBoundingClientRect();
-+    return r.bottom > r.height * TRAILER_HERO_SHARE;
++    // By how far the page has scrolled over it: on iOS the hero stays pinned while the rows slide
++    // up over it, so its own box doesn't move.
++    return window.scrollY < hero.offsetHeight * (1 - TRAILER_HERO_SHARE);
 +  };
 +  const [inView, setInView] = React.useState(() => !ios || near());
 +  React.useEffect(() => {
@@ -797,7 +798,7 @@ index 51dba340..9680d49f 100644
    React.useEffect(() => {
      if (!playing) setShown(false);
    }, [playing]);
-@@ -591,7 +654,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
+@@ -591,7 +655,7 @@ function useHeroTrailer(item: BaseItemDto | null, fades: boolean) {
        onEnded={() => setPlaying(null)}
      />
    );
@@ -806,7 +807,7 @@ index 51dba340..9680d49f 100644
  }
  
  /**
-@@ -617,7 +680,9 @@ function HeroTrailer({
+@@ -617,7 +681,9 @@ function HeroTrailer({
        ref={setSpot}
        data-ui="hero-trailer"
        // Wide, so a trailer's own bars are cropped away, even where that runs past the hero's start.
@@ -817,7 +818,7 @@ index 51dba340..9680d49f 100644
      >
        <div className="absolute -inset-px">
          {fades && (
-@@ -634,6 +699,8 @@ function HeroTrailer({
+@@ -634,6 +700,8 @@ function HeroTrailer({
            item={item}
            spot={spot}
            within={spot.parentElement ?? undefined}
@@ -826,7 +827,7 @@ index 51dba340..9680d49f 100644
            onShown={(on) => {
              setShown(on);
              onShown(on);
-@@ -686,12 +753,20 @@ export function Hero({
+@@ -686,12 +754,20 @@ export function Hero({
      if (el && swipeable) return claimSideSwipes(el);
    }, [loading, swipeable]);
  
@@ -847,7 +848,7 @@ index 51dba340..9680d49f 100644
        !shown ||
        !inSight ||
        featured.length < 2
-@@ -707,6 +782,8 @@ export function Hero({
+@@ -707,6 +783,8 @@ export function Hero({
      paused,
      focused,
      dragging,
@@ -856,7 +857,7 @@ index 51dba340..9680d49f 100644
      shown,
      inSight,
      featured.length,
-@@ -742,10 +819,6 @@ export function Hero({
+@@ -742,10 +820,6 @@ export function Hero({
      if (to && el) focusOn(el);
    }, [index]);
  
@@ -867,7 +868,7 @@ index 51dba340..9680d49f 100644
  
    if (loading) return <HeroSkeleton />;
    if (!featured[index]) return null;
-@@ -1032,7 +1105,7 @@ export function FollowHero({
+@@ -1032,7 +1106,7 @@ export function FollowHero({
      };
    }, [scroller]);
    const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
@@ -898,10 +899,10 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..9efad620
+index 00000000..91ebe0c3
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
-@@ -0,0 +1,212 @@
+@@ -0,0 +1,236 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
 +
@@ -1093,6 +1094,30 @@ index 00000000..9efad620
 +      live = false;
 +    };
 +  }, [src]);
++
++  // How much of Home's hero the rows have slid over (0 to 1), as --hero-covered, for its fade.
++  React.useEffect(() => {
++    if (mode === 'off') return;
++    let frame = 0;
++    const root = document.documentElement;
++    const update = () => {
++      cancelAnimationFrame(frame);
++      frame = requestAnimationFrame(() => {
++        const hero = document.querySelector<HTMLElement>("[data-ui='hero']:not([data-loading])");
++        const covered = hero ? Math.min(1, Math.max(0, window.scrollY / hero.offsetHeight)) : 0;
++        root.style.setProperty('--hero-covered', covered.toFixed(3));
++      });
++    };
++    update();
++    window.addEventListener('scroll', update, { passive: true });
++    window.addEventListener('resize', update);
++    return () => {
++      cancelAnimationFrame(frame);
++      window.removeEventListener('scroll', update);
++      window.removeEventListener('resize', update);
++      root.style.removeProperty('--hero-covered');
++    };
++  }, [mode]);
 +
 +  const shown = mode !== 'off' && layers.length > 0;
 +  React.useEffect(() => {
@@ -1812,7 +1837,7 @@ index e3bb77f6..53ce70a9 100644
    };
  }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21e..ecd2e9ea 100644
+index 4daab21e..aec6d844 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
 @@ -146,22 +146,32 @@ function useOnlyOne(stop: () => void) {
@@ -1853,7 +1878,7 @@ index 4daab21e..ecd2e9ea 100644
        else check();
      };
      const observer = new ResizeObserver(check);
-@@ -177,7 +187,7 @@ function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
+@@ -177,12 +187,42 @@ function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
        document.removeEventListener('scroll', scroll, { capture: true });
        removeEventListener('resize', check);
      };
@@ -1862,7 +1887,42 @@ index 4daab21e..ecd2e9ea 100644
    return box;
  }
  
-@@ -198,6 +208,32 @@ function useVideoHole(box: Box | null, radius: number) {
+ const MASK = ['mask-image', '-webkit-mask-image'];
+ 
++/**
++ * iOS: where the rows beneath Home's hero begin on screen, as they slide up over the pinned hero
++ * while the page scrolls; the hole over its trailer ends there, so the trailer doesn't show
++ * between the rows' cards. Null where nothing covers it.
++ */
++function useCoverTop(follows: boolean): number | null {
++  const look = () =>
++    document
++      .querySelector<HTMLElement>("[data-ui='hero'] + [data-ui='home-rows']")
++      ?.getBoundingClientRect().top ?? null;
++  const [top, setTop] = React.useState<number | null>(() => (follows ? look() : null));
++  React.useEffect(() => {
++    if (!follows) return;
++    let frame = 0;
++    const update = () => {
++      cancelAnimationFrame(frame);
++      frame = requestAnimationFrame(() => setTop(look()));
++    };
++    update();
++    window.addEventListener('scroll', update, { passive: true });
++    window.addEventListener('resize', update);
++    return () => {
++      cancelAnimationFrame(frame);
++      window.removeEventListener('scroll', update);
++      window.removeEventListener('resize', update);
++    };
++  }, [follows]);
++  return top;
++}
++
+ /**
+  * The app's video lies beneath the page, which the page's background covers
+  * but in `box`: what the page draws there itself still shows over it.
+@@ -198,6 +238,32 @@ function useVideoHole(box: Box | null, radius: number) {
      const y = box.y - view.top;
      const { width: w, height: h } = box;
      const r = Math.min(radius, w / 2, h / 2);
@@ -1895,7 +1955,7 @@ index 4daab21e..ecd2e9ea 100644
      /* eslint-disable lingui/no-unlocalized-strings -- SVG path data */
      const arc = (dx: number, dy: number) => `A${r} ${r} 0 0 1 ${dx} ${dy}`;
      const path =
-@@ -208,7 +244,6 @@ function useVideoHole(box: Box | null, radius: number) {
+@@ -208,7 +274,6 @@ function useVideoHole(box: Box | null, radius: number) {
      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${view.width}" height="${view.height}"><path fill-rule="evenodd" d="${path}"/></svg>`;
      const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
      for (const name of MASK) background.style.setProperty(name, mask);
@@ -1903,7 +1963,7 @@ index 4daab21e..ecd2e9ea 100644
      html.setAttribute('data-video-hole', '');
      return () => {
        for (const name of MASK) background.style.removeProperty(name);
-@@ -249,6 +284,8 @@ export interface TrailerPreviewProps {
+@@ -249,6 +314,8 @@ export interface TrailerPreviewProps {
    full?: boolean;
    /** Whether the picture shows, so what covers it can fade. */
    onShown?: (shown: boolean, trailer: Trailer) => void;
@@ -1912,7 +1972,7 @@ index 4daab21e..ecd2e9ea 100644
    onEnded(end: TrailerEnd): void;
    onExitFull?: () => void;
  }
-@@ -261,7 +298,8 @@ export interface TrailerPreviewProps {
+@@ -261,7 +328,8 @@ export interface TrailerPreviewProps {
  export function TrailerPreview(props: TrailerPreviewProps) {
    const { item, spot, full = false } = props;
    const details = useItem(item.Id ?? '');
@@ -1922,7 +1982,7 @@ index 4daab21e..ecd2e9ea 100644
    const trailers = React.useMemo(
      () => (known ? trailersOf(known) : []),
      [known]
-@@ -273,9 +311,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
+@@ -273,9 +341,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
    const muted = !full && !sound;
    const ended = useLatest(props.onEnded);
    useOnlyOne(() => ended.current('stopped'));
@@ -1944,7 +2004,7 @@ index 4daab21e..ecd2e9ea 100644
    );
    const frame = React.useMemo(() => coverOf(box), [box]);
    const hole = React.useMemo(
-@@ -409,6 +456,7 @@ function PlayedPreview({
+@@ -409,6 +486,7 @@ function PlayedPreview({
      fit: full ? undefined : 'crop',
      muted,
      thumbnails: full,
@@ -1952,7 +2012,7 @@ index 4daab21e..ecd2e9ea 100644
    });
    const { started, error } = player.state;
    const flowing = usePlayhead(
-@@ -428,6 +476,7 @@ function PlayedPreview({
+@@ -428,6 +506,7 @@ function PlayedPreview({
        full
          ? null
          : {
@@ -1960,7 +2020,7 @@ index 4daab21e..ecd2e9ea 100644
              x: frame.x - 1,
              y: frame.y - 1,
              width: frame.width + 2,
-@@ -436,19 +485,19 @@ function PlayedPreview({
+@@ -436,23 +515,30 @@ function PlayedPreview({
              // Over the page only once it plays, as it shows black until then.
              hidden: !over || !shown,
              animate: false,
@@ -1986,6 +2046,18 @@ index 4daab21e..ecd2e9ea 100644
      },
      [host, setFrame]
    );
+-  useVideoHole(host && shown && !full && !over ? hole : null, radius);
++  // iOS, Home's hero: the hole stops where the rows have covered it, two pixels under their grey.
++  const coverTop = useCoverTop(!!props.follows);
++  const pageHole = React.useMemo(() => {
++    if (coverTop === null) return hole;
++    const bottom = Math.min(hole.y + hole.height, coverTop + 2);
++    return { ...hole, height: Math.max(0, bottom - hole.y) };
++  }, [hole, coverTop]);
++  useVideoHole(host && shown && !full && !over ? pageHole : null, radius);
+   usePlayerPage(full);
+   React.useEffect(() => {
+     if (!full) return;
 diff --git a/packages/web/src/lib/downloads/index.ts b/packages/web/src/lib/downloads/index.ts
 index 000b3b22..189d966d 100644
 --- a/packages/web/src/lib/downloads/index.ts
@@ -2031,293 +2103,6 @@ index 000b3b22..189d966d 100644
  export function pauseDownload(download: Download): void {
    downloadsHost()?.control(download.id, 'pause');
  }
-diff --git a/packages/web/src/lib/downloads/smart.ts b/packages/web/src/lib/downloads/smart.ts
-new file mode 100644
-index 00000000..7d46a80f
---- /dev/null
-+++ b/packages/web/src/lib/downloads/smart.ts
-@@ -0,0 +1,281 @@
-+import React from 'react';
-+import { appBridge } from '@/lib/hosts/shell/bridge';
-+import { useSession } from '@/lib/jellyfin/session';
-+import { pickable } from '@/lib/format';
-+import { storage } from '@/lib/storage';
-+import { onSettingsChange, settings } from '@/lib/settings';
-+import { playbackNow } from '@/lib/playback/session';
-+import type {
-+  BaseItemDto,
-+  BaseItemDtoQueryResult,
-+} from '@/lib/jellyfin/types';
-+import { addDownloadsQuietly, downloadsHost, removeDownloads } from '.';
-+import { allDownloads, useDownloadList } from './store';
-+
-+/**
-+ * Smart downloads (iOS): a show keeps its next unwatched episodes on the device, topping up as
-+ * they are watched and deleting the ones that are. Jellyfin's watched state is the truth, so an
-+ * episode watched on another device moves the queue on too, and a download watched offline is
-+ * deleted only once the server has its played state.
-+ */
-+
-+/** How many episodes a show keeps ahead; `season` is the rest of the season. */
-+export type SmartCount = 1 | 2 | 3 | 4 | 5 | 'season';
-+export const SMART_COUNTS: readonly SmartCount[] = [1, 2, 3, 4, 5, 'season'];
-+
-+interface SmartShow {
-+  base: string;
-+  userId: string;
-+  count: SmartCount;
-+  /** The show's name, for the list in Settings. */
-+  name?: string;
-+}
-+
-+const SHOWS_KEY = 'aiostreams-ios-smart-shows';
-+/** Item ids the smart runner added, the only downloads it ever deletes. */
-+const OWNED_KEY = 'aiostreams-ios-smart-items';
-+/** A top-up while the app stays open, beside the ones a finished video and a return bring. */
-+const EVERY_MS = 15 * 60_000;
-+
-+type Shows = Record<string, SmartShow>;
-+
-+const listeners = new Set<() => void>();
-+const readShows = (): Shows => storage.get<Shows>(SHOWS_KEY) ?? {};
-+const readOwned = (): string[] => storage.get<string[]>(OWNED_KEY) ?? [];
-+let snapshot = readShows();
-+
-+function writeShows(next: Shows) {
-+  storage.set(SHOWS_KEY, next);
-+  snapshot = next;
-+  for (const listener of listeners) listener();
-+}
-+
-+const showKey = (base: string, userId: string, seriesId: string) =>
-+  `${base}|${userId}|${seriesId}`;
-+
-+/** A show's smart count on this device, or null when it is off. */
-+export function useSmartShow(seriesId: string | undefined): SmartCount | null {
-+  const { client, user } = useSession();
-+  const shows = React.useSyncExternalStore(
-+    (listener) => {
-+      listeners.add(listener);
-+      return () => listeners.delete(listener);
-+    },
-+    () => snapshot
-+  );
-+  if (!seriesId) return null;
-+  return shows[showKey(client.base, user.Id!, seriesId)]?.count ?? null;
-+}
-+
-+/** This server and user's smart shows, for the list in Settings. */
-+export function useSmartShows(): { seriesId: string; name: string; count: SmartCount }[] {
-+  const { client, user } = useSession();
-+  const shows = React.useSyncExternalStore(
-+    (listener) => {
-+      listeners.add(listener);
-+      return () => listeners.delete(listener);
-+    },
-+    () => snapshot
-+  );
-+  // A show turned on before names were kept takes its name from a downloaded episode.
-+  const downloads = useDownloadList();
-+  return Object.entries(shows)
-+    .filter(([, s]) => s.base === client.base && s.userId === user.Id)
-+    .map(([key, s]) => {
-+      const seriesId = key.slice(key.lastIndexOf('|') + 1);
-+      const name =
-+        s.name ||
-+        downloads.find((d) => d.item.SeriesId === seriesId)?.item.SeriesName ||
-+        seriesId;
-+      return { seriesId, name, count: s.count };
-+    })
-+    .sort((a, b) => a.name.localeCompare(b.name));
-+}
-+
-+/** Turns a show's smart downloads on with `count`, or off with null. Off keeps what it saved. */
-+export function useSetSmartShow() {
-+  const { client, user } = useSession();
-+  return React.useCallback(
-+    (series: BaseItemDto, count: SmartCount | null) => {
-+      const key = showKey(client.base, user.Id!, series.Id!);
-+      const { [key]: _, ...rest } = readShows();
-+      if (count === null) {
-+        // What it downloaded stays, and is no longer deleted once watched.
-+        const episodes = new Set(
-+          allDownloads()
-+            .filter((d) => d.item.SeriesId === series.Id)
-+            .map((d) => d.item.Id)
-+        );
-+        storage.set(
-+          OWNED_KEY,
-+          readOwned().filter((id) => !episodes.has(id))
-+        );
-+        writeShows(rest);
-+      } else {
-+        writeShows({
-+          ...rest,
-+          [key]: {
-+            base: client.base,
-+            userId: user.Id!,
-+            count,
-+            name: series.Name ?? undefined,
-+          },
-+        });
-+      }
-+    },
-+    [client.base, user.Id]
-+  );
-+}
-+
-+/** The episodes a show should have on the device now, in order. */
-+function wanted(
-+  episodes: BaseItemDto[],
-+  next: BaseItemDto | undefined,
-+  count: SmartCount
-+): BaseItemDto[] {
-+  const playable = episodes.filter(pickable);
-+  let from = next ? playable.findIndex((e) => e.Id === next.Id) : -1;
-+  if (from < 0) from = playable.findIndex((e) => !e.UserData?.Played);
-+  if (from < 0) return [];
-+  const ahead = playable.slice(from).filter((e) => !e.UserData?.Played);
-+  if (count === 'season') {
-+    const season = playable[from].SeasonId;
-+    return ahead.filter((e) => e.SeasonId === season);
-+  }
-+  return ahead.slice(0, count);
-+}
-+
-+/**
-+ * Keeps the smart shows' downloads in step: adds the episodes each show should have, deletes
-+ * the ones it added that the server now marks watched, and tells the app which may use
-+ * cellular data. Runs on start, on return to the app, when playback ends, when a show's count
-+ * changes and every quarter hour; `paused` (playing) waits.
-+ */
-+export function useSmartDownloads(paused: boolean): void {
-+  const { client, user } = useSession();
-+  const list = useDownloadList();
-+  const host = downloadsHost();
-+  const running = React.useRef(false);
-+  const [tick, setTick] = React.useState(0);
-+
-+  React.useEffect(() => {
-+    const wake = () => setTick((n) => n + 1);
-+    listeners.add(wake);
-+    const visible = () => document.visibilityState === 'visible' && wake();
-+    document.addEventListener('visibilitychange', visible);
-+    const timer = setInterval(wake, EVERY_MS);
-+    return () => {
-+      listeners.delete(wake);
-+      document.removeEventListener('visibilitychange', visible);
-+      clearInterval(timer);
-+    };
-+  }, []);
-+
-+  // Which smart downloads may use cellular data, by the device's setting.
-+  React.useEffect(() => {
-+    const send = () => {
-+      const policy = settings.ios.smartCellular.read();
-+      const shows = readShows();
-+      const owned = new Set(readOwned());
-+      const ours = allDownloads().filter(
-+        (d) =>
-+          owned.has(d.item.Id!) &&
-+          d.state !== 'done' &&
-+          !!shows[showKey(d.base, d.userId, d.item.SeriesId ?? '')]
-+      );
-+      let ids: string[] = [];
-+      if (policy === 'all') ids = ours.map((d) => d.id);
-+      else if (policy === 'next') {
-+        // Each show's earliest waiting episode, by its place in the show.
-+        const first = new Map<string, (typeof ours)[number]>();
-+        for (const d of ours) {
-+          const key = d.item.SeriesId ?? '';
-+          const was = first.get(key);
-+          const order = (x: BaseItemDto) =>
-+            (x.ParentIndexNumber ?? 0) * 10_000 + (x.IndexNumber ?? 0);
-+          if (!was || order(d.item) < order(was.item)) first.set(key, d);
-+        }
-+        ids = [...first.values()].map((d) => d.id);
-+      }
-+      appBridge()?.send({ type: 'download-cellular', ids });
-+    };
-+    send();
-+    return onSettingsChange(send);
-+  }, [list]);
-+
-+  React.useEffect(() => {
-+    if (!host || paused || running.current) return;
-+    const shows = Object.entries(readShows()).filter(
-+      ([, s]) => s.base === client.base && s.userId === user.Id
-+    );
-+    if (!shows.length) return;
-+    running.current = true;
-+    void (async () => {
-+      for (const [key, show] of shows) {
-+        const seriesId = key.slice(key.lastIndexOf('|') + 1);
-+        try {
-+          const [{ Items: episodes = [] }, nextUp] = await Promise.all([
-+            client.get<BaseItemDtoQueryResult>(`/Shows/${seriesId}/Episodes`, {
-+              userId: user.Id,
-+              Fields: 'MediaSources',
-+            }),
-+            client.get<BaseItemDtoQueryResult>('/Shows/NextUp', {
-+              userId: user.Id,
-+              seriesId,
-+              Limit: 1,
-+            }),
-+          ]);
-+          // A show turned on before names were kept gets its name from its episodes.
-+          const seriesName = episodes[0]?.SeriesName;
-+          if (!show.name && seriesName) {
-+            const all = readShows();
-+            if (all[key]) writeShows({ ...all, [key]: { ...all[key], name: seriesName } });
-+          }
-+          const owned = new Set(readOwned());
-+          const played = new Set(
-+            episodes.filter((e) => e.UserData?.Played).map((e) => e.Id)
-+          );
-+          // Watched on any device, as the server says: its smart download goes.
-+          const now = playbackNow();
-+          const done = allDownloads().filter(
-+            (d) =>
-+              d.base === client.base &&
-+              d.userId === user.Id &&
-+              d.item.SeriesId === seriesId &&
-+              owned.has(d.item.Id!) &&
-+              played.has(d.item.Id) &&
-+              d.item.Id !== now?.itemId
-+          );
-+          if (done.length) {
-+            removeDownloads(done, true);
-+            const gone = new Set(done.map((d) => d.item.Id));
-+            storage.set(
-+              OWNED_KEY,
-+              readOwned().filter((id) => !gone.has(id))
-+            );
-+          }
-+          // The next ones, following the release the show's downloads already use.
-+          const want = wanted(episodes, nextUp.Items?.[0], show.count);
-+          const have = allDownloads().filter(
-+            (d) =>
-+              d.base === client.base &&
-+              d.userId === user.Id &&
-+              d.item.SeriesId === seriesId
-+          );
-+          const group = have.find((d) => d.source?.aiostreams?.bingeGroup)
-+            ?.source?.aiostreams?.bingeGroup;
-+          const added = addDownloadsQuietly(client.base, user.Id!, want, group);
-+          if (added.length)
-+            storage.set(OWNED_KEY, [
-+              ...readOwned(),
-+              ...added.map((d) => d.item.Id!),
-+            ]);
-+        } catch {
-+          // Offline or the server is away: the next run tries again.
-+        }
-+      }
-+    })().finally(() => {
-+      running.current = false;
-+    });
-+  }, [host, paused, tick, client, user.Id]);
-+}
 diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
 index f7a92d49..77125c6e 100644
 --- a/packages/web/src/lib/hosts/index.ts
@@ -2391,158 +2176,6 @@ index 0c2fe1b2..6de9d177 100644
 +  if (bridge.platform === 'android') return androidHost;
 +  return bridge.platform === 'ios' ? iosHost : desktopHost;
  }
-diff --git a/packages/web/src/lib/hosts/shell/ios-feedback.ts b/packages/web/src/lib/hosts/shell/ios-feedback.ts
-new file mode 100644
-index 00000000..63c99c9d
---- /dev/null
-+++ b/packages/web/src/lib/hosts/shell/ios-feedback.ts
-@@ -0,0 +1,18 @@
-+import { settings } from '@/lib/settings';
-+import { appBridge } from './bridge';
-+
-+export function iosFeedback(action: 'toggle' | 'seek' | 'track'): void {
-+  const bridge = appBridge();
-+  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
-+    bridge.send({ type: 'player-haptic', action });
-+}
-+
-+/** A light tap as an item's menu opens, from a long press, a right click or its button. */
-+export function iosMenuFeedback(): void {
-+  const bridge = appBridge();
-+  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
-+    bridge.send({ type: 'ui-haptic', action: 'menu' });
-+}
-+
-+export const iosGesturesEnabled = () =>
-+  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
-diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
-new file mode 100644
-index 00000000..09ceb038
---- /dev/null
-+++ b/packages/web/src/lib/hosts/shell/ios.ts
-@@ -0,0 +1,122 @@
-+import { settings, onSettingsChange } from '@/lib/settings';
-+import type { Host } from '..';
-+import { appBridge, ask } from './bridge';
-+import { appEngine } from './player';
-+import { resolveYouTube } from './youtube';
-+import { shellDownloads } from './downloads';
-+
-+let fullscreen = false;
-+
-+/** Follows the iOS app's full screen, which hides the status bar and turns to landscape. */
-+export function setupIos(): () => void {
-+  const unsubscribe = appBridge()?.subscribe((m) => {
-+    if (m.type === 'fullscreen') fullscreen = m.value;
-+  });
-+  const html = document.documentElement;
-+  const apply = () => {
-+    appBridge()?.send({
-+      type: 'ios-player-settings',
-+      haptics: settings.ios.haptics.read(),
-+      automaticPip: settings.ios.automaticPip.read(),
-+      gestures: settings.ios.gestures.read(),
-+      launchLogo: settings.ios.launchLogo.read(),
-+    });
-+    // The parts of an unstarted episode the spoiler blur leaves clear (styles.css).
-+    html.toggleAttribute('data-unblur-pictures', !settings.ios.spoilerPictures.read());
-+    html.toggleAttribute('data-unblur-titles', !settings.ios.spoilerTitles.read());
-+    html.toggleAttribute('data-unblur-descriptions', !settings.ios.spoilerDescriptions.read());
-+  };
-+  apply();
-+  const stopSettings = onSettingsChange(apply);
-+  // WebKit's back swipe shows the previous page's snapshot only for history entries that
-+  // restore their own scroll; the router still restores it again once the page renders.
-+  const restoreScroll = () => {
-+    history.scrollRestoration = 'auto';
-+  };
-+  restoreScroll();
-+  addEventListener('pageshow', restoreScroll);
-+  // A selection tick for a menu's choice, the bottom bar's (or iPad rail's) tabs, a tapped
-+  // poster, tile or episode, and the hero's buttons. The player's own menus send their own
-+  // feedback (iosFeedback('track')). Only a tap clicks, so scrolling past cards stays quiet.
-+  const TAPPABLE = [
-+    '[role^="menuitem"]',
-+    '[data-ui="mobile-nav-item"]',
-+    '[data-ui="nav-item"]',
-+    '[data-ui="poster-card"]',
-+    '[data-ui="wide-card"]',
-+    '[data-ui="media-row-item"]',
-+    '[data-ui="episode-card"]',
-+    '[data-ui="episode-list-item"]',
-+    '[data-ui="person-card"]',
-+    '[data-ui="calendar-entry"]',
-+    '[data-ui="history-tile"]',
-+    '[data-ui="playlist-entry"]',
-+    '[data-ui="random-card"]',
-+    '[data-ui="open-card"]',
-+    '[data-ui="hero-action"]',
-+  ].join(', ');
-+  // One tick per press: a menu's trigger answers its touch-down, and its click may follow.
-+  let ticked: { el: Element; at: number } | null = null;
-+  const tick = (el: Element) => {
-+    const now = performance.now();
-+    if (ticked?.el === el && now - ticked.at < 600) return;
-+    ticked = { el, at: now };
-+    if (settings.ios.haptics.read())
-+      appBridge()?.send({ type: 'ui-haptic', action: 'select' });
-+  };
-+  const tapped = (e: MouseEvent) => {
-+    const target = e.target instanceof Element ? e.target : null;
-+    const choice = target?.closest(TAPPABLE);
-+    if (!choice || choice.closest('[data-ui="player-menu"]')) return;
-+    tick(choice);
-+  };
-+  // A bar tab that opens a menu (the account's "You") opens it on touch-down, which takes the
-+  // click away, so it ticks then. Only the bars' tabs: a card's touch-down may start a scroll.
-+  const pressed = (e: PointerEvent) => {
-+    const target = e.target instanceof Element ? e.target : null;
-+    const tab = target?.closest(
-+      ':is([data-ui="mobile-nav-item"], [data-ui="nav-item"])[aria-haspopup]'
-+    );
-+    if (tab) tick(tab);
-+  };
-+  document.addEventListener('click', tapped, true);
-+  document.addEventListener('pointerdown', pressed, true);
-+  return () => {
-+    unsubscribe?.();
-+    stopSettings();
-+    removeEventListener('pageshow', restoreScroll);
-+    document.removeEventListener('click', tapped, true);
-+    document.removeEventListener('pointerdown', pressed, true);
-+    for (const name of ['data-unblur-pictures', 'data-unblur-titles', 'data-unblur-descriptions'])
-+      html.removeAttribute(name);
-+  };
-+}
-+
-+/** The iOS app: the page over AetherEngine, which draws the video beneath it. */
-+export const iosHost: Host = {
-+  name: 'ios-app',
-+  device: () => ({ id: appBridge()?.deviceId, name: appBridge()?.device }),
-+  player: appEngine,
-+  // Upscaling: AetherEngine's super resolution, for Anime upscaling (iOS 26).
-+  playerFeatures: ['audio', 'chapters', 'headers', 'upscaling'],
-+  resolveYouTube,
-+  // The app's queue, as the Android app's: background transfers that go on with the app closed.
-+  downloads: shellDownloads,
-+  levels: {
-+    read: (level) => ask({ type: 'levels', level }, 'levels'),
-+    set: (level, value) =>
-+      appBridge()?.send({ type: 'set-level', level, value }),
-+    release: () =>
-+      appBridge()?.send({
-+        type: 'set-level',
-+        level: 'brightness',
-+        value: null,
-+      }),
-+  },
-+  fullscreen: {
-+    active: () => fullscreen,
-+    set: (on) => appBridge()?.send({ type: 'fullscreen', value: on }),
-+  },
-+  saveFile: (name, type, text) =>
-+    appBridge()?.send({ type: 'save-file', name, mime: type, text }),
-+};
 diff --git a/packages/web/src/lib/hosts/shell/pip.ts b/packages/web/src/lib/hosts/shell/pip.ts
 index fffeacef..e4d8b8cd 100644
 --- a/packages/web/src/lib/hosts/shell/pip.ts
@@ -2985,7 +2618,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..8ce40c0f 100644
+index 96e99eee..1336af1e 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -3059,7 +2692,7 @@ index 96e99eee..8ce40c0f 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,139 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,154 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -3198,4 +2831,19 @@ index 96e99eee..8ce40c0f 100644
 +    0 8px 24px -12px rgb(0 0 0 / 0.6) !important;
 +  -webkit-backdrop-filter: blur(24px) saturate(1.8);
 +  backdrop-filter: blur(24px) saturate(1.8);
++}
++
++/* iOS: Home's hero stays pinned at the top while the rows slide up over it, led by their grey, and it
++   fades as they cover it. Its trailer, the app's own video beneath the page, then never moves while
++   the page scrolls, so it can't trail behind the page; the page's hole over it ends where the rows
++   have covered it. The hero's picture no longer drifts at half speed. */
++html[data-ios-backdrop] [data-page='home'] [data-ui='hero']:not([data-follow]):not([data-loading]) {
++  position: sticky !important;
++  top: 0;
++  z-index: 0;
++  opacity: calc(1 - var(--hero-covered, 0));
++}
++html[data-ios-backdrop] [data-page='home'] [data-ui='hero-backdrops'] {
++  animation: none !important;
++  transform: none !important;
 +}
