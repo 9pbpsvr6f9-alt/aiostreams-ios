@@ -702,7 +702,7 @@ index 968337d5..d6f175eb 100644
            onValueChange={setOverrideStyled}
          />
 diff --git a/packages/web/src/components/media/hero.tsx b/packages/web/src/components/media/hero.tsx
-index 51dba340..4f4daf01 100644
+index 51dba340..9680d49f 100644
 --- a/packages/web/src/components/media/hero.tsx
 +++ b/packages/web/src/components/media/hero.tsx
 @@ -11,6 +11,7 @@ import { useMediaQuery } from '@aiostreams/ui/hooks/media-query';
@@ -817,7 +817,16 @@ index 51dba340..4f4daf01 100644
      >
        <div className="absolute -inset-px">
          {fades && (
-@@ -686,12 +751,20 @@ export function Hero({
+@@ -634,6 +699,8 @@ function HeroTrailer({
+           item={item}
+           spot={spot}
+           within={spot.parentElement ?? undefined}
++          // iOS: moves with the page as it scrolls; the hero's own stop point fades it out.
++          follows={appBridge()?.platform === 'ios'}
+           onShown={(on) => {
+             setShown(on);
+             onShown(on);
+@@ -686,12 +753,20 @@ export function Hero({
      if (el && swipeable) return claimSideSwipes(el);
    }, [loading, swipeable]);
  
@@ -838,7 +847,7 @@ index 51dba340..4f4daf01 100644
        !shown ||
        !inSight ||
        featured.length < 2
-@@ -707,6 +780,8 @@ export function Hero({
+@@ -707,6 +782,8 @@ export function Hero({
      paused,
      focused,
      dragging,
@@ -847,7 +856,7 @@ index 51dba340..4f4daf01 100644
      shown,
      inSight,
      featured.length,
-@@ -742,10 +817,6 @@ export function Hero({
+@@ -742,10 +819,6 @@ export function Hero({
      if (to && el) focusOn(el);
    }, [index]);
  
@@ -858,7 +867,7 @@ index 51dba340..4f4daf01 100644
  
    if (loading) return <HeroSkeleton />;
    if (!featured[index]) return null;
-@@ -1032,7 +1103,7 @@ export function FollowHero({
+@@ -1032,7 +1105,7 @@ export function FollowHero({
      };
    }, [scroller]);
    const item = picked ?? items.find((i) => backdropSrc(client, i)) ?? items[0];
@@ -1803,10 +1812,66 @@ index e3bb77f6..53ce70a9 100644
    };
  }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21e..37a36435 100644
+index 4daab21e..827d5095 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
-@@ -261,7 +261,8 @@ export interface TrailerPreviewProps {
+@@ -146,22 +146,32 @@ function useOnlyOne(stop: () => void) {
+   }, [latest]);
+ }
+ 
+-/** Where `spot` was as the trailer began; any move ends it, as an app's video can't follow. */
+-function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
+-  const [box] = React.useState(() => boxOf(spot));
++/**
++ * Where `spot` was as the trailer began; any move ends it, as an app's video can't follow. With
++ * `follows` (iOS: Home's hero), the box follows the spot instead, so the app's video moves with the
++ * page as it scrolls, and only the spot leaving the page ends it.
++ */
++function useSpotBox(spot: HTMLElement, onMoved: () => void, follows = false): Box {
++  const [box, setBox] = React.useState(() => boxOf(spot));
+   const latest = useLatest(onMoved);
++  const shown = React.useRef(box);
++  shown.current = box;
+   React.useEffect(() => {
+     let frame = 0;
+     const check = () => {
+       cancelAnimationFrame(frame);
+       frame = requestAnimationFrame(() => {
+-        if (!spot.isConnected || moved(boxOf(spot), box)) latest.current();
++        if (!spot.isConnected) return latest.current();
++        const now = boxOf(spot);
++        if (!moved(now, shown.current)) return;
++        if (follows) setBox(now);
++        else latest.current();
+       });
+     };
+     // A glide eases a scroll's jump back, so the spot can still be drawn in place.
+     const scroll = (e: Event) => {
+       const box = e.target === document ? document.scrollingElement : e.target;
+-      if (box instanceof Node && box.contains(spot)) latest.current();
++      if (!follows && box instanceof Node && box.contains(spot)) latest.current();
+       else check();
+     };
+     const observer = new ResizeObserver(check);
+@@ -177,7 +187,7 @@ function useSpotBox(spot: HTMLElement, onMoved: () => void): Box {
+       document.removeEventListener('scroll', scroll, { capture: true });
+       removeEventListener('resize', check);
+     };
+-  }, [spot, box, latest]);
++  }, [spot, latest, follows]);
+   return box;
+ }
+ 
+@@ -249,6 +259,8 @@ export interface TrailerPreviewProps {
+   full?: boolean;
+   /** Whether the picture shows, so what covers it can fade. */
+   onShown?: (shown: boolean, trailer: Trailer) => void;
++  /** iOS: follow the spot as the page scrolls, rather than stop as it moves. */
++  follows?: boolean;
+   onEnded(end: TrailerEnd): void;
+   onExitFull?: () => void;
+ }
+@@ -261,7 +273,8 @@ export interface TrailerPreviewProps {
  export function TrailerPreview(props: TrailerPreviewProps) {
    const { item, spot, full = false } = props;
    const details = useItem(item.Id ?? '');
@@ -1816,7 +1881,29 @@ index 4daab21e..37a36435 100644
    const trailers = React.useMemo(
      () => (known ? trailersOf(known) : []),
      [known]
-@@ -409,6 +410,7 @@ function PlayedPreview({
+@@ -273,9 +286,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
+   const muted = !full && !sound;
+   const ended = useLatest(props.onEnded);
+   useOnlyOne(() => ended.current('stopped'));
+-  const box = useSpotBox(spot, () => !full && ended.current('stopped'));
+-  const [clip] = React.useState(() =>
+-    props.within ? boxOf(props.within) : null
++  const box = useSpotBox(
++    spot,
++    () => !full && ended.current('stopped'),
++    !!props.follows
++  );
++  const within = props.within;
++  const follows = !!props.follows;
++  const [firstClip] = React.useState(() => (within ? boxOf(within) : null));
++  // Following, the clip moves with the spot; else it holds where it was.
++  const clip = React.useMemo(
++    () => (follows && within ? boxOf(within) : firstClip),
++    [follows, within, firstClip, box]
+   );
+   const frame = React.useMemo(() => coverOf(box), [box]);
+   const hole = React.useMemo(
+@@ -409,6 +431,7 @@ function PlayedPreview({
      fit: full ? undefined : 'crop',
      muted,
      thumbnails: full,
@@ -1824,7 +1911,7 @@ index 4daab21e..37a36435 100644
    });
    const { started, error } = player.state;
    const flowing = usePlayhead(
-@@ -428,6 +430,7 @@ function PlayedPreview({
+@@ -428,6 +451,7 @@ function PlayedPreview({
        full
          ? null
          : {
@@ -1832,7 +1919,7 @@ index 4daab21e..37a36435 100644
              x: frame.x - 1,
              y: frame.y - 1,
              width: frame.width + 2,
-@@ -436,19 +439,19 @@ function PlayedPreview({
+@@ -436,19 +460,19 @@ function PlayedPreview({
              // Over the page only once it plays, as it shows black until then.
              hidden: !over || !shown,
              animate: false,
