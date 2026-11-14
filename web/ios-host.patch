@@ -2759,7 +2759,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..354e47fe 100644
+index 96e99eee..debf57bf 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2833,7 +2833,7 @@ index 96e99eee..354e47fe 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,99 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,105 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2906,6 +2906,12 @@ index 96e99eee..354e47fe 100644
 +/* On the hero's still box, not its art, which scrolls at half the page's speed: WebKit drops a mask
 +   on the moving art, and one that held would slide away with it. */
 +html[data-ios-backdrop] [data-ui='hero'] div:has(> [data-ui='hero-backdrops']) {
++  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
++  mask-image: linear-gradient(to top, transparent, black 45%);
++}
++/* The hero's shading fades out at the bottom with its picture: shading that ran to the edge left a
++   dark band there, ending in a line over the lighter background below. */
++html[data-ios-backdrop] [data-ui='hero-shade'] {
 +  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
 +  mask-image: linear-gradient(to top, transparent, black 45%);
 +}
