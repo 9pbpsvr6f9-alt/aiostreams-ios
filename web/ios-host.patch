@@ -2794,7 +2794,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..1c9546fa 100644
+index 96e99eee..e51ed098 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2868,7 +2868,7 @@ index 96e99eee..1c9546fa 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,122 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,123 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2956,7 +2956,8 @@ index 96e99eee..1c9546fa 100644
 +html[data-ios-backdrop] [data-ui='hero'] + [data-ui='home-rows']::before {
 +  content: '';
 +  position: absolute;
-+  top: 0;
++  /* Two pixels over the hero's edge, which can end partway through a pixel row. */
++  top: -2px;
 +  inset-inline: 0;
 +  height: 32vh;
 +  z-index: -1;
