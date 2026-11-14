@@ -1,0 +1,100 @@
+diff --git a/packages/web/src/components/shell/tvm-backdrop.tsx b/packages/web/src/components/shell/tvm-backdrop.tsx
+index ea4f834c..33225e58 100644
+--- a/packages/web/src/components/shell/tvm-backdrop.tsx
++++ b/packages/web/src/components/shell/tvm-backdrop.tsx
+@@ -121,10 +121,17 @@ function soften(src: string): Promise<Soft | null> {
+         const url = shown.toDataURL('image/jpeg', 0.9);
+         // Decoded before it's shown, so the hero's fade can draw it in the same frame the
+         // background shows it: a fade drawn a moment late showed the old picture over the new.
+-        const image = new Image();
+-        image.src = url;
+-        await image.decode().catch(() => undefined);
+-        return { url, width: shown.width, height: shown.height, image };
++        // Loaded by its load event, not decode(), and never waited on for more than a moment.
++        const loaded = new Image();
++        await new Promise<void>((done) => {
++          const timer = window.setTimeout(done, 500);
++          loaded.onload = loaded.onerror = () => {
++            window.clearTimeout(timer);
++            done();
++          };
++          loaded.src = url;
++        });
++        return { url, width: shown.width, height: shown.height, image: loaded };
+       } catch {
+         return null;
+       }
+@@ -144,6 +151,31 @@ function soften(src: string): Promise<Soft | null> {
+  * shows the plain background, so no other page's colours stay on it.
+  */
+ export function TvmBackdrop() {
++  return (
++    <Contained>
++      <Backdrop />
++    </Contained>
++  );
++}
++
++/** Renders nothing in place of its children once they throw, so a decoration can't stop the app. */
++class Contained extends React.Component<
++  { children: React.ReactNode },
++  { failed: boolean }
++> {
++  state = { failed: false };
++  static getDerivedStateFromError() {
++    return { failed: true };
++  }
++  componentDidCatch(error: unknown) {
++    console.warn('tv-m: the frosted background stopped', error);
++  }
++  render() {
++    return this.state.failed ? null : this.props.children;
++  }
++}
++
++function Backdrop() {
+   const [mode] = useSetting(settings.tvm.backdrop);
+   const [src, setSrc] = React.useState<string | null>(null);
+   const [layers, setLayers] = React.useState<{ id: number; soft: Soft }[]>(
+@@ -304,15 +336,15 @@ function FadeCanvas({ soft }: { soft: Soft }) {
+   const canvas = React.useRef<HTMLCanvasElement>(null);
+   const picture = soft.image;
+ 
+-  // Drawn once before the first paint, then whenever the art moves: the fade comes in with the
+-  // background's own layer, never after it.
+-  React.useLayoutEffect(() => {
++  // Drawn as soon as it's on the page, then whenever the art moves. The picture is loaded before its
++  // layer shows, so the first frame already has it.
++  React.useEffect(() => {
+     let frame = 0;
+     let last = '';
+     const draw = () => {
+       const el = canvas.current;
+       const page = document.querySelector<HTMLElement>("[data-ui='page-background']");
+-      if (!el || !page || !picture.complete || !picture.naturalWidth) return;
++      if (!el || !page || !picture?.complete || !picture.naturalWidth) return;
+       const art = el.getBoundingClientRect();
+       const screen = page.getBoundingClientRect();
+       if (art.width < 1 || art.height < 1) return;
+@@ -359,11 +391,19 @@ function FadeCanvas({ soft }: { soft: Soft }) {
+       ctx.fillRect(0, 0, width, height);
+       ctx.globalCompositeOperation = 'source-over';
+     };
++    // A decoration: whatever goes wrong drawing it, the page goes on.
++    const safely = () => {
++      try {
++        draw();
++      } catch {
++        // Nothing drawn this frame.
++      }
++    };
+     const tick = () => {
+-      draw();
++      safely();
+       frame = requestAnimationFrame(tick);
+     };
+-    draw();
++    safely();
+     frame = requestAnimationFrame(tick);
+     return () => cancelAnimationFrame(frame);
+   }, [picture, soft.width, soft.height]);
