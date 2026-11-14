@@ -8,40 +8,36 @@ import re
 import zipfile
 from pathlib import Path
 
-REPO = '9pbpsvr6f9-alt/aiostreams-ios'
+REPO = 'hyperionyxdev/aiostreams-ios'
+# Owners the repository had before: their release addresses in older versions are rewritten to
+# REPO's, rather than left to GitHub's redirects, which a new owner of an old name could end.
+FORMER_OWNERS = ['9pbpsvr6f9-alt']
 RAW = f'https://raw.githubusercontent.com/{REPO}/main'
+# The address to add, served without a redirect: FlareStore keeps the address a redirect ends on,
+# and the release asset's address ends on that one release, which never changes again.
+SOURCE_URL = f'{RAW}/altstore/source.json'
 TINT = '#6152DF'
 # Older versions stay installable from the source for this many releases.
 HISTORY = 50
 NEWS = 10
 
-APPS = [('AIOStreams.ipa', 'io.github.aiostreams-ios.app', 'AIOStreams'),
-        ('AIOStreams-tvOS.ipa', 'io.github.aiostreams-ios.tv', 'AIOStreams for Apple TV')]
+APPS = [('AIOStreams.ipa', 'io.github.aiostreams-ios.app', 'AIOStreams')]
 
 DETAILS = {
     'io.github.aiostreams-ios.app': {
-        'subtitle': 'Your Jellyfin library on iPhone and iPad',
+        'subtitle': 'AIOStreams and Jellyfin, played properly',
         'description': (
-            "AIOStreams' web app on iPhone and iPad, playing through AetherEngine: "
-            'HDR10, Dolby Vision, Atmos and FFmpeg decoding where AVPlayer stops.\n\n'
-            '• Smart downloads keep the next episodes of a show on your device and delete them once watched\n'
-            '• Downloads that continue in the background and play offline; progress syncs to Jellyfin later\n'
-            '• Trailers in the hero and on title pages, Picture in Picture, and a skip-intro countdown\n'
-            '• Swipe gestures for volume and brightness, light haptics, and styled subtitles\n\n'
+            'A native iPhone and iPad app for your AIOStreams and Jellyfin library. It plays through '
+            'AetherEngine, so Dolby Vision, HDR10, HDR10+, Atmos and image subtitles work where '
+            'Safari and AVPlayer give up.\n\n'
+            '• Smart downloads keep the next episodes of a show on your device and remove them once watched\n'
+            '• Downloads carry on in the background, play offline and sync what you watched later\n'
+            '• A skip intro countdown, Picture in Picture that hands off to the mini player, and trailers\n'
+            '• Subtitles in your own style, spoiler blur, brightness and volume swipes, light haptics\n'
+            '• Optional anime upscaling on iOS 26\n\n'
             'Unofficial and unsigned: your sideloading tool signs it when you install.'),
         'screenshots': ['iphone-home', 'iphone-show', 'iphone-movie', 'iphone-versions'],
         'ipad': ['ipad-home', 'ipad-show'],
-    },
-    'io.github.aiostreams-ios.tv': {
-        'subtitle': 'Your Jellyfin library on the big screen',
-        'description': (
-            'A native Apple TV app over your server, playing through AetherEngine with HDR10, '
-            'Dolby Vision and Atmos.\n\n'
-            '• Home with a rotating hero and Continue watching\n'
-            '• Show and movie pages, a version picker and synced settings\n\n'
-            'Unofficial and unsigned: your sideloading tool signs it when you install.'),
-        'screenshots': ['tv-home', 'tv-show', 'tv-movie', 'tv-versions', 'tv-player'],
-        'ipad': [],
     },
 }
 
@@ -66,6 +62,9 @@ def clean_notes(notes):
     lines = []
     for line in (notes or '').splitlines():
         line = line.strip().lstrip('-•* ').strip()
+        # The release job's own commit of the source to main is bookkeeping, not a change.
+        if line.startswith('FlareStore source: '):
+            continue
         if line and '@' not in line and line not in lines:
             lines.append(line)
     return lines[:12]
@@ -86,14 +85,15 @@ def generate(tag, folder, previous=None, notes=None):
     what = '\n'.join(f'• {line}' for line in changes) if changes else 'Fixes and improvements.'
     source = {'name': 'AIOStreams',
               'identifier': 'io.github.9pbpsvr6f9-alt.aiostreams',
-              'subtitle': 'Jellyfin on iPhone, iPad and Apple TV',
-              'description': ('Unofficial AIOStreams builds for iPhone, iPad and Apple TV, playing through '
-                              'AetherEngine. Each update lists what changed, and older versions stay '
-                              'installable from the version history. Your sideloading tool signs each app '
-                              'at installation.'),
+              'subtitle': 'Jellyfin on iPhone and iPad',
+              'description': ('A native AIOStreams app for iPhone and iPad, made for watching and playing '
+                              'through AetherEngine. Every update says what changed, and earlier versions '
+                              'stay installable from the version history. Your sideloading tool signs the '
+                              'app when you install it.'),
               'website': f'https://github.com/{REPO}',
-              'iconURL': f'https://github.com/{REPO}/releases/latest/download/icon.png',
-              'headerURL': shot('tv-home'),
+              'sourceURL': SOURCE_URL,
+              'iconURL': f'{RAW}/altstore/icon.png',
+              'headerURL': shot('ipad-home'),
               'tintColor': TINT, 'featuredApps': [b for _, b, _ in APPS], 'apps': [], 'news': []}
     for filename, bundle, name in APPS:
         ipa = folder / filename
@@ -107,10 +107,14 @@ def generate(tag, folder, previous=None, notes=None):
                  'downloadURL': f'https://github.com/{REPO}/releases/download/{tag}/{filename}',
                  'size': ipa.stat().st_size, 'minOSVersion': info.get('MinimumOSVersion', '18.0')}
         versions = [entry] + [v for v in old.get('versions', []) if v['version'] != entry['version']]
+        for version in versions[1:]:
+            for former in FORMER_OWNERS:
+                version['downloadURL'] = version['downloadURL'].replace(
+                    f'https://github.com/{former}/', f'https://github.com/{REPO.split("/")[0]}/')
         privacy = {k: v for k, v in info.items() if k.startswith('NS') and k.endswith('UsageDescription')}
         details = DETAILS[bundle]
         screenshots = [shot(s) for s in details['screenshots']]
-        app = {'name': name, 'bundleIdentifier': bundle, 'developerName': '9pbpsvr6f9-alt',
+        app = {'name': name, 'bundleIdentifier': bundle, 'developerName': REPO.split('/')[0],
                'subtitle': details['subtitle'],
                'localizedDescription': details['description'],
                'iconURL': source['iconURL'], 'tintColor': TINT, 'category': 'entertainment',

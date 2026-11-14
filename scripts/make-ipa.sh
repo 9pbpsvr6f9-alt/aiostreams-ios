@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Builds unsigned IPAs on macOS, for signing at install time:
+# Builds an unsigned IPA on macOS, for signing at install time:
 #   build/AIOStreams.ipa        iPhone and iPad (AltStore, SideStore, Sideloadly, or your own certificate)
-#   build/AIOStreams-tvOS.ipa   Apple TV (Xcode, or a signing tool that supports tvOS)
 #
-#   scripts/make-ipa.sh            # both
-#   scripts/make-ipa.sh ios        # one of them
-#   scripts/make-ipa.sh tvos
+#   scripts/make-ipa.sh
 #   HEIGHT_CHANNELS=on scripts/make-ipa.sh   # with TrueHD Atmos and DTS:X height channels
 #
 # Height channels are off unless asked for: AetherEngine notes they may be subject to third-party
-# patent licensing, so public releases leave them out. Dolby Vision FEL (curve fold) is in both.
+# patent licensing, so public releases leave them out. Dolby Vision FEL (curve fold) is in either.
 #
 # Needs Xcode 27 (AetherEngine's supported toolchain; 26.3 is best effort) and XcodeGen.
 set -euo pipefail
@@ -55,7 +52,4 @@ build() {
 if [ "$which" = all ] || [ "$which" = ios ]; then
   [ -f AIOStreams/Resources/web/index.html ] || scripts/build-web.sh
   build AIOStreams iOS Release-iphoneos AIOStreams.ipa
-fi
-if [ "$which" = all ] || [ "$which" = tvos ]; then
-  build AIOStreamsTV tvOS Release-appletvos AIOStreams-tvOS.ipa
 fi

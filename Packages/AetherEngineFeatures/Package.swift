@@ -23,7 +23,6 @@ let package = Package(
     name: "AetherEngineFeatures",
     platforms: [
         .iOS(.v18),
-        .tvOS(.v18),
     ],
     products: [
         .library(name: "AetherEngineFeatures", targets: ["AetherEngineFeatures"]),
@@ -31,7 +30,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/superuser404notfound/AetherEngine",
-            exact: "7.64.0",
+            exact: "7.66.1",
             traits: ["DolbyVisionFelCurves"]
         ),
     ],

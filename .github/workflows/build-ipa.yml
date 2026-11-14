@@ -3,7 +3,11 @@ name: Build IPA
 on:
   push:
     branches: [main]
+  # tv-m has its own workflow; its changes need no iPhone build.
   pull_request:
+    paths-ignore:
+      - 'tv-m/**'
+      - '.github/workflows/build-tv-m.yml'
   workflow_dispatch:
     inputs:
       aiostreams_ref:
@@ -15,19 +19,15 @@ on:
         type: boolean
         default: false
       runner:
-        description: Candidate runner (Intel fallback for hosted ARM capacity problems)
+        description: Runner (xcode-27 by default; macos-26 as before; Intel only for candidates)
         type: choice
         options:
+          - xcode-27
           - macos-26
           - macos-15-intel
-        default: macos-26
-      platform:
-        description: Platforms to build (single-platform candidates cannot publish)
-        type: choice
-        options: [both, ios, tvos]
-        default: both
+        default: xcode-27
       publish_release:
-        description: Publish both IPAs and the FlareStore source after successful builds
+        description: Publish the IPA and the FlareStore source after a successful build
         type: boolean
         default: false
 
@@ -41,7 +41,9 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ${{ inputs.runner || 'macos-26' }}
+    # macos-26 jobs went unserved on 2026-11-13 (each cancelled after 15 min queued, no runner), while
+    # xcode-27 served; builds take Xcode 27 there, as the newest Xcode_2x the Select Xcode step finds.
+    runs-on: ${{ inputs.runner || 'xcode-27' }}
     timeout-minutes: 60
     env:
       AIOSTREAMS_REF: ${{ inputs.aiostreams_ref }}
@@ -91,23 +93,12 @@ jobs:
           scripts/build-web.sh
       - name: Install XcodeGen
         run: brew install xcodegen
-      - name: Build the iOS IPA
-        if: inputs.platform != 'tvos'
+      - name: Build the IPA
         run: scripts/make-ipa.sh ios
-      - name: Build the tvOS IPA
-        if: inputs.platform != 'ios'
-        run: scripts/make-ipa.sh tvos
       - uses: actions/upload-artifact@v4
-        if: inputs.platform != 'tvos'
         with:
           name: AIOStreams-ipa
           path: build/AIOStreams.ipa
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        if: inputs.platform != 'ios'
-        with:
-          name: AIOStreams-tvOS-ipa
-          path: build/AIOStreams-tvOS.ipa
           if-no-files-found: error
 
   release:
@@ -117,8 +108,7 @@ jobs:
       (github.event_name == 'push' ||
        (github.event_name == 'workflow_dispatch' && inputs.publish_release)) &&
       !inputs.height_channels && !inputs.aiostreams_ref &&
-      (!inputs.runner || inputs.runner == 'macos-26') &&
-      (!inputs.platform || inputs.platform == 'both')
+      (!inputs.runner || inputs.runner == 'xcode-27' || inputs.runner == 'macos-26')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -135,7 +125,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
-          pattern: AIOStreams*-ipa
+          pattern: AIOStreams-ipa
           path: build
           merge-multiple: true
       - name: Retrieve previous source history
@@ -170,11 +160,32 @@ jobs:
             echo
           } > build/release-notes.md
           cat >> build/release-notes.md <<'EOF'
-          Unsigned iPhone/iPad and Apple TV IPAs, built from the commit linked to this release.
+          An unsigned iPhone and iPad IPA, built from the commit linked to this release.
           Sign and install with your sideloading tool. FlareStore source:
-          https://github.com/9pbpsvr6f9-alt/aiostreams-ios/releases/latest/download/source.json
+          https://raw.githubusercontent.com/hyperionyxdev/aiostreams-ios/main/altstore/source.json
           Updates become available when you refresh this source; installation and signing remain under your control.
           EOF
           gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" --draft --title "AIOStreams ${RELEASE_TAG#v}" --notes-file build/release-notes.md
-          gh release upload "$RELEASE_TAG" build/AIOStreams.ipa build/AIOStreams-tvOS.ipa altstore/source.json altstore/icon.png
+          gh release upload "$RELEASE_TAG" build/AIOStreams.ipa altstore/source.json altstore/icon.png
           gh release edit "$RELEASE_TAG" --draft=false --latest
+      # The source FlareStore adds is altstore/source.json on main, served by raw.githubusercontent.com
+      # without a redirect, so one address stays current. Committed by GitHub's no-reply bot; a push
+      # made with the workflow's own token starts no other run.
+      - name: Update the source on main
+        run: |
+          cp altstore/source.json build/source.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch -q origin main
+            git checkout -q -B source-update origin/main
+            cp build/source.json altstore/source.json
+            git add altstore/source.json
+            if git diff --cached --quiet; then echo "Source on main already current"; exit 0; fi
+            git commit -q -m "FlareStore source: $RELEASE_TAG"
+            if git push -q origin source-update:main; then echo "Source on main updated"; exit 0; fi
+            echo "main moved; trying again"
+            sleep 5
+          done
+          echo "::error::Could not update altstore/source.json on main"
+          exit 1
