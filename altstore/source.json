@@ -29,6 +29,15 @@
       ],
       "versions": [
         {
+          "version": "0.2.116",
+          "buildVersion": "116",
+          "date": "2026-11-14T08:43:06.405350+00:00",
+          "localizedDescription": "What's new\n\u2022 iPhone: Skip intro as TV glass pills, haptics for holds and switches\n\u2022 Liquid Glass on iPhone, round three\n\u2022 Liquid Glass on iPhone, round two\n\u2022 Go back to the iPhone hero trailer that stops when you touch the screen\n\u2022 Diagnostic: show page errors on screen on iPhone\n\u2022 Put the iOS patch's own new files back in it\n\u2022 Pin the iPhone hero while the rows slide over it\n\u2022 Revert moving the iPhone hero's trailer with the page's own scrolling\n\u2022 Move the iPhone hero's trailer with the page's own scrolling\n\u2022 Stop the iPhone background flickering under a moving trailer\n\u2022 Let the iPhone hero's trailer play on as the page scrolls\n\u2022 Keep the iPhone hero's trailer playing until most of the hero is gone\n\nFull notes: https://github.com/hyperionyxdev/aiostreams-ios/releases/tag/v0.2.116",
+          "downloadURL": "https://github.com/hyperionyxdev/aiostreams-ios/releases/download/v0.2.116/AIOStreams.ipa",
+          "size": 17437851,
+          "minOSVersion": "18.0"
+        },
+        {
           "version": "0.2.91",
           "buildVersion": "91",
           "date": "2026-11-14T01:56:05.767358+00:00",
@@ -132,6 +141,16 @@
     }
   ],
   "news": [
+    {
+      "identifier": "release-v0.2.116",
+      "title": "AIOStreams 0.2.116",
+      "caption": "iPhone: Skip intro as TV glass pills, haptics for holds and switches",
+      "date": "2026-11-14T08:43:06.405350+00:00",
+      "tintColor": "#6152DF",
+      "appID": "io.github.aiostreams-ios.app",
+      "url": "https://github.com/hyperionyxdev/aiostreams-ios/releases/tag/v0.2.116",
+      "notify": false
+    },
     {
       "identifier": "release-v0.2.91",
       "title": "AIOStreams 0.2.91",
