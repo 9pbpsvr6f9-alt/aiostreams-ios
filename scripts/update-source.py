@@ -23,14 +23,16 @@ APPS = [('AIOStreams.ipa', 'io.github.aiostreams-ios.app', 'AIOStreams'),
 
 DETAILS = {
     'io.github.aiostreams-ios.app': {
-        'subtitle': 'Your Jellyfin library on iPhone and iPad',
+        'subtitle': 'AIOStreams and Jellyfin, played properly',
         'description': (
-            "AIOStreams' web app on iPhone and iPad, playing through AetherEngine: "
-            'HDR10, Dolby Vision, Atmos and FFmpeg decoding where AVPlayer stops.\n\n'
-            '• Smart downloads keep the next episodes of a show on your device and delete them once watched\n'
-            '• Downloads that continue in the background and play offline; progress syncs to Jellyfin later\n'
-            '• Trailers in the hero and on title pages, Picture in Picture, and a skip-intro countdown\n'
-            '• Swipe gestures for volume and brightness, light haptics, and styled subtitles\n\n'
+            'A native iPhone and iPad app for your AIOStreams and Jellyfin library. It plays through '
+            'AetherEngine, so Dolby Vision, HDR10, HDR10+, Atmos and image subtitles work where '
+            'Safari and AVPlayer give up.\n\n'
+            '• Smart downloads keep the next episodes of a show on your device and remove them once watched\n'
+            '• Downloads carry on in the background, play offline and sync what you watched later\n'
+            '• A skip intro countdown, Picture in Picture that hands off to the mini player, and trailers\n'
+            '• Subtitles in your own style, spoiler blur, brightness and volume swipes, light haptics\n'
+            '• Optional anime upscaling on iOS 26\n\n'
             'Unofficial and unsigned: your sideloading tool signs it when you install.'),
         'screenshots': ['iphone-home', 'iphone-show', 'iphone-movie', 'iphone-versions'],
         'ipad': ['ipad-home', 'ipad-show'],
@@ -90,10 +92,10 @@ def generate(tag, folder, previous=None, notes=None):
     source = {'name': 'AIOStreams',
               'identifier': 'io.github.9pbpsvr6f9-alt.aiostreams',
               'subtitle': 'Jellyfin on iPhone, iPad and Apple TV',
-              'description': ('Unofficial AIOStreams builds for iPhone, iPad and Apple TV, playing through '
-                              'AetherEngine. Each update lists what changed, and older versions stay '
-                              'installable from the version history. Your sideloading tool signs each app '
-                              'at installation.'),
+              'description': ('Native AIOStreams apps for iPhone, iPad and Apple TV, made for watching and '
+                              'playing through AetherEngine. Every update says what changed, and earlier '
+                              'versions stay installable from the version history. Your sideloading tool '
+                              'signs each app when you install it.'),
               'website': f'https://github.com/{REPO}',
               'sourceURL': SOURCE_URL,
               'iconURL': f'{RAW}/altstore/icon.png',
