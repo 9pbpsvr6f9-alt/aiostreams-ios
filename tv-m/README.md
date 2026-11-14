@@ -48,6 +48,7 @@ are for personal use. So this folder holds none of its code, only:
   loaded, so the two crossfade together.
   `0123` joins Home's hero to the rows through one fixed grey, the hero fading into it and the rows
   out of it, so the edge never changes with the background.
+  `0124` starts the rows' grey two pixels over the hero's edge, so no background shows between them.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no

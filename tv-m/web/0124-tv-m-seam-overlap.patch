@@ -1,0 +1,15 @@
+diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
+index 517e8c36..e371fb1a 100644
+--- a/packages/web/src/styles.css
++++ b/packages/web/src/styles.css
+@@ -1165,7 +1165,9 @@ html[data-tv][data-tvm-backdrop] [data-ui='hero'] [data-ui='hero-shade'][data-na
+ html[data-tv][data-tvm-backdrop] [data-ui='hero'] + [data-ui='home-rows']::before {
+   content: '';
+   position: absolute;
+-  top: 0;
++  /* Two pixels over the hero's edge: the hero ends partway through a pixel row, and two greys
++     each covering part of it let the background show through as a line. */
++  top: -2px;
+   left: calc(-1 * var(--side-bar, 0px));
+   right: 0;
+   height: 32vh;
