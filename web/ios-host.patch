@@ -889,13 +889,13 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..dbcd8d95
+index 00000000..90b781a3
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
 @@ -0,0 +1,222 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
-+import { iosFeedback } from '@/lib/hosts/shell/ios-feedback';
++import { iosSelectFeedback } from '@/lib/hosts/shell/ios-feedback';
 +
 +/** The hero's slide on show, and its newest picture. */
 +const HERO_PICTURE =
@@ -1038,7 +1038,7 @@ index 00000000..dbcd8d95
 +  React.useEffect(() => {
 +    const tap = (e: Event) => {
 +      const el = e.target instanceof Element ? e.target : null;
-+      if (el?.closest('[role="switch"], .UI-Switch__label')) iosFeedback('toggle');
++      if (el?.closest('[role="switch"], .UI-Switch__label')) iosSelectFeedback();
 +    };
 +    document.addEventListener('click', tap, true);
 +    return () => document.removeEventListener('click', tap, true);
@@ -1868,6 +1868,25 @@ index 4daab21e..37a36435 100644
      },
      [host, setFrame]
    );
+diff --git a/packages/web/src/hooks/use-hold.ts b/packages/web/src/hooks/use-hold.ts
+index c89b8152..a8c5cb07 100644
+--- a/packages/web/src/hooks/use-hold.ts
++++ b/packages/web/src/hooks/use-hold.ts
+@@ -1,4 +1,5 @@
+ import React from 'react';
++import { iosMenuFeedback } from '@/lib/hosts/shell/ios-feedback';
+ import { usingKeys } from '@/lib/input';
+ 
+ const HOLD_MS = 500;
+@@ -26,6 +27,8 @@ export function useHold(
+       cancel();
+       timer.current = setTimeout(() => {
+         held.current = true;
++        // iOS: a light tap as the hold takes, such as Play's version picker.
++        iosMenuFeedback();
+         latest.current?.();
+       }, HOLD_MS);
+     },
 diff --git a/packages/web/src/lib/downloads/index.ts b/packages/web/src/lib/downloads/index.ts
 index 000b3b22..189d966d 100644
 --- a/packages/web/src/lib/downloads/index.ts
@@ -2275,10 +2294,10 @@ index 0c2fe1b2..6de9d177 100644
  }
 diff --git a/packages/web/src/lib/hosts/shell/ios-feedback.ts b/packages/web/src/lib/hosts/shell/ios-feedback.ts
 new file mode 100644
-index 00000000..63c99c9d
+index 00000000..aa7388ae
 --- /dev/null
 +++ b/packages/web/src/lib/hosts/shell/ios-feedback.ts
-@@ -0,0 +1,18 @@
+@@ -0,0 +1,25 @@
 +import { settings } from '@/lib/settings';
 +import { appBridge } from './bridge';
 +
@@ -2297,6 +2316,13 @@ index 00000000..63c99c9d
 +
 +export const iosGesturesEnabled = () =>
 +  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
++
++/** A light tap for browsing (a switch turning on or off): the player's own taps need a video loaded. */
++export function iosSelectFeedback(): void {
++  const bridge = appBridge();
++  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
++    bridge.send({ type: 'ui-haptic', action: 'select' });
++}
 diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
 new file mode 100644
 index 00000000..09ceb038
@@ -2867,7 +2893,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..e6368039 100644
+index 96e99eee..01718c4c 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2941,7 +2967,7 @@ index 96e99eee..e6368039 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,577 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,595 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2993,7 +3019,7 @@ index 96e99eee..e6368039 100644
 +  /* ===== Clear glass: buttons, pills, small pop-ups ===== */
 +  & :is(
 +    [data-ui='player-middle-button'],
-+    [data-ui='skip-segment'],
++    [data-ui='skip-segment'] button,
 +    [data-ui='player-unlock'],
 +    [data-ui='player-notice'] > *,
 +    [data-ui='player-scrub'] > *,
@@ -3019,7 +3045,7 @@ index 96e99eee..e6368039 100644
 +  /* Pressed: brighten and dip, like iOS */
 +  & :is(
 +    [data-ui='player-middle-button'],
-+    [data-ui='skip-segment'],
++    [data-ui='skip-segment'] button,
 +    [data-ui='player-unlock'],
 +    [data-ui='hero-action'],
 +    [data-ui='item-action'],
@@ -3033,7 +3059,7 @@ index 96e99eee..e6368039 100644
 +  }
 +  & :is(
 +    [data-ui='player-middle-button'],
-+    [data-ui='skip-segment'],
++    [data-ui='skip-segment'] button,
 +    [data-ui='player-unlock'],
 +    [data-ui='hero-action'],
 +    [data-ui='item-action'],
@@ -3047,7 +3073,7 @@ index 96e99eee..e6368039 100644
 +  }
 +  & :is(
 +    [data-ui='player-middle-button'],
-+    [data-ui='skip-segment'],
++    [data-ui='skip-segment'] button,
 +    [data-ui='player-unlock'],
 +    [data-ui='hero-action']:not([data-name='play']),
 +    [data-ui='item-action']:not([data-name='play']),
@@ -3518,4 +3544,22 @@ index 96e99eee..e6368039 100644
 +/* Person pages: the photo sits in a glass rim. */
 +html[data-host='ios-app'] [data-ui='person-photo'] {
 +  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.16), inset 1px 1px 0.5px rgb(255 255 255 / 0.35), 0 12px 32px -12px rgb(0 0 0 / 0.6) !important;
++}
++/* Skip intro, like the TV: the close and skip buttons each a clear glass pill with white text, not one
++   capsule round both; the countdown fills in a lighter glass. Sizes stay as they were. */
++html[data-host='ios-app'] [data-ui='skip-segment'] {
++  background: none !important;
++  border: 0 !important;
++  box-shadow: none !important;
++  -webkit-backdrop-filter: none !important;
++  backdrop-filter: none !important;
++}
++html[data-host='ios-app'] [data-ui='skip-segment'] button {
++  color: rgb(255 255 255 / 0.95) !important;
++}
++html[data-host='ios-app'] [data-ui='skip-segment'] [data-name='countdown-fill'] {
++  background-color: rgb(255 255 255 / 0.16) !important;
++}
++html[data-host='ios-app'] [data-ui='skip-segment'] [data-name='countdown'] {
++  background-color: rgb(255 255 255 / 0.18) !important;
 +}
