@@ -2103,6 +2103,293 @@ index 000b3b22..189d966d 100644
  export function pauseDownload(download: Download): void {
    downloadsHost()?.control(download.id, 'pause');
  }
+diff --git a/packages/web/src/lib/downloads/smart.ts b/packages/web/src/lib/downloads/smart.ts
+new file mode 100644
+index 00000000..7d46a80f
+--- /dev/null
++++ b/packages/web/src/lib/downloads/smart.ts
+@@ -0,0 +1,281 @@
++import React from 'react';
++import { appBridge } from '@/lib/hosts/shell/bridge';
++import { useSession } from '@/lib/jellyfin/session';
++import { pickable } from '@/lib/format';
++import { storage } from '@/lib/storage';
++import { onSettingsChange, settings } from '@/lib/settings';
++import { playbackNow } from '@/lib/playback/session';
++import type {
++  BaseItemDto,
++  BaseItemDtoQueryResult,
++} from '@/lib/jellyfin/types';
++import { addDownloadsQuietly, downloadsHost, removeDownloads } from '.';
++import { allDownloads, useDownloadList } from './store';
++
++/**
++ * Smart downloads (iOS): a show keeps its next unwatched episodes on the device, topping up as
++ * they are watched and deleting the ones that are. Jellyfin's watched state is the truth, so an
++ * episode watched on another device moves the queue on too, and a download watched offline is
++ * deleted only once the server has its played state.
++ */
++
++/** How many episodes a show keeps ahead; `season` is the rest of the season. */
++export type SmartCount = 1 | 2 | 3 | 4 | 5 | 'season';
++export const SMART_COUNTS: readonly SmartCount[] = [1, 2, 3, 4, 5, 'season'];
++
++interface SmartShow {
++  base: string;
++  userId: string;
++  count: SmartCount;
++  /** The show's name, for the list in Settings. */
++  name?: string;
++}
++
++const SHOWS_KEY = 'aiostreams-ios-smart-shows';
++/** Item ids the smart runner added, the only downloads it ever deletes. */
++const OWNED_KEY = 'aiostreams-ios-smart-items';
++/** A top-up while the app stays open, beside the ones a finished video and a return bring. */
++const EVERY_MS = 15 * 60_000;
++
++type Shows = Record<string, SmartShow>;
++
++const listeners = new Set<() => void>();
++const readShows = (): Shows => storage.get<Shows>(SHOWS_KEY) ?? {};
++const readOwned = (): string[] => storage.get<string[]>(OWNED_KEY) ?? [];
++let snapshot = readShows();
++
++function writeShows(next: Shows) {
++  storage.set(SHOWS_KEY, next);
++  snapshot = next;
++  for (const listener of listeners) listener();
++}
++
++const showKey = (base: string, userId: string, seriesId: string) =>
++  `${base}|${userId}|${seriesId}`;
++
++/** A show's smart count on this device, or null when it is off. */
++export function useSmartShow(seriesId: string | undefined): SmartCount | null {
++  const { client, user } = useSession();
++  const shows = React.useSyncExternalStore(
++    (listener) => {
++      listeners.add(listener);
++      return () => listeners.delete(listener);
++    },
++    () => snapshot
++  );
++  if (!seriesId) return null;
++  return shows[showKey(client.base, user.Id!, seriesId)]?.count ?? null;
++}
++
++/** This server and user's smart shows, for the list in Settings. */
++export function useSmartShows(): { seriesId: string; name: string; count: SmartCount }[] {
++  const { client, user } = useSession();
++  const shows = React.useSyncExternalStore(
++    (listener) => {
++      listeners.add(listener);
++      return () => listeners.delete(listener);
++    },
++    () => snapshot
++  );
++  // A show turned on before names were kept takes its name from a downloaded episode.
++  const downloads = useDownloadList();
++  return Object.entries(shows)
++    .filter(([, s]) => s.base === client.base && s.userId === user.Id)
++    .map(([key, s]) => {
++      const seriesId = key.slice(key.lastIndexOf('|') + 1);
++      const name =
++        s.name ||
++        downloads.find((d) => d.item.SeriesId === seriesId)?.item.SeriesName ||
++        seriesId;
++      return { seriesId, name, count: s.count };
++    })
++    .sort((a, b) => a.name.localeCompare(b.name));
++}
++
++/** Turns a show's smart downloads on with `count`, or off with null. Off keeps what it saved. */
++export function useSetSmartShow() {
++  const { client, user } = useSession();
++  return React.useCallback(
++    (series: BaseItemDto, count: SmartCount | null) => {
++      const key = showKey(client.base, user.Id!, series.Id!);
++      const { [key]: _, ...rest } = readShows();
++      if (count === null) {
++        // What it downloaded stays, and is no longer deleted once watched.
++        const episodes = new Set(
++          allDownloads()
++            .filter((d) => d.item.SeriesId === series.Id)
++            .map((d) => d.item.Id)
++        );
++        storage.set(
++          OWNED_KEY,
++          readOwned().filter((id) => !episodes.has(id))
++        );
++        writeShows(rest);
++      } else {
++        writeShows({
++          ...rest,
++          [key]: {
++            base: client.base,
++            userId: user.Id!,
++            count,
++            name: series.Name ?? undefined,
++          },
++        });
++      }
++    },
++    [client.base, user.Id]
++  );
++}
++
++/** The episodes a show should have on the device now, in order. */
++function wanted(
++  episodes: BaseItemDto[],
++  next: BaseItemDto | undefined,
++  count: SmartCount
++): BaseItemDto[] {
++  const playable = episodes.filter(pickable);
++  let from = next ? playable.findIndex((e) => e.Id === next.Id) : -1;
++  if (from < 0) from = playable.findIndex((e) => !e.UserData?.Played);
++  if (from < 0) return [];
++  const ahead = playable.slice(from).filter((e) => !e.UserData?.Played);
++  if (count === 'season') {
++    const season = playable[from].SeasonId;
++    return ahead.filter((e) => e.SeasonId === season);
++  }
++  return ahead.slice(0, count);
++}
++
++/**
++ * Keeps the smart shows' downloads in step: adds the episodes each show should have, deletes
++ * the ones it added that the server now marks watched, and tells the app which may use
++ * cellular data. Runs on start, on return to the app, when playback ends, when a show's count
++ * changes and every quarter hour; `paused` (playing) waits.
++ */
++export function useSmartDownloads(paused: boolean): void {
++  const { client, user } = useSession();
++  const list = useDownloadList();
++  const host = downloadsHost();
++  const running = React.useRef(false);
++  const [tick, setTick] = React.useState(0);
++
++  React.useEffect(() => {
++    const wake = () => setTick((n) => n + 1);
++    listeners.add(wake);
++    const visible = () => document.visibilityState === 'visible' && wake();
++    document.addEventListener('visibilitychange', visible);
++    const timer = setInterval(wake, EVERY_MS);
++    return () => {
++      listeners.delete(wake);
++      document.removeEventListener('visibilitychange', visible);
++      clearInterval(timer);
++    };
++  }, []);
++
++  // Which smart downloads may use cellular data, by the device's setting.
++  React.useEffect(() => {
++    const send = () => {
++      const policy = settings.ios.smartCellular.read();
++      const shows = readShows();
++      const owned = new Set(readOwned());
++      const ours = allDownloads().filter(
++        (d) =>
++          owned.has(d.item.Id!) &&
++          d.state !== 'done' &&
++          !!shows[showKey(d.base, d.userId, d.item.SeriesId ?? '')]
++      );
++      let ids: string[] = [];
++      if (policy === 'all') ids = ours.map((d) => d.id);
++      else if (policy === 'next') {
++        // Each show's earliest waiting episode, by its place in the show.
++        const first = new Map<string, (typeof ours)[number]>();
++        for (const d of ours) {
++          const key = d.item.SeriesId ?? '';
++          const was = first.get(key);
++          const order = (x: BaseItemDto) =>
++            (x.ParentIndexNumber ?? 0) * 10_000 + (x.IndexNumber ?? 0);
++          if (!was || order(d.item) < order(was.item)) first.set(key, d);
++        }
++        ids = [...first.values()].map((d) => d.id);
++      }
++      appBridge()?.send({ type: 'download-cellular', ids });
++    };
++    send();
++    return onSettingsChange(send);
++  }, [list]);
++
++  React.useEffect(() => {
++    if (!host || paused || running.current) return;
++    const shows = Object.entries(readShows()).filter(
++      ([, s]) => s.base === client.base && s.userId === user.Id
++    );
++    if (!shows.length) return;
++    running.current = true;
++    void (async () => {
++      for (const [key, show] of shows) {
++        const seriesId = key.slice(key.lastIndexOf('|') + 1);
++        try {
++          const [{ Items: episodes = [] }, nextUp] = await Promise.all([
++            client.get<BaseItemDtoQueryResult>(`/Shows/${seriesId}/Episodes`, {
++              userId: user.Id,
++              Fields: 'MediaSources',
++            }),
++            client.get<BaseItemDtoQueryResult>('/Shows/NextUp', {
++              userId: user.Id,
++              seriesId,
++              Limit: 1,
++            }),
++          ]);
++          // A show turned on before names were kept gets its name from its episodes.
++          const seriesName = episodes[0]?.SeriesName;
++          if (!show.name && seriesName) {
++            const all = readShows();
++            if (all[key]) writeShows({ ...all, [key]: { ...all[key], name: seriesName } });
++          }
++          const owned = new Set(readOwned());
++          const played = new Set(
++            episodes.filter((e) => e.UserData?.Played).map((e) => e.Id)
++          );
++          // Watched on any device, as the server says: its smart download goes.
++          const now = playbackNow();
++          const done = allDownloads().filter(
++            (d) =>
++              d.base === client.base &&
++              d.userId === user.Id &&
++              d.item.SeriesId === seriesId &&
++              owned.has(d.item.Id!) &&
++              played.has(d.item.Id) &&
++              d.item.Id !== now?.itemId
++          );
++          if (done.length) {
++            removeDownloads(done, true);
++            const gone = new Set(done.map((d) => d.item.Id));
++            storage.set(
++              OWNED_KEY,
++              readOwned().filter((id) => !gone.has(id))
++            );
++          }
++          // The next ones, following the release the show's downloads already use.
++          const want = wanted(episodes, nextUp.Items?.[0], show.count);
++          const have = allDownloads().filter(
++            (d) =>
++              d.base === client.base &&
++              d.userId === user.Id &&
++              d.item.SeriesId === seriesId
++          );
++          const group = have.find((d) => d.source?.aiostreams?.bingeGroup)
++            ?.source?.aiostreams?.bingeGroup;
++          const added = addDownloadsQuietly(client.base, user.Id!, want, group);
++          if (added.length)
++            storage.set(OWNED_KEY, [
++              ...readOwned(),
++              ...added.map((d) => d.item.Id!),
++            ]);
++        } catch {
++          // Offline or the server is away: the next run tries again.
++        }
++      }
++    })().finally(() => {
++      running.current = false;
++    });
++  }, [host, paused, tick, client, user.Id]);
++}
 diff --git a/packages/web/src/lib/hosts/index.ts b/packages/web/src/lib/hosts/index.ts
 index f7a92d49..77125c6e 100644
 --- a/packages/web/src/lib/hosts/index.ts
@@ -2176,6 +2463,158 @@ index 0c2fe1b2..6de9d177 100644
 +  if (bridge.platform === 'android') return androidHost;
 +  return bridge.platform === 'ios' ? iosHost : desktopHost;
  }
+diff --git a/packages/web/src/lib/hosts/shell/ios-feedback.ts b/packages/web/src/lib/hosts/shell/ios-feedback.ts
+new file mode 100644
+index 00000000..63c99c9d
+--- /dev/null
++++ b/packages/web/src/lib/hosts/shell/ios-feedback.ts
+@@ -0,0 +1,18 @@
++import { settings } from '@/lib/settings';
++import { appBridge } from './bridge';
++
++export function iosFeedback(action: 'toggle' | 'seek' | 'track'): void {
++  const bridge = appBridge();
++  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
++    bridge.send({ type: 'player-haptic', action });
++}
++
++/** A light tap as an item's menu opens, from a long press, a right click or its button. */
++export function iosMenuFeedback(): void {
++  const bridge = appBridge();
++  if (bridge?.platform === 'ios' && settings.ios.haptics.read())
++    bridge.send({ type: 'ui-haptic', action: 'menu' });
++}
++
++export const iosGesturesEnabled = () =>
++  appBridge()?.platform !== 'ios' || settings.ios.gestures.read();
+diff --git a/packages/web/src/lib/hosts/shell/ios.ts b/packages/web/src/lib/hosts/shell/ios.ts
+new file mode 100644
+index 00000000..09ceb038
+--- /dev/null
++++ b/packages/web/src/lib/hosts/shell/ios.ts
+@@ -0,0 +1,122 @@
++import { settings, onSettingsChange } from '@/lib/settings';
++import type { Host } from '..';
++import { appBridge, ask } from './bridge';
++import { appEngine } from './player';
++import { resolveYouTube } from './youtube';
++import { shellDownloads } from './downloads';
++
++let fullscreen = false;
++
++/** Follows the iOS app's full screen, which hides the status bar and turns to landscape. */
++export function setupIos(): () => void {
++  const unsubscribe = appBridge()?.subscribe((m) => {
++    if (m.type === 'fullscreen') fullscreen = m.value;
++  });
++  const html = document.documentElement;
++  const apply = () => {
++    appBridge()?.send({
++      type: 'ios-player-settings',
++      haptics: settings.ios.haptics.read(),
++      automaticPip: settings.ios.automaticPip.read(),
++      gestures: settings.ios.gestures.read(),
++      launchLogo: settings.ios.launchLogo.read(),
++    });
++    // The parts of an unstarted episode the spoiler blur leaves clear (styles.css).
++    html.toggleAttribute('data-unblur-pictures', !settings.ios.spoilerPictures.read());
++    html.toggleAttribute('data-unblur-titles', !settings.ios.spoilerTitles.read());
++    html.toggleAttribute('data-unblur-descriptions', !settings.ios.spoilerDescriptions.read());
++  };
++  apply();
++  const stopSettings = onSettingsChange(apply);
++  // WebKit's back swipe shows the previous page's snapshot only for history entries that
++  // restore their own scroll; the router still restores it again once the page renders.
++  const restoreScroll = () => {
++    history.scrollRestoration = 'auto';
++  };
++  restoreScroll();
++  addEventListener('pageshow', restoreScroll);
++  // A selection tick for a menu's choice, the bottom bar's (or iPad rail's) tabs, a tapped
++  // poster, tile or episode, and the hero's buttons. The player's own menus send their own
++  // feedback (iosFeedback('track')). Only a tap clicks, so scrolling past cards stays quiet.
++  const TAPPABLE = [
++    '[role^="menuitem"]',
++    '[data-ui="mobile-nav-item"]',
++    '[data-ui="nav-item"]',
++    '[data-ui="poster-card"]',
++    '[data-ui="wide-card"]',
++    '[data-ui="media-row-item"]',
++    '[data-ui="episode-card"]',
++    '[data-ui="episode-list-item"]',
++    '[data-ui="person-card"]',
++    '[data-ui="calendar-entry"]',
++    '[data-ui="history-tile"]',
++    '[data-ui="playlist-entry"]',
++    '[data-ui="random-card"]',
++    '[data-ui="open-card"]',
++    '[data-ui="hero-action"]',
++  ].join(', ');
++  // One tick per press: a menu's trigger answers its touch-down, and its click may follow.
++  let ticked: { el: Element; at: number } | null = null;
++  const tick = (el: Element) => {
++    const now = performance.now();
++    if (ticked?.el === el && now - ticked.at < 600) return;
++    ticked = { el, at: now };
++    if (settings.ios.haptics.read())
++      appBridge()?.send({ type: 'ui-haptic', action: 'select' });
++  };
++  const tapped = (e: MouseEvent) => {
++    const target = e.target instanceof Element ? e.target : null;
++    const choice = target?.closest(TAPPABLE);
++    if (!choice || choice.closest('[data-ui="player-menu"]')) return;
++    tick(choice);
++  };
++  // A bar tab that opens a menu (the account's "You") opens it on touch-down, which takes the
++  // click away, so it ticks then. Only the bars' tabs: a card's touch-down may start a scroll.
++  const pressed = (e: PointerEvent) => {
++    const target = e.target instanceof Element ? e.target : null;
++    const tab = target?.closest(
++      ':is([data-ui="mobile-nav-item"], [data-ui="nav-item"])[aria-haspopup]'
++    );
++    if (tab) tick(tab);
++  };
++  document.addEventListener('click', tapped, true);
++  document.addEventListener('pointerdown', pressed, true);
++  return () => {
++    unsubscribe?.();
++    stopSettings();
++    removeEventListener('pageshow', restoreScroll);
++    document.removeEventListener('click', tapped, true);
++    document.removeEventListener('pointerdown', pressed, true);
++    for (const name of ['data-unblur-pictures', 'data-unblur-titles', 'data-unblur-descriptions'])
++      html.removeAttribute(name);
++  };
++}
++
++/** The iOS app: the page over AetherEngine, which draws the video beneath it. */
++export const iosHost: Host = {
++  name: 'ios-app',
++  device: () => ({ id: appBridge()?.deviceId, name: appBridge()?.device }),
++  player: appEngine,
++  // Upscaling: AetherEngine's super resolution, for Anime upscaling (iOS 26).
++  playerFeatures: ['audio', 'chapters', 'headers', 'upscaling'],
++  resolveYouTube,
++  // The app's queue, as the Android app's: background transfers that go on with the app closed.
++  downloads: shellDownloads,
++  levels: {
++    read: (level) => ask({ type: 'levels', level }, 'levels'),
++    set: (level, value) =>
++      appBridge()?.send({ type: 'set-level', level, value }),
++    release: () =>
++      appBridge()?.send({
++        type: 'set-level',
++        level: 'brightness',
++        value: null,
++      }),
++  },
++  fullscreen: {
++    active: () => fullscreen,
++    set: (on) => appBridge()?.send({ type: 'fullscreen', value: on }),
++  },
++  saveFile: (name, type, text) =>
++    appBridge()?.send({ type: 'save-file', name, mime: type, text }),
++};
 diff --git a/packages/web/src/lib/hosts/shell/pip.ts b/packages/web/src/lib/hosts/shell/pip.ts
 index fffeacef..e4d8b8cd 100644
 --- a/packages/web/src/lib/hosts/shell/pip.ts
