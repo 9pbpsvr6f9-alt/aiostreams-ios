@@ -62,7 +62,7 @@ index 2ba0f442..b17357e0 100644
  
  export function Captioned({
 diff --git a/packages/web/src/app/item/_components/backdrop.tsx b/packages/web/src/app/item/_components/backdrop.tsx
-index dba75cfb..6ea3092b 100644
+index dba75cfb..349b0e4a 100644
 --- a/packages/web/src/app/item/_components/backdrop.tsx
 +++ b/packages/web/src/app/item/_components/backdrop.tsx
 @@ -3,6 +3,9 @@ import { cn } from '@aiostreams/ui/core/styling';
@@ -75,8 +75,12 @@ index dba75cfb..6ea3092b 100644
  /** Art that arrives within this was never seen missing, so it just appears. */
  const UNSEEN_MS = 250;
  
-@@ -79,7 +82,7 @@ export function Backdrop({
+@@ -77,9 +80,11 @@ export function Backdrop({
+     <div
+       aria-hidden
        data-ui="item-backdrop"
++      // iOS: the picture shown, for the frosted background behind the page.
++      data-src={src || undefined}
        // Fades out at its edge, where some GPUs draw the art's last row past the shade.
        className={cn(
 -        'pointer-events-none absolute inset-x-0 top-[calc(var(--top-bar,0px)*-1)] h-[calc(55vh+var(--top-bar,0px))] overflow-hidden transition-opacity duration-500 [mask-image:linear-gradient(to_top,transparent,black_2px)] landscape:h-[calc(85vh+var(--top-bar,0px))] lg:h-[calc(85vh+var(--top-bar,0px))]',
@@ -488,15 +492,24 @@ index d2ad407a..1890854f 100644
    );
  }
 diff --git a/packages/web/src/app/settings/interface.tsx b/packages/web/src/app/settings/interface.tsx
-index 3ca16645..24dc4ae5 100644
+index 3ca16645..e45b051a 100644
 --- a/packages/web/src/app/settings/interface.tsx
 +++ b/packages/web/src/app/settings/interface.tsx
-@@ -307,6 +307,12 @@ export function InterfaceSection() {
+@@ -8,6 +8,7 @@ import { currentHost } from '@/lib/hosts';
+ import { HIDDEN_LOCALES, LOCALES, localeName, systemLocale } from '@/lib/i18n';
+ import { canRefract } from '@/components/shell/bar-surface';
+ import {
++  type IosBackdrop,
+   settings,
+   useSetting,
+   MAX_FEATURED,
+@@ -307,6 +308,13 @@ export function InterfaceSection() {
    const [blurSpoilers, setBlurSpoilers] = useSetting(
      settings.interface.blurSpoilers
    );
 +  const ios = currentHost().name === 'ios-app';
 +  const [blurPictures, setBlurPictures] = useSetting(settings.ios.spoilerPictures);
++  const [backdrop, setBackdrop] = useSetting(settings.ios.backdrop);
 +  const [blurTitles, setBlurTitles] = useSetting(settings.ios.spoilerTitles);
 +  const [blurDescriptions, setBlurDescriptions] = useSetting(
 +    settings.ios.spoilerDescriptions
@@ -504,7 +517,28 @@ index 3ca16645..24dc4ae5 100644
    const touch = !currentHost().tv && matchMedia('(pointer: coarse)').matches;
  
    const option = (value: string, label: string) => ({
-@@ -501,6 +507,29 @@ export function InterfaceSection() {
+@@ -489,6 +497,20 @@ export function InterfaceSection() {
+           onValueChange={(value) => setEpisodeLayout(value as EpisodeLayout)}
+         />
+       </SettingsCard>
++      {ios && (
++        <SettingsCard name="background" title={t`Background`}>
++          <Select
++            label={t`Background`}
++            help={t`A frosted background behind the pages, from the hero's picture as it turns, or a title's own picture on its page. Off keeps the plain colour.`}
++            options={[
++              { value: 'hero', label: t`Follow the hero` },
++              { value: 'off', label: t`Off` },
++            ]}
++            value={backdrop}
++            onValueChange={(value) => setBackdrop(value as IosBackdrop)}
++          />
++        </SettingsCard>
++      )}
+       <SettingsCard
+         name="spoilers"
+         title={t`Spoilers`}
+@@ -501,6 +523,29 @@ export function InterfaceSection() {
            value={blurSpoilers}
            onValueChange={setBlurSpoilers}
          />
@@ -757,7 +791,7 @@ index f7db07b6..4a8139e5 100644
        own(card);
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/layout.tsx b/packages/web/src/components/shell/layout.tsx
-index f9fd24f6..5bbd825f 100644
+index f9fd24f6..b23084fe 100644
 --- a/packages/web/src/components/shell/layout.tsx
 +++ b/packages/web/src/components/shell/layout.tsx
 @@ -39,6 +39,7 @@ import { shellHost } from '@/lib/hosts/shell';
@@ -768,7 +802,28 @@ index f9fd24f6..5bbd825f 100644
  import { usePendingStops } from '@/lib/playback/reporter';
  import {
    closePlayback,
-@@ -525,6 +526,7 @@ function PagesWork({
+@@ -77,6 +78,7 @@ import { SidebarAccount } from './nav/account';
+ import { MobileNav } from './nav/mobile-nav';
+ import { TouchRail } from './nav/touch-rail';
+ import { TvRail } from './nav/tv-rail';
++import { IosBackdrop } from './ios-backdrop';
+ import { CornerMenu } from './nav/corner-menu';
+ import { TOP_BAR_HEIGHT, TopTabs } from './nav/top-tabs';
+ 
+@@ -98,8 +100,10 @@ export function PageBackground() {
+     <div
+       aria-hidden
+       data-ui="page-background"
+-      className="page-background pointer-events-none fixed inset-0 -z-10 bg-[--background]"
+-    />
++      className="page-background pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-[--background]"
++    >
++      {currentHost().name === 'ios-app' && <IosBackdrop />}
++    </div>
+   );
+ }
+ 
+@@ -525,6 +529,7 @@ function PagesWork({
    return (
      <>
        <DownloadRunner paused={playing} />
@@ -776,7 +831,7 @@ index f9fd24f6..5bbd825f 100644
        {shellHost() && <UpdatePrompt />}
        {usageStatsOffered() && <UsageStats />}
      </>
-@@ -536,6 +538,12 @@ function DownloadRunner({ paused }: { paused: boolean }) {
+@@ -536,6 +541,12 @@ function DownloadRunner({ paused }: { paused: boolean }) {
    return null;
  }
  
@@ -2264,7 +2319,7 @@ index 0a565dd7..5f62c48b 100644
      stats: stats && {
        pages: stats.pages,
 diff --git a/packages/web/src/lib/settings/index.ts b/packages/web/src/lib/settings/index.ts
-index 9be266c1..38a12983 100644
+index 9be266c1..ca333286 100644
 --- a/packages/web/src/lib/settings/index.ts
 +++ b/packages/web/src/lib/settings/index.ts
 @@ -140,7 +140,13 @@ export type SegmentType = (typeof SEGMENT_TYPES)[number];
@@ -2282,11 +2337,14 @@ index 9be266c1..38a12983 100644
  export type SubtitleSize = (typeof SUBTITLE_SIZES)[number];
  /** `default` keeps the player's own font. */
  export const SUBTITLE_FONTS = [
-@@ -247,6 +253,11 @@ export const NEXT_PROMPTS = ['credits', 'end', 'off'] as const;
+@@ -247,6 +253,14 @@ export const NEXT_PROMPTS = ['credits', 'end', 'off'] as const;
  export type NextPrompt = (typeof NEXT_PROMPTS)[number];
  export const NEXT_LEADS = [15, 30, 45, 60, 90, 120] as const;
  export const NEXT_COUNTDOWNS = [5, 10, 15, 30] as const;
 +/** Which smart downloads may use cellular data on iOS while downloads wait for Wi-Fi. */
++/** What the iPhone's frosted background behind the pages follows. */
++export const IOS_BACKDROPS = ['off', 'hero'] as const;
++export type IosBackdrop = (typeof IOS_BACKDROPS)[number];
 +export const IOS_SMART_CELLULAR = ['off', 'next', 'all'] as const;
 +export type IosSmartCellular = (typeof IOS_SMART_CELLULAR)[number];
 +/** Seconds an offered skip counts down on iOS before it skips by itself; 0 never does. */
@@ -2294,7 +2352,7 @@ index 9be266c1..38a12983 100644
  /** Episodes in a row with no input before asking; 0 never asks. */
  export const STILL_WATCHING_AFTER = [0, 2, 3, 4, 5, 8] as const;
  
-@@ -605,6 +616,26 @@ export const settings = {
+@@ -605,6 +619,28 @@ export const settings = {
        MINI_CORNERS
      ),
    },
@@ -2305,6 +2363,8 @@ index 9be266c1..38a12983 100644
 +    fillOnStart: device<boolean>('aiostreams-ios-fill-on-start', false),
 +    /** The app's own logo from launch until the page's splash draws it. */
 +    launchLogo: device<boolean>('aiostreams-ios-launch-logo', true),
++    /** A frosted background behind the pages, from the hero's picture or the open title's. */
++    backdrop: device<IosBackdrop>('aiostreams-ios-backdrop', 'hero', IOS_BACKDROPS),
 +    /** Which parts of an unstarted episode the spoiler blur covers on this device. */
 +    spoilerPictures: device<boolean>('aiostreams-ios-spoiler-pictures', true),
 +    spoilerTitles: device<boolean>('aiostreams-ios-spoiler-titles', true),
@@ -2342,10 +2402,10 @@ index 46235575..6309ce86 100644
      normal: t`Normal`,
      large: t`Large`,
 diff --git a/packages/web/src/locales/en-GB.po b/packages/web/src/locales/en-GB.po
-index 2014fb0e..ff23473c 100644
+index 2014fb0e..be22c081 100644
 --- a/packages/web/src/locales/en-GB.po
 +++ b/packages/web/src/locales/en-GB.po
-@@ -5752,3 +5752,129 @@ msgstr "Your rating"
+@@ -5752,3 +5752,135 @@ msgstr "Your rating"
  #: src/app/settings/cache.tsx
  msgid "Your watch history and totals."
  msgstr "Your watch history and totals."
@@ -2475,8 +2535,14 @@ index 2014fb0e..ff23473c 100644
 +#. iOS host additions
 +msgid "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
 +msgstr "Shows the app's logo from the moment it opens, until the page's own logo takes over, instead of a black screen. Takes effect the next time the app opens."
++
++msgid "A frosted background behind the pages, from the hero's picture as it turns, or a title's own picture on its page. Off keeps the plain colour."
++msgstr "A frosted background behind the pages, from the hero's picture as it turns, or a title's own picture on its page. Off keeps the plain colour."
++
++msgid "Follow the hero"
++msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..dfa49b74 100644
+index 96e99eee..d76147d0 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2550,7 +2616,7 @@ index 96e99eee..dfa49b74 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,38 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,93 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2588,4 +2654,59 @@ index 96e99eee..dfa49b74 100644
 +  box-shadow:
 +    inset 0 1px 0 rgb(255 255 255 / 0.3),
 +    inset 0 0 0 0.5px rgb(255 255 255 / 0.12) !important;
++}
++
++/* iOS: the frosted background (Settings > Interface > Background): a softened picture, stretched
++   and dimmed behind the page, crossfading as it changes. The hero and a title's backdrop fade into
++   it through a mask, and their shading turns to a see-through dark, not the plain colour. */
++[data-ui='ios-backdrop'] {
++  position: absolute;
++  inset: 0;
++  background-size: cover;
++  background-position: center;
++  background-color: #0b0e16;
++  animation: ios-backdrop-in 0.9s ease-out both;
++}
++[data-ui='ios-backdrop']::after {
++  content: '';
++  position: absolute;
++  inset: 0;
++  background: rgb(8 10 16 / 0.5);
++}
++@keyframes ios-backdrop-in {
++  from {
++    opacity: 0;
++  }
++  to {
++    opacity: 1;
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  [data-ui='ios-backdrop'] {
++    animation: none;
++  }
++}
++html[data-ios-backdrop] [data-ui='hero-backdrops'] {
++  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
++  mask-image: linear-gradient(to top, transparent, black 45%);
++}
++html[data-ios-backdrop] [data-ui='hero-shade'][data-name='bottom'] {
++  background-image: linear-gradient(to top, rgb(8 10 16 / 0.45), transparent) !important;
++}
++html[data-ios-backdrop] [data-ui='hero-shade'][data-name='side'] {
++  background-image: linear-gradient(to right, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.2) 35%, transparent) !important;
++}
++html[data-ios-backdrop] [data-ui='item-backdrop'] {
++  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
++  mask-image: linear-gradient(to top, transparent, black 45%);
++}
++html[data-ios-backdrop] [data-ui='item-backdrop-shade'][data-name='bottom'] {
++  background-image: linear-gradient(to top, rgb(8 10 16 / 0.45), transparent) !important;
++}
++html[data-ios-backdrop] [data-ui='item-backdrop-shade'][data-name='side'] {
++  background-image: linear-gradient(to right, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.2) 35%, transparent) !important;
++}
++/* Past a backdrop, a collection's colour wash steps aside for the softened picture. */
++html[data-ios-backdrop] [data-ui='item-backdrop']:has([data-wash]) {
++  display: none;
 +}
