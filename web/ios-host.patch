@@ -14,6 +14,19 @@ index 1132cc26..2a893a55 100644
            requestAnimationFrame(function () {
              requestAnimationFrame(function () {
                app.send({ type: 'splash-shown' });
+diff --git a/packages/web/src/app/discover/page.tsx b/packages/web/src/app/discover/page.tsx
+index f8b6bfe1..e77115c5 100644
+--- a/packages/web/src/app/discover/page.tsx
++++ b/packages/web/src/app/discover/page.tsx
+@@ -283,7 +283,7 @@ export function DiscoverPage({
+   );
+ 
+   return (
+-    <div className="space-y-6 px-4 pb-16 pt-6 lg:ps-0 lg:pe-10 lg:pt-10">
++    <div className="space-y-6 px-4 pb-16 pt-[calc(1.5rem+env(safe-area-inset-top))] lg:ps-0 lg:pe-10 lg:pt-[calc(2.5rem+env(safe-area-inset-top))]">
+       <div
+         data-ui="page-header"
+         className="flex flex-wrap items-baseline gap-x-3 gap-y-1"
 diff --git a/packages/web/src/app/home/page.tsx b/packages/web/src/app/home/page.tsx
 index dc759a05..66726bb6 100644
 --- a/packages/web/src/app/home/page.tsx
@@ -2794,7 +2807,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..e51ed098 100644
+index 96e99eee..8ce40c0f 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2868,7 +2881,7 @@ index 96e99eee..e51ed098 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,123 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,139 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2882,30 +2895,33 @@ index 96e99eee..e51ed098 100644
 +  }
 +}
 +
-+/* iOS: a row of pills (All, Movies, Shows) as Liquid Glass, like the tab bar: one clear capsule
-+   that blurs what's behind it, plain white labels, and the chosen one a soft glass capsule. */
++/* iOS: a row of pills (All, Movies, Shows; Movies, Shows, Collections) as separate Liquid Glass
++   pills, each a clear capsule that blurs what's behind it, the chosen one brighter. */
 +html[data-host='ios-app'] [data-ui='pill-tabs'] {
-+  background-color: rgb(14 14 18 / 0.12);
-+  border: 1px solid rgb(255 255 255 / 0.14);
-+  box-shadow:
-+    inset 1px 1px 0.5px rgb(255 255 255 / 0.4),
-+    inset -1px -1px 0.5px rgb(255 255 255 / 0.14),
-+    0 8px 24px -12px rgb(0 0 0 / 0.6);
-+  -webkit-backdrop-filter: blur(24px) saturate(1.8);
-+  backdrop-filter: blur(24px) saturate(1.8);
++  background: transparent !important;
++  border: 0 !important;
++  box-shadow: none !important;
++  gap: 0.5rem;
++  padding: 0.125rem;
 +}
 +html[data-host='ios-app'] [data-ui='pill-tab'] {
-+  background: transparent !important;
-+  border-color: transparent !important;
-+  box-shadow: none !important;
-+  color: rgb(255 255 255 / 0.85) !important;
++  background-color: rgb(255 255 255 / 0.08) !important;
++  border: 1px solid rgb(255 255 255 / 0.14) !important;
++  box-shadow:
++    inset 1px 1px 0.5px rgb(255 255 255 / 0.35),
++    inset -1px -1px 0.5px rgb(255 255 255 / 0.1),
++    0 6px 18px -10px rgb(0 0 0 / 0.6) !important;
++  -webkit-backdrop-filter: blur(20px) saturate(1.8);
++  backdrop-filter: blur(20px) saturate(1.8);
++  color: rgb(255 255 255 / 0.88) !important;
 +}
 +html[data-host='ios-app'] [data-ui='pill-tab'][data-selected] {
-+  background: rgb(255 255 255 / 0.18) !important;
++  background-color: rgb(255 255 255 / 0.24) !important;
 +  color: #fff !important;
 +  box-shadow:
-+    inset 0 1px 0 rgb(255 255 255 / 0.3),
-+    inset 0 0 0 0.5px rgb(255 255 255 / 0.12) !important;
++    inset 1px 1px 0.5px rgb(255 255 255 / 0.5),
++    inset -1px -1px 0.5px rgb(255 255 255 / 0.16),
++    0 6px 18px -10px rgb(0 0 0 / 0.6) !important;
 +}
 +
 +/* iOS: the frosted background (Settings > Interface > Background): a softened picture, stretched
@@ -2991,4 +3007,17 @@ index 96e99eee..e51ed098 100644
 +   page, is in place under the fade before it shows. */
 +html[data-host='ios-app'] [data-ui='hero-backdrops'] {
 +  transition-duration: 0.9s !important;
++}
++
++/* iOS: Discover's catalog and filter pickers as a Liquid Glass capsule, not a dark bar. */
++html[data-host='ios-app'] :is([data-ui='catalog-picker'], [data-ui='genre-picker']) {
++  border-radius: 9999px !important;
++  background-color: rgb(255 255 255 / 0.08) !important;
++  border: 1px solid rgb(255 255 255 / 0.14) !important;
++  box-shadow:
++    inset 1px 1px 0.5px rgb(255 255 255 / 0.35),
++    inset -1px -1px 0.5px rgb(255 255 255 / 0.1),
++    0 8px 24px -12px rgb(0 0 0 / 0.6) !important;
++  -webkit-backdrop-filter: blur(24px) saturate(1.8);
++  backdrop-filter: blur(24px) saturate(1.8);
 +}
