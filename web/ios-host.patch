@@ -14,6 +14,30 @@ index 1132cc26..2a893a55 100644
            requestAnimationFrame(function () {
              requestAnimationFrame(function () {
                app.send({ type: 'splash-shown' });
+diff --git a/packages/web/src/app/home/page.tsx b/packages/web/src/app/home/page.tsx
+index dc759a05..66726bb6 100644
+--- a/packages/web/src/app/home/page.tsx
++++ b/packages/web/src/app/home/page.tsx
+@@ -26,6 +26,7 @@ import {
+   animatedPosterOf,
+ } from '@/lib/artwork/urls';
+ import {
++  airTime,
+   dayLabel,
+   libraryLabel,
+   duration,
+@@ -321,7 +322,10 @@ function UpcomingRow() {
+             badge={
+               item.PremiereDate ? (
+                 <Badge size="sm" intent="gray-solid">
+-                  {dayLabel(item.PremiereDate)}
++                  {/* The day, and the time too where the listing gives one. */}
++                  {[dayLabel(item.PremiereDate), airTime(item.PremiereDate)]
++                    .filter(Boolean)
++                    .join(' · ')}
+                 </Badge>
+               ) : undefined
+             }
 diff --git a/packages/web/src/app/item/_components/actions.tsx b/packages/web/src/app/item/_components/actions.tsx
 index 2ba0f442..b17357e0 100644
 --- a/packages/web/src/app/item/_components/actions.tsx
