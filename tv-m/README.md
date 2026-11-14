@@ -19,6 +19,9 @@ are for personal use. So this folder holds none of its code, only:
   filters, which the app turns off: a tiny, box-blurred copy of the picture, stretched and dimmed,
   and a tall plain fade from the hero into it. `0110` puts Who's watching up as the app goes away, so a return
   opens on it. `0111` draws the floating top tabs as glass.
+  `0112` marks the current tab with a dot in place of a capsule, takes the hero to the left edge
+  and fades its bottom into the frosted background, keeps the watch party sheet's shape, and draws
+  a row title's focus pill inside its box.
 
 The **Build tv-m** workflow clones that commit, applies the patches, builds the app the way the
 upstream workflow does, and attaches `tv-m.ipa` to the run. It publishes no release and no
