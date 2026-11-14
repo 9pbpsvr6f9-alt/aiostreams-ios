@@ -223,7 +223,7 @@ index 97578415..5805f0a3 100644
 +  );
 +}
 diff --git a/packages/web/src/app/item/_components/trailer.tsx b/packages/web/src/app/item/_components/trailer.tsx
-index c239d4df..88c7e1b0 100644
+index c239d4df..22bae007 100644
 --- a/packages/web/src/app/item/_components/trailer.tsx
 +++ b/packages/web/src/app/item/_components/trailer.tsx
 @@ -5,8 +5,10 @@ import { createPortal } from 'react-dom';
@@ -253,7 +253,7 @@ index c239d4df..88c7e1b0 100644
    React.useEffect(() => {
      if (!playing) {
        setShown(false);
-@@ -156,27 +166,32 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+@@ -156,27 +166,45 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
      () => ({ shown, openFull }),
      [shown, openFull]
    );
@@ -284,17 +284,30 @@ index c239d4df..88c7e1b0 100644
 -            <div className="absolute inset-0 bg-gradient-to-r from-[--background] via-[--background]/60 via-40% to-transparent rtl:bg-gradient-to-l" />
 -            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent" />
 +            <div className={cn("absolute inset-0 bg-gradient-to-r from-[--background] via-[--background]/60 via-40% to-transparent rtl:bg-gradient-to-l", inline && "hidden landscape:block lg:block")} />
-+            <div className={inline ? "absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-[--background] via-[--background]/70 to-transparent max-sm:h-1/2" : "absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent"} />
++            <div data-ui="item-trailer-shade" data-name="bottom" className={inline ? "absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-[--background] via-[--background]/70 to-transparent max-sm:h-1/2" : "absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-[--background] via-[--background]/50 to-transparent"} />
            </div>
 -          <TrailerVeil shown={shown} />
 -        </div>,
 -        document.body
 +          {!inline && <TrailerVeil shown={shown} />}
 +        </div>
++      )}
++      {inline && (
++        // iOS: the video ends in a hard edge the page can't fade, so the shade above ends in a
++        // solid grey and this, just under the video, starts in that grey and fades into the
++        // frosted background, as Home's hero does.
++        <div
++          aria-hidden
++          data-ui="item-trailer-below"
++          className={cn(
++            'pointer-events-none absolute inset-x-0 top-[calc(55vh-2px)] h-[32vh] transition-opacity duration-500 landscape:top-[calc(85vh-2px)] lg:top-[calc(85vh-2px)]',
++            (full || !shown) && 'opacity-0'
++          )}
++        />
        )}
        {spot && (
          <TrailerPreview
-@@ -197,7 +212,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
+@@ -197,7 +225,7 @@ export function useItemTrailer(item: BaseItemDto | undefined) {
      </>
    );
    const keys = !!currentHost().tv || usingKeys();
@@ -2893,7 +2906,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..01718c4c 100644
+index 96e99eee..0559ae72 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2967,7 +2980,7 @@ index 96e99eee..01718c4c 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,595 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,612 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -3562,4 +3575,21 @@ index 96e99eee..01718c4c 100644
 +}
 +html[data-host='ios-app'] [data-ui='skip-segment'] [data-name='countdown'] {
 +  background-color: rgb(255 255 255 / 0.18) !important;
++}
++
++/* iOS: a title's trailer melts into the frosted background as Home's hero does. The video, drawn
++   beneath the page, ends in a hard edge, so its shade ends in a solid fixed grey and the page just
++   under it starts in that grey and fades out. */
++html[data-host='ios-app'] [data-ui='item-trailer-shade'][data-name='bottom'] {
++  height: 60% !important;
++  background-image: linear-gradient(
++    to top,
++    rgb(22 22 26) 0%,
++    rgb(22 22 26 / 0.85) 18%,
++    rgb(22 22 26 / 0.45) 50%,
++    transparent 100%
++  ) !important;
++}
++html[data-host='ios-app'] [data-ui='item-trailer-below'] {
++  background-image: linear-gradient(to bottom, rgb(22 22 26) 0%, rgb(22 22 26 / 0.6) 40%, transparent 100%);
 +}
