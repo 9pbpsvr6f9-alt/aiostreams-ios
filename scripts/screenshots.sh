@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Photographs both apps in Apple's simulators against the demo server (tools/demo-server), whose
+# Photographs the app in Apple's simulators against the demo server (tools/demo-server), whose
 # catalogue and artwork are made up, so the pictures show no one's films, servers or accounts.
 #
 #   scripts/screenshots.sh      # writes build/screenshots/*.png
 #
-# Needs macOS with Xcode and its iOS and tvOS simulators, XcodeGen, ffmpeg and Pillow, and the web
+# Needs macOS with Xcode and its iOS simulators, XcodeGen, ffmpeg and Pillow, and the web
 # app built into AIOStreams/Resources/web (scripts/build-web.sh).
 set -euo pipefail
 
@@ -40,9 +40,7 @@ build() {
     ARCHS=arm64 ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO | tail -3
 }
 build AIOStreams "iOS Simulator"
-build AIOStreamsTV "tvOS Simulator"
 ios_app="$derived/Build/Products/Debug-iphonesimulator/AIOStreams.app"
-tv_app="$derived/Build/Products/Debug-appletvsimulator/AIOStreamsTV.app"
 
 # A booted simulator of the newest device whose name matches, on the newest runtime that has it.
 simulator() {
@@ -77,21 +75,6 @@ shot() {
   xcrun simctl io "$udid" screenshot "$out/$name.png" >/dev/null
   echo "captured $name"
 }
-
-# Apple TV
-tv=$(simulator "Apple TV 4K" tvOS)
-prepare "$tv"
-xcrun simctl install "$tv" "$tv_app"
-tvid=io.github.aiostreams-ios.tv
-shot "$tv" $tvid tv-signin 8 -demoScreen signin
-shot "$tv" $tvid tv-home 14 -demoScreen home
-shot "$tv" $tvid tv-rail 14 -demoScreen rail
-shot "$tv" $tvid tv-show 14 -demoScreen title -demoItem "$show"
-shot "$tv" $tvid tv-movie 14 -demoScreen movie -demoItem "$movie"
-shot "$tv" $tvid tv-versions 14 -demoScreen versions -demoItem "$movie"
-shot "$tv" $tvid tv-player 20 -demoScreen player -demoItem "$movie"
-shot "$tv" $tvid tv-settings 12 -demoScreen settings
-xcrun simctl shutdown "$tv" || true
 
 # iPhone and iPad: the web app, signed in to the demo server.
 web() {

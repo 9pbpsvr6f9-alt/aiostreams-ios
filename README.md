@@ -1,9 +1,9 @@
-# AIOStreams for iPhone, iPad and Apple TV
+# AIOStreams for iPhone and iPad
 
 Your [AIOStreams](https://github.com/Viren070/AIOStreams) and Jellyfin library as a native app, made for
 watching rather than browsing. AIOStreams' own interface runs on top of
 [AetherEngine](https://github.com/superuser404notfound/AetherEngine), so the files Safari and AVPlayer give up
-on still play: Dolby Vision, HDR10, HDR10+, HLG, Atmos and image subtitles. An Apple TV build comes with it.
+on still play: Dolby Vision, HDR10, HDR10+, HLG, Atmos and image subtitles.
 
 Unofficial and community made. It isn't affiliated with AIOStreams, Jellyfin or Apple.
 
@@ -29,22 +29,6 @@ Unofficial and community made. It isn't affiliated with AIOStreams, Jellyfin or 
 - One FlareStore address for every release. Each version lists what changed, and older versions stay installable.
 
 ## Screenshots
-
-### Apple TV
-
-<p>
-  <img src="docs/screenshots/tv-home.jpg" width="49%" alt="Apple TV home: the rotating hero over Continue watching">
-  <img src="docs/screenshots/tv-show.jpg" width="49%" alt="A show's page with season pills and episodes">
-</p>
-<p>
-  <img src="docs/screenshots/tv-versions.jpg" width="49%" alt="The version picker">
-  <img src="docs/screenshots/tv-player.jpg" width="49%" alt="The player, with subtitles lifted above its controls">
-</p>
-<p>
-  <img src="docs/screenshots/tv-movie.jpg" width="32%" alt="A movie's page">
-  <img src="docs/screenshots/tv-signin.jpg" width="32%" alt="Who's watching? sign-in">
-  <img src="docs/screenshots/tv-settings.jpg" width="32%" alt="Settings, synced with the web app">
-</p>
 
 ### iPhone and iPad
 
@@ -85,8 +69,7 @@ It follows the design of the official Android and desktop apps, which are a web 
 
 Add [this source](https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json)
 in FlareStore or a compatible AltStore-format sideloader. Refresh it for new versions;
-your sideloader signs and installs each update. Both iPhone/iPad and Apple TV builds
-are listed. See [updates and FlareStore](docs/updates-and-flarestore.md) for signing,
+your sideloader signs and installs each update. See [updates and FlareStore](docs/updates-and-flarestore.md) for signing,
 automated upstream PRs, release publication and the default-branch activation step.
 
 ## Getting an IPA
@@ -143,23 +126,8 @@ the next video starts filled again. Turning the option off restores Fit.
 | `fullscreen` | landscape, no status bar or home indicator |
 | `player-state` / `player-tracks` / `player-chapters` / `player-event` / `player-ended` | the engine's published state |
 
-## Apple TV
-
-tvOS has no WebKit, so the web app can't run there. The Apple TV app (`TV/`) is native SwiftUI instead. It talks to the server's Jellyfin API with the same requests the web app makes (`packages/web/src/lib/queries.ts`), and plays with the same AetherEngine. The engine handles the HDR and Dolby Vision display switching itself, following the Apple TV's Match Content setting.
-
-- **Connecting:** enter the server address from the configure page (Save & Install → Jellyfin apps → Connect). Sign in with Quick Connect (approve the code on the configure page), by picking a user, or with a name and password.
-- **Browsing:** Home has Continue Watching, Next Up and a row for each library. There's also search, library grids, and details pages with seasons and episodes.
-- **Versions:** the streams your addons found, in the order the server sorted them. Picking one also fetches its subtitles from your subtitle addons.
-- **Player:** play/pause, click left or right to go back 10 s or forward 30 s, and press down for audio and subtitles. Playback resumes where you left off and reports progress to the server.
-
-It shares `Support.swift` and `SubtitleOverlayView.swift` with the iOS app. The build makes `AIOStreams-tvOS.ipa` alongside the iPhone one. AltStore and SideStore don't install on Apple TV. Use Xcode with a paired Apple TV, or another signing tool that supports tvOS.
-
-Not in the Apple TV app yet: scrubbing with the touch surface, playing the next episode automatically, skipping intros, Live TV, and a subtitle style setting.
-
 ## Not done yet
 
-- **Downloads and offline playback.** The iOS host has no `downloads`, so the page hides them.
-- **Mini player and picture-in-picture.** The bridge reports `miniPlayer: false`.
 - **Stats overlay.** mpv's stats pages have no AetherEngine equivalent here.
 - **Subtitle sync fallback.** Indexed Matroska, MP4 and MOV files now feed the page’s sync tools. Files without a usable index still have no decoded-line fallback.
 - **YouTube trailers.** Native resolution follows the reference app’s visionOS and Android clients; availability depends on YouTube.
@@ -171,7 +139,7 @@ Not in the Apple TV app yet: scrubbing with the touch surface, playing the next 
 
 ## Optional AetherEngine components
 
-AetherEngine compiles some components only when a build asks for them, and XcodeGen can't set that itself, so the apps build the engine through a small local package. There are two, with the same module name, so the app code is the same either way:
+AetherEngine compiles some components only when a build asks for them, and XcodeGen can't set that itself, so the app builds the engine through a small local package. There are two, with the same module name, so the code is the same either way:
 
 | Package | Components | Used by |
 | --- | --- | --- |
@@ -179,12 +147,12 @@ AetherEngine compiles some components only when a build asks for them, and Xcode
 | `Packages/AetherEngineHeights` | The same, plus TrueHD Atmos and DTS:X height channels (`TrueHDObjectAudio`, `DTSXObjectAudio`) | Builds made with `HEIGHT_CHANNELS=on` |
 
 - **FEL by curve fold:** the enhancement layer is folded into the Profile 8.1 picture on Apple's own video path, which applies it with its licensed decoder. The engine's software dual-layer composer (`DualLayerDolbyVision`), whose steps are covered by Dolby patents, is left off in both.
-- **Height channels:** TrueHD Atmos and DTS:X are rendered with their heights. On Apple TV they reach an Atmos receiver as Dolby MAT, with the speaker layout in Settings → Audio, which only appears in these builds. iPhone and iPad play them as Spatial Audio. Needs iOS or tvOS 26. Without them, these tracks play as their 7.1 channels.
+- **Height channels:** TrueHD Atmos and DTS:X are rendered with their heights, and iPhone and iPad play them as Spatial Audio. Needs iOS 26. Without them, these tracks play as their 7.1 channels.
 
 To build with height channels:
 
 - **Locally:** run `HEIGHT_CHANNELS=on scripts/make-ipa.sh`.
-- **On GitHub:** open Actions → Build IPA → Run workflow and tick **Height channels**. The IPAs are attached to that run, not to a release.
+- **On GitHub:** open Actions → Build IPA → Run workflow and tick **Height channels**. The IPA is attached to that run, not to a release.
 
 Pushes, tags and releases always build without them.
 

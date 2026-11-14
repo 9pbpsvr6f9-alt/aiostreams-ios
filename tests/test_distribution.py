@@ -27,7 +27,7 @@ class SourceTests(unittest.TestCase):
 
     def test_sizes_identity_permissions_and_version_match_actual_ipas(self):
         feed = source.generate('v0.2.10', self.folder)
-        self.assertEqual(len(feed['apps']), 2)
+        self.assertEqual(len(feed['apps']), len(source.APPS))
         for app, (filename, bundle, _) in zip(feed['apps'], source.APPS):
             version = app['versions'][0]
             self.assertEqual(app['bundleIdentifier'], bundle)
@@ -37,6 +37,16 @@ class SourceTests(unittest.TestCase):
             self.assertIn('/v0.2.10/', version['downloadURL'])
             self.assertIn('NSLocalNetworkUsageDescription', app['appPermissions']['privacy'])
         self.assertNotIn('@', json.dumps(feed))
+
+    def test_an_app_no_longer_built_leaves_the_source(self):
+        old = source.generate('v0.2.10', self.folder)
+        old['apps'].append({'bundleIdentifier': 'io.github.aiostreams-ios.tv', 'versions': [{'version': '0.2.10'}]})
+        old['featuredApps'].append('io.github.aiostreams-ios.tv')
+        for filename, bundle, _ in source.APPS:
+            self.ipa(filename, bundle, '0.2.11')
+        new = source.generate('v0.2.11', self.folder, old)
+        self.assertEqual([a['bundleIdentifier'] for a in new['apps']], [b for _, b, _ in source.APPS])
+        self.assertNotIn('io.github.aiostreams-ios.tv', json.dumps(new))
 
     def test_source_address_is_fixed_and_unredirected(self):
         feed = source.generate('v0.2.10', self.folder)
