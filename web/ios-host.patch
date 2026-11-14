@@ -1812,7 +1812,7 @@ index e3bb77f6..53ce70a9 100644
    };
  }
 diff --git a/packages/web/src/features/trailers/preview.tsx b/packages/web/src/features/trailers/preview.tsx
-index 4daab21e..827d5095 100644
+index 4daab21e..ecd2e9ea 100644
 --- a/packages/web/src/features/trailers/preview.tsx
 +++ b/packages/web/src/features/trailers/preview.tsx
 @@ -146,22 +146,32 @@ function useOnlyOne(stop: () => void) {
@@ -1862,7 +1862,48 @@ index 4daab21e..827d5095 100644
    return box;
  }
  
-@@ -249,6 +259,8 @@ export interface TrailerPreviewProps {
+@@ -198,6 +208,32 @@ function useVideoHole(box: Box | null, radius: number) {
+     const y = box.y - view.top;
+     const { width: w, height: h } = box;
+     const r = Math.min(radius, w / 2, h / 2);
++    const html = document.documentElement;
++    if (r <= 0) {
++      // Square corners: the hole is two plain layers, the page less the box, with nothing to load,
++      // so moving it as a trailer follows the page (iOS: Home's hero) can't flicker. A new SVG
++      // image each frame showed the background whole for a frame while it loaded.
++      /* eslint-disable lingui/no-unlocalized-strings -- CSS values */
++      const plain: [string, string][] = [
++        ['mask-image', 'linear-gradient(#000, #000), linear-gradient(#000, #000)'],
++        ['-webkit-mask-image', 'linear-gradient(#000, #000), linear-gradient(#000, #000)'],
++        ['mask-size', `${view.width}px ${view.height}px, ${w}px ${h}px`],
++        ['-webkit-mask-size', `${view.width}px ${view.height}px, ${w}px ${h}px`],
++        ['mask-position', `0 0, ${x}px ${y}px`],
++        ['-webkit-mask-position', `0 0, ${x}px ${y}px`],
++        ['mask-repeat', 'no-repeat'],
++        ['-webkit-mask-repeat', 'no-repeat'],
++        ['mask-composite', 'exclude'],
++        ['-webkit-mask-composite', 'xor'],
++      ];
++      /* eslint-enable lingui/no-unlocalized-strings */
++      for (const [name, value] of plain) background.style.setProperty(name, value);
++      html.setAttribute('data-video-hole', '');
++      return () => {
++        for (const [name] of plain) background.style.removeProperty(name);
++        html.removeAttribute('data-video-hole');
++      };
++    }
+     /* eslint-disable lingui/no-unlocalized-strings -- SVG path data */
+     const arc = (dx: number, dy: number) => `A${r} ${r} 0 0 1 ${dx} ${dy}`;
+     const path =
+@@ -208,7 +244,6 @@ function useVideoHole(box: Box | null, radius: number) {
+     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${view.width}" height="${view.height}"><path fill-rule="evenodd" d="${path}"/></svg>`;
+     const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+     for (const name of MASK) background.style.setProperty(name, mask);
+-    const html = document.documentElement;
+     html.setAttribute('data-video-hole', '');
+     return () => {
+       for (const name of MASK) background.style.removeProperty(name);
+@@ -249,6 +284,8 @@ export interface TrailerPreviewProps {
    full?: boolean;
    /** Whether the picture shows, so what covers it can fade. */
    onShown?: (shown: boolean, trailer: Trailer) => void;
@@ -1871,7 +1912,7 @@ index 4daab21e..827d5095 100644
    onEnded(end: TrailerEnd): void;
    onExitFull?: () => void;
  }
-@@ -261,7 +273,8 @@ export interface TrailerPreviewProps {
+@@ -261,7 +298,8 @@ export interface TrailerPreviewProps {
  export function TrailerPreview(props: TrailerPreviewProps) {
    const { item, spot, full = false } = props;
    const details = useItem(item.Id ?? '');
@@ -1881,7 +1922,7 @@ index 4daab21e..827d5095 100644
    const trailers = React.useMemo(
      () => (known ? trailersOf(known) : []),
      [known]
-@@ -273,9 +286,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
+@@ -273,9 +311,18 @@ export function TrailerPreview(props: TrailerPreviewProps) {
    const muted = !full && !sound;
    const ended = useLatest(props.onEnded);
    useOnlyOne(() => ended.current('stopped'));
@@ -1903,7 +1944,7 @@ index 4daab21e..827d5095 100644
    );
    const frame = React.useMemo(() => coverOf(box), [box]);
    const hole = React.useMemo(
-@@ -409,6 +431,7 @@ function PlayedPreview({
+@@ -409,6 +456,7 @@ function PlayedPreview({
      fit: full ? undefined : 'crop',
      muted,
      thumbnails: full,
@@ -1911,7 +1952,7 @@ index 4daab21e..827d5095 100644
    });
    const { started, error } = player.state;
    const flowing = usePlayhead(
-@@ -428,6 +451,7 @@ function PlayedPreview({
+@@ -428,6 +476,7 @@ function PlayedPreview({
        full
          ? null
          : {
@@ -1919,7 +1960,7 @@ index 4daab21e..827d5095 100644
              x: frame.x - 1,
              y: frame.y - 1,
              width: frame.width + 2,
-@@ -436,19 +460,19 @@ function PlayedPreview({
+@@ -436,19 +485,19 @@ function PlayedPreview({
              // Over the page only once it plays, as it shows black until then.
              hidden: !over || !shown,
              animate: false,
