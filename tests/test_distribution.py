@@ -31,7 +31,7 @@ class SourceTests(unittest.TestCase):
         for app, (filename, bundle, _) in zip(feed['apps'], source.APPS):
             version = app['versions'][0]
             self.assertEqual(app['bundleIdentifier'], bundle)
-            self.assertEqual(app['developerName'], '9pbpsvr6f9-alt')
+            self.assertEqual(app['developerName'], 'hyperionyxdev')
             self.assertEqual(version['size'], (self.folder / filename).stat().st_size)
             self.assertEqual(version['buildVersion'], '10')
             self.assertIn('/v0.2.10/', version['downloadURL'])
@@ -50,7 +50,7 @@ class SourceTests(unittest.TestCase):
 
     def test_source_address_is_fixed_and_unredirected(self):
         feed = source.generate('v0.2.10', self.folder)
-        raw = 'https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/'
+        raw = 'https://raw.githubusercontent.com/hyperionyxdev/aiostreams-ios/main/'
         # FlareStore keeps the address a redirect ends on, so nothing here may be a release's.
         self.assertEqual(feed['sourceURL'], raw + 'altstore/source.json')
         self.assertEqual(feed['iconURL'], raw + 'altstore/icon.png')
@@ -61,6 +61,16 @@ class SourceTests(unittest.TestCase):
         notes = feed['apps'][0]['versions'][0]['localizedDescription']
         self.assertIn('Fix a thing', notes)
         self.assertNotIn('FlareStore source', notes)
+
+    def test_older_versions_move_to_the_current_owner(self):
+        old = source.generate('v0.2.10', self.folder)
+        for app in old['apps']:
+            app['versions'][0]['downloadURL'] = app['versions'][0]['downloadURL'].replace('hyperionyxdev', '9pbpsvr6f9-alt')
+        for filename, bundle, _ in source.APPS:
+            self.ipa(filename, bundle, '0.2.11')
+        new = source.generate('v0.2.11', self.folder, old)
+        self.assertNotIn('github.com/9pbpsvr6f9-alt/', json.dumps(new))
+        self.assertIn('/hyperionyxdev/aiostreams-ios/releases/download/v0.2.10/', json.dumps(new))
 
     def test_rebuild_deduplicates_history(self):
         old = source.generate('v0.2.10', self.folder)

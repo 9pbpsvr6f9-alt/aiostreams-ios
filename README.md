@@ -67,7 +67,7 @@ It follows the design of the official Android and desktop apps, which are a web 
 
 ## Install and update from FlareStore
 
-Add [this source](https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json)
+Add [this source](https://raw.githubusercontent.com/hyperionyxdev/aiostreams-ios/main/altstore/source.json)
 in FlareStore or a compatible AltStore-format sideloader. Refresh it for new versions;
 your sideloader signs and installs each update. See [updates and FlareStore](docs/updates-and-flarestore.md) for signing,
 automated upstream PRs, release publication and the default-branch activation step.

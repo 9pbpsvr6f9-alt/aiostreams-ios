@@ -2,7 +2,7 @@
 
 Add this source URL in FlareStore (or a compatible AltStore-format client):
 
-https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json
+https://raw.githubusercontent.com/hyperionyxdev/aiostreams-ios/main/altstore/source.json
 
 Add it as a **source** (the URL above), not as a GitHub repository: a repository
 entry lists every IPA of every release as its own app, while the source shows each

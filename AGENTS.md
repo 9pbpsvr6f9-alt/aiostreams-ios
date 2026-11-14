@@ -1,8 +1,8 @@
 # Repository working rules
 
 - Protect the owner's identity. For commits made on their behalf, both author and
-  committer MUST use `9pbpsvr6f9-alt` and
-  `289419752+9pbpsvr6f9-alt@users.noreply.github.com`.
+  committer MUST use `hyperionyxdev` and
+  `289419752+hyperionyxdev@users.noreply.github.com`.
 - Run `python3 scripts/check-git-privacy.py` before every commit, and
   `python3 scripts/check-git-privacy.py main..HEAD` before every push. Do not print
   or copy an unexpected identity into logs, PRs or messages; correct it locally.

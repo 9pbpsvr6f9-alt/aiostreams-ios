@@ -3,8 +3,8 @@
 import subprocess
 import sys
 
-NAME = '9pbpsvr6f9-alt'
-EMAIL = '289419752+9pbpsvr6f9-alt@users.noreply.github.com'
+NAME = 'hyperionyxdev'
+EMAIL = '289419752+hyperionyxdev@users.noreply.github.com'
 
 def check(identity):
     name, email = identity.split('\t')

@@ -8,7 +8,10 @@ import re
 import zipfile
 from pathlib import Path
 
-REPO = '9pbpsvr6f9-alt/aiostreams-ios'
+REPO = 'hyperionyxdev/aiostreams-ios'
+# Owners the repository had before: their release addresses in older versions are rewritten to
+# REPO's, rather than left to GitHub's redirects, which a new owner of an old name could end.
+FORMER_OWNERS = ['9pbpsvr6f9-alt']
 RAW = f'https://raw.githubusercontent.com/{REPO}/main'
 # The address to add, served without a redirect: FlareStore keeps the address a redirect ends on,
 # and the release asset's address ends on that one release, which never changes again.
@@ -104,10 +107,14 @@ def generate(tag, folder, previous=None, notes=None):
                  'downloadURL': f'https://github.com/{REPO}/releases/download/{tag}/{filename}',
                  'size': ipa.stat().st_size, 'minOSVersion': info.get('MinimumOSVersion', '18.0')}
         versions = [entry] + [v for v in old.get('versions', []) if v['version'] != entry['version']]
+        for version in versions[1:]:
+            for former in FORMER_OWNERS:
+                version['downloadURL'] = version['downloadURL'].replace(
+                    f'https://github.com/{former}/', f'https://github.com/{REPO.split("/")[0]}/')
         privacy = {k: v for k, v in info.items() if k.startswith('NS') and k.endswith('UsageDescription')}
         details = DETAILS[bundle]
         screenshots = [shot(s) for s in details['screenshots']]
-        app = {'name': name, 'bundleIdentifier': bundle, 'developerName': '9pbpsvr6f9-alt',
+        app = {'name': name, 'bundleIdentifier': bundle, 'developerName': REPO.split('/')[0],
                'subtitle': details['subtitle'],
                'localizedDescription': details['description'],
                'iconURL': source['iconURL'], 'tintColor': TINT, 'category': 'entertainment',

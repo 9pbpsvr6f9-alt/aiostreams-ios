@@ -162,7 +162,7 @@ jobs:
           cat >> build/release-notes.md <<'EOF'
           An unsigned iPhone and iPad IPA, built from the commit linked to this release.
           Sign and install with your sideloading tool. FlareStore source:
-          https://raw.githubusercontent.com/9pbpsvr6f9-alt/aiostreams-ios/main/altstore/source.json
+          https://raw.githubusercontent.com/hyperionyxdev/aiostreams-ios/main/altstore/source.json
           Updates become available when you refresh this source; installation and signing remain under your control.
           EOF
           gh release create "$RELEASE_TAG" --target "$RELEASE_COMMIT" --draft --title "AIOStreams ${RELEASE_TAG#v}" --notes-file build/release-notes.md
