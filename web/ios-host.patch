@@ -823,10 +823,10 @@ index f7db07b6..4a8139e5 100644
        // The menu opens beside the point and never slides, so a phone's point leaves it room.
 diff --git a/packages/web/src/components/shell/ios-backdrop.tsx b/packages/web/src/components/shell/ios-backdrop.tsx
 new file mode 100644
-index 00000000..d6ab3c10
+index 00000000..9efad620
 --- /dev/null
 +++ b/packages/web/src/components/shell/ios-backdrop.tsx
-@@ -0,0 +1,273 @@
+@@ -0,0 +1,212 @@
 +import React from 'react';
 +import { settings, useSetting } from '@/lib/settings';
 +
@@ -1028,7 +1028,6 @@ index 00000000..d6ab3c10
 +  if (!shown) return null;
 +  return (
 +    <>
-+      <TrailerFade soft={layers.at(-1)?.soft} />
 +      {layers.map((layer) => (
 +        <div
 +          key={layer.id}
@@ -1040,66 +1039,6 @@ index 00000000..d6ab3c10
 +  );
 +}
 +
-+/**
-+ * The hero's bottom while its trailer plays. The trailer is the app's own video beneath the page,
-+ * shown through a hole cut in the page's background, where no mask on the page can fade it. So the
-+ * page paints over it: the background's own picture, lined up with where the background shows it
-+ * and dimmed as it is, coming in over the hero's lower half (CSS shows it only while a trailer
-+ * plays). It sits just after the hero's picture, so the hero's shading, text and buttons stay over it.
-+ */
-+function TrailerFade({ soft }: { soft: Soft | undefined }) {
-+  React.useEffect(() => {
-+    if (!soft) return;
-+    let el: HTMLDivElement | null = null;
-+    let frame = 0;
-+    let last = '';
-+    const tick = () => {
-+      frame = requestAnimationFrame(tick);
-+      try {
-+        const still = document.querySelector<HTMLElement>(
-+          "[data-ui='hero'] div:has(> [data-ui='hero-backdrops'])"
-+        );
-+        if (!still) {
-+          el?.remove();
-+          el = null;
-+          return;
-+        }
-+        if (!el || el.previousElementSibling !== still) {
-+          el?.remove();
-+          el = document.createElement('div');
-+          el.dataset.ui = 'ios-hero-fade';
-+          el.setAttribute('aria-hidden', 'true');
-+          still.after(el);
-+          last = '';
-+        }
-+        const page = document.querySelector<HTMLElement>("[data-ui='page-background']");
-+        if (!page) return;
-+        const box = el.getBoundingClientRect();
-+        const view = page.getBoundingClientRect();
-+        // Where the background draws the picture: covering the screen, centred.
-+        const scale = Math.max(view.width / soft.width, view.height / soft.height);
-+        const w = soft.width * scale;
-+        const h = soft.height * scale;
-+        const x = view.left + (view.width - w) / 2 - box.left;
-+        const y = view.top + (view.height - h) / 2 - box.top;
-+        const at = `${w.toFixed(1)} ${h.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}`;
-+        if (at === last) return;
-+        last = at;
-+        el.style.backgroundImage = `linear-gradient(rgba(8, 10, 16, 0.5), rgba(8, 10, 16, 0.5)), url(${JSON.stringify(soft.url)})`;
-+        el.style.backgroundSize = `100% 100%, ${w}px ${h}px`;
-+        el.style.backgroundPosition = `0 0, ${x}px ${y}px`;
-+      } catch {
-+        // A decoration: nothing drawn this frame.
-+      }
-+    };
-+    frame = requestAnimationFrame(tick);
-+    return () => {
-+      cancelAnimationFrame(frame);
-+      el?.remove();
-+    };
-+  }, [soft]);
-+  return null;
-+}
 diff --git a/packages/web/src/components/shell/layout.tsx b/packages/web/src/components/shell/layout.tsx
 index f9fd24f6..b23084fe 100644
 --- a/packages/web/src/components/shell/layout.tsx
@@ -2852,7 +2791,7 @@ index 2014fb0e..be22c081 100644
 +msgid "Follow the hero"
 +msgstr "Follow the hero"
 diff --git a/packages/web/src/styles.css b/packages/web/src/styles.css
-index 96e99eee..27e8f60a 100644
+index 96e99eee..9484830a 100644
 --- a/packages/web/src/styles.css
 +++ b/packages/web/src/styles.css
 @@ -152,6 +152,70 @@ html.see-through[data-host='android-app']:not(.playing):not([data-video-hole]) {
@@ -2926,7 +2865,7 @@ index 96e99eee..27e8f60a 100644
  /* Important so custom CSS can't cover the video beneath the page. */
  html.playing .page-background {
    display: none !important;
-@@ -524,3 +588,126 @@ html[data-blur-spoilers]:not([data-tv])
+@@ -524,3 +588,122 @@ html[data-blur-spoilers]:not([data-tv])
      opacity: 0;
    }
  }
@@ -2996,20 +2935,30 @@ index 96e99eee..27e8f60a 100644
 +    animation: none;
 +  }
 +}
-+/* On the hero's still box, not its art, which scrolls at half the page's speed: WebKit drops a mask
-+   on the moving art, and one that held would slide away with it. */
-+html[data-ios-backdrop] [data-ui='hero'] div:has(> [data-ui='hero-backdrops']) {
-+  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
-+  mask-image: linear-gradient(to top, transparent, black 45%);
-+}
-+/* The hero's shading fades out at the bottom with its picture: shading that ran to the edge left a
-+   dark band there, ending in a line over the lighter background below. */
-+html[data-ios-backdrop] [data-ui='hero-shade'] {
-+  -webkit-mask-image: linear-gradient(to top, transparent, black 45%);
-+  mask-image: linear-gradient(to top, transparent, black 45%);
-+}
++/* Home's hero meets the rows through a fixed grey. Matching the hero's edge to a background that
++   changes, and to a trailer the app draws beneath the page, left an edge that showed whenever
++   either moved. Now the hero's bottom fades into one fixed grey, solid at its edge (over a trailer
++   too), and the rows start in that same grey, fading into the frosted background below. Both sides
++   of the edge are always the same colour, and both scroll with the page. */
 +html[data-ios-backdrop] [data-ui='hero-shade'][data-name='bottom'] {
-+  background-image: linear-gradient(to top, rgb(8 10 16 / 0.45), transparent) !important;
++  height: 60% !important;
++  background-image: linear-gradient(
++    to top,
++    rgb(22 22 26) 0%,
++    rgb(22 22 26 / 0.85) 18%,
++    rgb(22 22 26 / 0.45) 50%,
++    transparent 100%
++  ) !important;
++}
++html[data-ios-backdrop] [data-ui='hero'] + [data-ui='home-rows']::before {
++  content: '';
++  position: absolute;
++  top: 0;
++  inset-inline: 0;
++  height: 32vh;
++  z-index: -1;
++  pointer-events: none;
++  background-image: linear-gradient(to bottom, rgb(22 22 26) 0%, rgb(22 22 26 / 0.6) 40%, transparent 100%);
 +}
 +html[data-ios-backdrop] [data-ui='hero-shade'][data-name='side'] {
 +  background-image: linear-gradient(to right, rgb(0 0 0 / 0.5), rgb(0 0 0 / 0.2) 35%, transparent) !important;
@@ -3033,20 +2982,6 @@ index 96e99eee..27e8f60a 100644
 +  display: none;
 +}
 +
-+/* iOS: over the hero's lower half while its trailer plays beneath the page, the frosted background's
-+   own picture, fading in downward, so the video melts into the background as the art does. */
-+[data-ui='ios-hero-fade'] {
-+  position: absolute;
-+  inset-inline: 0;
-+  bottom: 0;
-+  height: 55%;
-+  pointer-events: none;
-+  background-repeat: no-repeat;
-+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 75%);
-+  mask-image: linear-gradient(to bottom, transparent, black 75%);
-+}
-+/* Always on, not only while a trailer plays: it matches the background behind the hero's own fade
-+   anyway, and coming in as a trailer began left the edge showing for that moment. */
 +
 +/* iOS: the hero's picture leaves a starting trailer slowly, so the app's video, drawn beneath the
 +   page, is in place under the fade before it shows. */
